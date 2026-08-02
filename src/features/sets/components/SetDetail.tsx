@@ -24,8 +24,6 @@ import { OnePieceCard } from '../../../types/onepiece';
 import { useGame } from '../../../contexts/GameContext';
 import { useCardModal } from '../../../contexts/CardModalContext';
 import { PokemonSet } from '../../../types/pokemon';
-import { OnePieceCard } from '../../../types/onepiece';
-import { onepieceApi } from '../../../services/onepieceApi';
 import { formatCurrency, formatPercent } from '../../../utils/cardDisplay';
 import { sortSetTrackerCards, SetCardSort } from '../../../utils/setCardSort';
 import { SectionLabel } from '../../../components/common/SectionLabel';
@@ -132,7 +130,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
 
     if (isOP) {
       try {
-        const opCards = await onepieceApi.getSetCards(setId);
+        const opCards = await onePieceApi.getSetCards(setId);
         setOnePieceCards(opCards);
         if (opCards.length > 0) {
           const first = opCards[0];

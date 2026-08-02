@@ -5,7 +5,6 @@ import { setCodeService } from '../services/setCodeService';
 import { logger } from '../utils/logger';
 import { pokemonApiClient } from '../services/pokemonApiClient';
 import { authenticate } from '../middleware/auth';
-import { getDb } from '../db/database';
 
 const router = Router();
 

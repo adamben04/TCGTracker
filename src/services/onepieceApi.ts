@@ -266,3 +266,4 @@ class OnePieceApiService {
 }
 
 export const onePieceApi = new OnePieceApiService();
+export const onepieceApi = onePieceApi;
