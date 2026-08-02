@@ -315,7 +315,6 @@ export const initializeDatabase = (): Promise<void> => {
       'CREATE INDEX IF NOT EXISTS idx_prediction_results_prediction ON prediction_results(prediction_id)',
       'CREATE INDEX IF NOT EXISTS idx_external_signals_card ON external_market_signals(card_id)',
       'CREATE INDEX IF NOT EXISTS idx_external_signals_card_source_created ON external_market_signals(card_id, source_type, created_at)',
-      'CREATE INDEX IF NOT EXISTS idx_external_signals_card_name ON external_market_signals(card_name)',
       'CREATE INDEX IF NOT EXISTS idx_external_signals_expires ON external_market_signals(expires_at)',
       'CREATE INDEX IF NOT EXISTS idx_backtest_runs_date ON backtest_runs(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_name ON onepiece_catalog(cardName)',

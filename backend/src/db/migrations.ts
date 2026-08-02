@@ -49,6 +49,28 @@ const recordMigration = (db: Database, migration: Migration): Promise<void> => {
   });
 };
 
+// Run a migration inside a transaction so a mid-way failure rolls back cleanly
+const runInTransaction = (db: Database, fn: () => Promise<void>): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    db.run('BEGIN TRANSACTION', (beginErr) => {
+      if (beginErr) {
+        reject(beginErr);
+        return;
+      }
+      fn()
+        .then(() => {
+          db.run('COMMIT', (commitErr) => {
+            if (commitErr) reject(commitErr);
+            else resolve();
+          });
+        })
+        .catch((err) => {
+          db.run('ROLLBACK', () => reject(err));
+        });
+    });
+  });
+};
+
 // Define migrations
 export const migrations: Migration[] = [
   {
@@ -824,7 +846,7 @@ export const runMigrations = async (db: Database): Promise<void> => {
 
       if (!isExecuted) {
         logger.info(`Running migration ${migration.id}: ${migration.name}`);
-        await migration.up(db);
+        await runInTransaction(db, () => migration.up(db));
         await recordMigration(db, migration);
         logger.info(`Migration ${migration.id} completed`);
       } else {

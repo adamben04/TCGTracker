@@ -281,7 +281,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 return (
                   <div
                     className={`rounded-lg border px-3 py-2 text-sm shadow-lg ${
-                      isDark ? 'border-border-default bg-[#141c2b] text-ink-primary' : 'border-slate-200 bg-white text-slate-900'
+                      isDark ? 'border-border-default bg-surface-inset text-ink-primary' : 'border-slate-200 bg-white text-slate-900'
                     }`}
                   >
                     <p className={`text-xs ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>
@@ -312,7 +312,7 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                     cy={cy}
                     r={5}
                     fill={strokeColor}
-                    stroke={isDark ? '#141c2b' : '#fff'}
+                    stroke={isDark ? 'var(--surface-inset)' : '#fff'}
                     strokeWidth={2}
                   />
                 );

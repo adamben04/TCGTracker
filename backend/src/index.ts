@@ -315,7 +315,7 @@ function setupRoutes(
     }
   });
 
-  app.get('/api/cloud-backup/status', async (_req, res) => {
+  app.get('/api/cloud-backup/status', authenticate, async (_req, res) => {
     try {
       const status = await getCloudBackupStatus();
       res.json(status);
@@ -523,6 +523,16 @@ function shutdown(signal: string) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', {
+    reason: reason instanceof Error ? reason.message : reason,
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', { error: error.message });
+});
 
 bootstrap();
 

@@ -125,6 +125,17 @@ class PriceTrackingService {
           cardData: card,
           initialPrice,
         });
+        const tracked = this._getTrackedCardsLocal();
+        if (!tracked.some(t => t.id === card.id)) {
+          tracked.push({
+            id: card.id,
+            card,
+            addedAt: new Date().toISOString(),
+            initialPrice,
+            priceHistory: [{ date: new Date().toISOString(), price: initialPrice }]
+          });
+          this._setTrackedCardsLocal(tracked);
+        }
         return;
       } catch {
         // Fall back to localStorage
@@ -159,6 +170,8 @@ class PriceTrackingService {
     if (this._isLoggedIn()) {
       try {
         await axios.delete(buildApiUrl(`/api/tracked-cards/${cardId}`));
+        const tracked = this._getTrackedCardsLocal();
+        this._setTrackedCardsLocal(tracked.filter(t => t.id !== cardId));
         return;
       } catch {
         // Fall back to localStorage
@@ -265,6 +278,8 @@ class PriceTrackingService {
     if (this._isLoggedIn()) {
       try {
         await axios.delete(buildApiUrl(`/api/alerts/${alertId}`));
+        const alerts = this._getAlertsLocal();
+        this._setAlertsLocal(alerts.filter(a => a.id !== alertId));
         return;
       } catch {
         // Fall back to localStorage

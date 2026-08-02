@@ -53,6 +53,9 @@ export class AuthService {
     user: Omit<User, 'password_hash'>;
     token: string;
   }> {
+    if (username.toLowerCase() === env.admin.username.toLowerCase()) {
+      return Promise.reject(new Error('That username is not available'));
+    }
     return new Promise((resolve, reject) => {
       // Hash password
       bcrypt.hash(password, env.bcrypt.rounds, (err, hash) => {
