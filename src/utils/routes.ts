@@ -6,9 +6,12 @@ export const VIEW_PATHS: Record<AppView, string> = {
   cards: '/browse',
   tracking: '/prices',
   vault: '/vault',
+  wishlist: '/wishlist',
   sets: '/sets',
+  binders: '/binders',
   packs: '/packs',
   scanner: '/scanner',
+  grading: '/grading',
   insights: '/market-insights',
 };
 

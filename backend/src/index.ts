@@ -8,7 +8,7 @@ import { syncOnePieceData, isOnePieceCatalogIncomplete } from './services/onePie
 import setTrackerRouter from './routes/setTracker';
 import enhancedPacksRouter from './routes/enhancedPacks';
 import marketInsightsRouter from './routes/marketInsights';
-import trackedCardsRouter from './routes/trackedCards';
+import gradingRouter from './routes/grading';
 import { initializeDatabase, getDb } from './db/database';
 import { runMigrations } from './db/migrations';
 import { updatePriceData, getRunDate, hasCompletedPriceUpdateFor } from './services/dataFetcher';
@@ -27,9 +27,11 @@ import { requestLogger, logger } from './utils/logger';
 import { AuthService } from './services/authService';
 import { AlertService } from './services/alertService';
 import { PortfolioService } from './services/portfolioService';
+import { BinderService } from './services/binderService';
 import { createAuthRouter } from './routes/auth';
 import { createAlertsRouter } from './routes/alerts';
 import { createPortfolioRouter } from './routes/portfolio';
+import { createBinderRouter } from './routes/binders';
 import { setCodeService } from './services/setCodeService';
 import { initSentry } from './config/sentry';
 
@@ -37,7 +39,8 @@ initSentry();
 
 const app = express();
 const port = env.port;
-const BODY_LIMIT = '1mb';
+// 12mb supports base64 card images for AI grading analyze endpoint
+const BODY_LIMIT = '12mb';
 
 app.set('trust proxy', 1);
 
@@ -85,7 +88,8 @@ async function initializeSetCodeService(retries = 3) {
 function setupRoutes(
   authService: AuthService,
   alertService: AlertService,
-  portfolioService: PortfolioService
+  portfolioService: PortfolioService,
+  binderService: BinderService
 ) {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
   logger.info(`API Documentation available at http://${env.host}:${port}/api-docs`);
@@ -179,8 +183,9 @@ function setupRoutes(
   app.use('/api/cards', cardSearchRouter);
   app.use('/api/cards', onePieceCardsRouter);
   app.use('/api/packs', enhancedPacksRouter);
+  app.use('/api/binders', createBinderRouter(binderService));
   app.use('/api/market-insights', marketInsightsRouter);
-  app.use('/api/tracked-cards', trackedCardsRouter);
+  app.use('/api/grading', gradingRouter);
 
   cron.schedule(
     '0 3 * * *',
@@ -412,6 +417,7 @@ function setupRoutes(
           prices: '/api/prices',
           cards: '/api/cards',
           packs: '/api/packs',
+          binders: '/api/binders',
           'market-insights': '/api/market-insights',
           docs: '/api-docs',
           health: '/api/health',
@@ -434,6 +440,7 @@ function setupRoutes(
         prices: '/api/prices',
         cards: '/api/cards',
         packs: '/api/packs',
+        binders: '/api/binders',
         'market-insights': '/api/market-insights',
         status: '/api/status',
         health: '/api/health',
@@ -462,13 +469,14 @@ async function bootstrap() {
     const authService = new AuthService(db);
     const alertService = new AlertService(db);
     const portfolioService = new PortfolioService(db);
+    const binderService = new BinderService(db);
 
     await Promise.all([
       authService.init(),
       alertService.init(),
     ]);
 
-    setupRoutes(authService, alertService, portfolioService);
+    setupRoutes(authService, alertService, portfolioService, binderService);
 
     void initializeSetCodeService().catch((error) => {
       logger.error('Background set code service initialization failed', {
