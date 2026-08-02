@@ -8,6 +8,7 @@ import {
   computeRecoveryMetrics,
   getLatestPrice,
   getPriceAtDate,
+  computeMarketBenchmark,
 } from './marketAnalyzer';
 import {
   computeTrendScore,
@@ -17,19 +18,50 @@ import {
   computeExternalSignalScore,
   computeExpectedReturns,
   computePriceRanges,
+  computeLiquidityScore,
+  computeDataQualityScore,
+  isRarityInvestmentWorthy,
+  hasMeaningfulPriceMovement,
   determineCategory,
   PredictionCategory,
   ScoringScores,
+  CardQualityFilter,
+  DEFAULT_CARD_QUALITY_FILTER,
 } from './predictionEngine';
 
 export interface BacktestCardResult {
   cardId: string;
   cardName: string;
-  predicted90dReturn: number;
-  actual90dReturn: number | null;
-  error90d: number | null;
+  currentPrice: number;
+  /** Expected return for the backtest window (7/30/90/180/365 days). */
+  predictedReturn: number;
+  actualReturn: number | null;
+  error: number | null;
   directionCorrect: boolean | null;
   category: PredictionCategory;
+  liquidityScore: number;
+  dataQualityScore: number;
+  riskScore: number;
+}
+
+export const SUPPORTED_BACKTEST_WINDOWS = [7, 30, 90, 180, 365] as const;
+
+/** Picks the expected return matching a backtest window from the engine output. */
+export function expectedReturnForWindow(
+  returns: {
+    expected7dReturn: number;
+    expected30dReturn: number;
+    expected90dReturn: number;
+    expected180dReturn: number;
+    expected365dReturn: number;
+  },
+  windowDays: number
+): number {
+  if (windowDays <= 7) return returns.expected7dReturn;
+  if (windowDays <= 30) return returns.expected30dReturn;
+  if (windowDays <= 90) return returns.expected90dReturn;
+  if (windowDays <= 180) return returns.expected180dReturn;
+  return returns.expected365dReturn;
 }
 
 export interface CategoryPerformance {
@@ -47,8 +79,14 @@ export interface BacktestResult {
   mape: number | null;
   top10AvgReturn: number | null;
   marketAvgReturn: number | null;
+  marketMedianReturn: number | null;
+  marketReturnStdDev: number | null;
   strongBuyFalsePositiveRate: number | null;
   avoidAvgReturn: number | null;
+  sharpeRatio: number | null;
+  maxDrawdown: number | null;
+  winRate: number | null;
+  profitFactor: number | null;
   categoryPerformance: CategoryPerformance[];
   cardResults: BacktestCardResult[];
 }
@@ -102,7 +140,8 @@ function fetchFuturePrice(uniqueIdentifier: string, startDate: string, daysAhead
 export async function runBacktest(
   backtestDate: string,
   windowDays: number = 90,
-  cardIdFilter?: string[]
+  cardIdFilter?: string[],
+  filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER
 ): Promise<BacktestResult> {
   const db = getDb();
 
@@ -129,6 +168,7 @@ export async function runBacktest(
   let totalDirectionalTests = 0;
   let totalMape = 0;
   let totalMapeCount = 0;
+  const returns: number[] = [];
 
   for (const card of cards) {
     try {
@@ -136,15 +176,24 @@ export async function runBacktest(
       if (!uid) continue;
 
       const priceHistory = await fetchPriceHistoryUpToDate(uid, backtestDate);
-      if (priceHistory.length < 14) continue;
+      if (priceHistory.length < filter.minDataPoints) continue;
 
       const currentPrice = getLatestPrice(priceHistory);
       if (!currentPrice || currentPrice <= 0) continue;
+
+      if (currentPrice < filter.minPrice || currentPrice > filter.maxPrice) continue;
+
+      if (!isRarityInvestmentWorthy(card.rarity)) continue;
+
+      if (filter.excludeStagnant && !hasMeaningfulPriceMovement(priceHistory)) continue;
 
       const movingAverages = computeMovingAverages(priceHistory);
       const priceChanges = computePriceChanges(priceHistory);
       const volatility = computeVolatility(priceHistory);
       const recoveryMetrics = computeRecoveryMetrics(priceHistory);
+
+      const liquidityScore = computeLiquidityScore(priceHistory, currentPrice, volatility);
+      const dataQualityScore = computeDataQualityScore(priceHistory);
 
       const trendScore = computeTrendScore(priceChanges, movingAverages, currentPrice);
       const recoveryScore = computeRecoveryScore(recoveryMetrics, priceChanges);
@@ -154,29 +203,33 @@ export async function runBacktest(
       const scores: ScoringScores = {
         trendScore, recoveryScore, demandScore, riskScore,
         externalSignalScore: 0,
+        liquidityScore,
+        dataQualityScore,
       };
 
       const expectedReturns = computeExpectedReturns(scores);
+      const predictedReturn = expectedReturnForWindow(expectedReturns, windowDays);
 
       const futurePrice = await fetchFuturePrice(uid, backtestDate, windowDays);
-      let actual90dReturn: number | null = null;
-      let error90d: number | null = null;
+      let actualReturn: number | null = null;
+      let error: number | null = null;
       let directionCorrect: boolean | null = null;
 
       if (futurePrice && futurePrice > 0) {
-        actual90dReturn = (futurePrice - currentPrice) / currentPrice;
+        actualReturn = (futurePrice - currentPrice) / currentPrice;
 
-        if (expectedReturns.expected90dReturn !== 0 && actual90dReturn !== 0) {
-          const predictedDir = expectedReturns.expected90dReturn > 0;
-          const actualDir = actual90dReturn > 0;
+        if (predictedReturn !== 0 && actualReturn !== 0) {
+          const predictedDir = predictedReturn > 0;
+          const actualDir = actualReturn > 0;
           directionCorrect = predictedDir === actualDir;
           if (directionCorrect) totalDirectionalCorrect++;
           totalDirectionalTests++;
         }
 
-        error90d = Math.abs(expectedReturns.expected90dReturn - actual90dReturn);
-        totalMape += Math.abs(error90d);
+        error = Math.abs(predictedReturn - actualReturn);
+        totalMape += Math.abs(error);
         totalMapeCount++;
+        returns.push(actualReturn);
       }
 
       const category = determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
@@ -184,11 +237,15 @@ export async function runBacktest(
       cardResults.push({
         cardId: card.cardId,
         cardName: card.cardName,
-        predicted90dReturn: expectedReturns.expected90dReturn,
-        actual90dReturn,
-        error90d,
+        currentPrice,
+        predictedReturn,
+        actualReturn,
+        error,
         directionCorrect,
         category,
+        liquidityScore,
+        dataQualityScore,
+        riskScore,
       });
     } catch (err) {
       logger.warn(`Backtest failed for ${card.cardName}:`, err);
@@ -200,36 +257,82 @@ export async function runBacktest(
   const mape = totalMapeCount > 0 ? totalMape / totalMapeCount : null;
 
   const top10 = [...cardResults]
-    .filter(r => r.predicted90dReturn !== null)
-    .sort((a, b) => b.predicted90dReturn - a.predicted90dReturn)
+    .filter(r => r.predictedReturn !== null)
+    .sort((a, b) => b.predictedReturn - a.predictedReturn)
     .slice(0, 10);
   const top10AvgReturn = top10.length > 0
-    ? top10.reduce((s, r) => s + (r.actual90dReturn ?? 0), 0) / top10.length
+    ? top10.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / top10.length
     : null;
 
-  const withActualReturns = cardResults.filter(r => r.actual90dReturn !== null);
+  const withActualReturns = cardResults.filter(r => r.actualReturn !== null);
   const marketAvgReturn = withActualReturns.length > 0
-    ? withActualReturns.reduce((s, r) => s + (r.actual90dReturn ?? 0), 0) / withActualReturns.length
+    ? withActualReturns.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / withActualReturns.length
     : null;
+
+  // Compute market benchmark from all tested cards' price histories
+  const allHistories: PricePoint[][] = [];
+  for (const card of cards) {
+    try {
+      const uid = card.uniqueIdentifier;
+      if (!uid) continue;
+      const history = await fetchPriceHistoryUpToDate(uid, backtestDate);
+      if (history.length >= windowDays + 1) {
+        allHistories.push(history);
+      }
+    } catch {
+      // skip failed fetches
+    }
+  }
+  const benchmark = computeMarketBenchmark(allHistories, windowDays);
 
   const strongBuyCards = cardResults.filter(r => r.category === 'strong_buy');
-  const strongBuyFalsePositive = strongBuyCards.filter(r => r.actual90dReturn !== null && r.actual90dReturn < 0);
+  const strongBuyFalsePositive = strongBuyCards.filter(r => r.actualReturn !== null && r.actualReturn < 0);
   const strongBuyFalsePositiveRate = strongBuyCards.length > 0
     ? strongBuyFalsePositive.length / strongBuyCards.length
     : null;
 
-  const avoidCards = cardResults.filter(r => r.category === 'avoid' && r.actual90dReturn !== null);
+  const avoidCards = cardResults.filter(r => r.category === 'avoid' && r.actualReturn !== null);
   const avoidAvgReturn = avoidCards.length > 0
-    ? avoidCards.reduce((s, r) => s + (r.actual90dReturn ?? 0), 0) / avoidCards.length
+    ? avoidCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / avoidCards.length
     : null;
+
+  const winRate = returns.length > 0 ? returns.filter(r => r > 0).length / returns.length : null;
+
+  const gains = returns.filter(r => r > 0);
+  const losses = returns.filter(r => r < 0).map(r => Math.abs(r));
+  const avgGain = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / gains.length : 0;
+  const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+  const profitFactor = avgLoss > 0 ? avgGain / avgLoss : null;
+
+  let sharpeRatio: number | null = null;
+  let maxDrawdown: number | null = null;
+  if (returns.length > 1) {
+    const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((a, r) => a + (r - mean) ** 2, 0) / returns.length;
+    const stdDev = Math.sqrt(variance);
+    // Annualize based on the actual window period (default 90 days)
+    const annualizationFactor = Math.sqrt(365 / windowDays);
+    sharpeRatio = stdDev > 0 ? (mean / stdDev) * annualizationFactor : null;
+
+    let peak = 0;
+    let maxDd = 0;
+    let cumulative = 0;
+    for (const r of returns) {
+      cumulative += r;
+      if (cumulative > peak) peak = cumulative;
+      const drawdown = peak - cumulative;
+      if (drawdown > maxDd) maxDd = drawdown;
+    }
+    maxDrawdown = maxDd;
+  }
 
   const categories: PredictionCategory[] = ['strong_buy', 'watch_dip', 'recovery', 'momentum', 'stagnant', 'avoid', 'downtrend'];
   const categoryPerformance: CategoryPerformance[] = categories.map(cat => {
-    const catCards = cardResults.filter(r => r.category === cat && r.actual90dReturn !== null);
+    const catCards = cardResults.filter(r => r.category === cat && r.actualReturn !== null);
     const count = catCards.length;
-    const avgReturn = count > 0 ? catCards.reduce((s, r) => s + (r.actual90dReturn ?? 0), 0) / count : 0;
+    const avgReturn = count > 0 ? catCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / count : 0;
     const avgPredictedReturn = count > 0
-      ? catCards.filter(r => r.predicted90dReturn !== null).reduce((s, r) => s + r.predicted90dReturn, 0) / count
+      ? catCards.filter(r => r.predictedReturn !== null).reduce((s, r) => s + r.predictedReturn, 0) / count
       : 0;
     return { category: cat, count, avgReturn, avgPredictedReturn };
   });
@@ -242,8 +345,14 @@ export async function runBacktest(
     mape,
     top10AvgReturn,
     marketAvgReturn,
+    marketMedianReturn: benchmark.medianReturn,
+    marketReturnStdDev: benchmark.returnStdDev,
     strongBuyFalsePositiveRate,
     avoidAvgReturn,
+    sharpeRatio,
+    maxDrawdown,
+    winRate,
+    profitFactor,
     categoryPerformance,
     cardResults,
   };
@@ -260,8 +369,9 @@ async function saveBacktestResult(result: BacktestResult): Promise<void> {
       `INSERT INTO backtest_runs
        (backtest_date, window_days, cards_tested, directional_accuracy, mape,
         top10_avg_return, market_avg_return, strong_buy_false_positive_rate,
-        avoid_avg_return, category_performance)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        avoid_avg_return, sharpe_ratio, max_drawdown, win_rate, profit_factor,
+        category_performance, market_median_return, market_return_std_dev)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         result.backtestDate,
         result.windowDays,
@@ -272,7 +382,13 @@ async function saveBacktestResult(result: BacktestResult): Promise<void> {
         result.marketAvgReturn,
         result.strongBuyFalsePositiveRate,
         result.avoidAvgReturn,
+        result.sharpeRatio,
+        result.maxDrawdown,
+        result.winRate,
+        result.profitFactor,
         JSON.stringify(result.categoryPerformance),
+        result.marketMedianReturn,
+        result.marketReturnStdDev,
       ],
       function (err) {
         if (err) reject(err);
@@ -303,4 +419,117 @@ export async function getBacktestResults(): Promise<any[]> {
       }
     );
   });
+}
+
+export interface WalkForwardResult {
+  windows: Array<{
+    cutoffDate: string;
+    directionalAccuracy: number | null;
+    mape: number | null;
+    top10AvgReturn: number | null;
+    marketAvgReturn: number | null;
+    cardsTested: number;
+  }>;
+  aggregateMetrics: {
+    avgDirectionalAccuracy: number | null;
+    avgMape: number | null;
+    avgTop10Return: number | null;
+    consistencyScore: number | null; // % of windows with positive directional accuracy
+  };
+}
+
+/**
+ * Walk-forward validation: runs backtests at multiple historical cutoff dates
+ * to measure model consistency across different market regimes.
+ * Returns rolling metrics for each window and aggregate statistics.
+ */
+export async function runWalkForwardValidation(
+  windowDays: number = 90,
+  numWindows: number = 6,
+  windowSpacingDays: number = 30,
+  filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER
+): Promise<WalkForwardResult> {
+  const db = getDb();
+
+  // Determine date range from available data
+  const dateRange: { minDate: string; maxDate: string } = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT MIN(date) as minDate, MAX(date) as maxDate FROM price_history
+       WHERE source IN ('tcgcsv', 'tcgdex', 'catalog_fallback')`,
+      [],
+      (err, row: any) => {
+        if (err) return reject(err);
+        resolve({ minDate: row?.minDate || '2023-01-01', maxDate: row?.maxDate || new Date().toISOString().split('T')[0] });
+      }
+    );
+  });
+
+  const maxCutoff = new Date(dateRange.maxDate);
+  const cutoffDates: string[] = [];
+
+  for (let i = 0; i < numWindows; i++) {
+    const cutoff = new Date(maxCutoff);
+    cutoff.setDate(cutoff.getDate() - i * windowSpacingDays);
+    // Ensure we have enough history before the cutoff
+    const minRequired = new Date(dateRange.minDate);
+    minRequired.setDate(minRequired.getDate() + windowDays + 30);
+    if (cutoff < minRequired) break;
+    cutoffDates.push(cutoff.toISOString().split('T')[0]);
+  }
+
+  const windows: WalkForwardResult['windows'] = [];
+
+  for (const cutoffDate of cutoffDates) {
+    try {
+      const backtestResult = await runBacktest(cutoffDate, windowDays, undefined, filter);
+      windows.push({
+        cutoffDate,
+        directionalAccuracy: backtestResult.directionalAccuracy,
+        mape: backtestResult.mape,
+        top10AvgReturn: backtestResult.top10AvgReturn,
+        marketAvgReturn: backtestResult.marketAvgReturn,
+        cardsTested: backtestResult.cardsTested,
+      });
+    } catch (err) {
+      logger.warn(`Walk-forward window ${cutoffDate} failed:`, err);
+      windows.push({
+        cutoffDate,
+        directionalAccuracy: null,
+        mape: null,
+        top10AvgReturn: null,
+        marketAvgReturn: null,
+        cardsTested: 0,
+      });
+    }
+  }
+
+  // Compute aggregate metrics
+  const validWindows = windows.filter(w => w.directionalAccuracy !== null);
+  const avgDirectionalAccuracy = validWindows.length > 0
+    ? validWindows.reduce((s, w) => s + w.directionalAccuracy!, 0) / validWindows.length
+    : null;
+
+  const windowsWithMape = windows.filter(w => w.mape !== null);
+  const avgMape = windowsWithMape.length > 0
+    ? windowsWithMape.reduce((s, w) => s + w.mape!, 0) / windowsWithMape.length
+    : null;
+
+  const windowsWithTop10 = windows.filter(w => w.top10AvgReturn !== null);
+  const avgTop10Return = windowsWithTop10.length > 0
+    ? windowsWithTop10.reduce((s, w) => s + w.top10AvgReturn!, 0) / windowsWithTop10.length
+    : null;
+
+  const consistencyScore = validWindows.length > 0
+    ? validWindows.filter(w => w.directionalAccuracy! > 0.5).length / validWindows.length
+    : null;
+
+  return {
+    windows,
+    aggregateMetrics: {
+      avgDirectionalAccuracy,
+      avgMape,
+      avgTop10Return,
+      consistencyScore,
+    },
+  };
 }

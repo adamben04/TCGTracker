@@ -25,6 +25,8 @@ import {
 } from '../services/cardDatabase';
 import { getPopulationCounts } from '../services/populationService';
 import { getCardMappingImages } from '../services/cardImageBackfillService';
+import { enrichCardsWithInvestmentData } from '../services/cardEnrichment';
+import { getGradedPrices } from '../services/gradedPriceService';
 
 const router = Router();
 
@@ -581,7 +583,7 @@ router.get('/pokemon', async (req, res) => {
       if (!rows || rows.length === 0) {
         return null;
       }
-      const cards = await mapLocalRowsToPokemonCards(rows);
+      const cards = await enrichCardsWithInvestmentData(await mapLocalRowsToPokemonCards(rows));
       return {
         data: cards,
         totalCount: cards.length,
@@ -604,8 +606,9 @@ router.get('/pokemon', async (req, res) => {
     const now = Date.now();
     const inMemory = pokemonApiCache.get(cacheKey);
     if (inMemory && now - inMemory.fetchedAt < POKEMON_CACHE_TTL) {
+      const enrichedData = await enrichCardsWithInvestmentData(inMemory.data);
       return res.json({
-        data: inMemory.data,
+        data: enrichedData,
         totalCount: inMemory.totalCount,
         pageSize: inMemory.pageSize,
         pagesFetched: inMemory.pagesFetched,
@@ -628,6 +631,7 @@ router.get('/pokemon', async (req, res) => {
         pageSize: persistentCacheEntry.pageSize || limit,
       });
       if (payload) {
+        payload.data = await enrichCardsWithInvestmentData(payload.data);
         pokemonApiCache.set(cacheKey, {
           data: payload.data,
           totalCount: payload.totalCount,
@@ -647,7 +651,7 @@ router.get('/pokemon', async (req, res) => {
       maxPages: maxPagesToFetch,
     });
 
-    const uniqueCards = apiResult.cards;
+    const uniqueCards = await enrichCardsWithInvestmentData(apiResult.cards);
 
     if (uniqueCards.length === 0) {
       logger.warn(
@@ -671,6 +675,7 @@ router.get('/pokemon', async (req, res) => {
           true
         );
         if (payload) {
+          payload.data = await enrichCardsWithInvestmentData(payload.data);
           logger.info(`✅ Serving ${payload.data.length} stale cached cards as fallback`);
           return res.json(payload);
         }
@@ -740,6 +745,7 @@ router.get('/pokemon', async (req, res) => {
     if (persistentCacheEntry) {
       const payload = respondWithPersistent(persistentCacheEntry, true);
       if (payload) {
+        payload.data = await enrichCardsWithInvestmentData(payload.data);
         logger.info(`✅ Serving ${payload.data.length} stale cached cards (error fallback)`);
         return res.status(200).json(payload);
       }
@@ -838,17 +844,17 @@ router.get('/search-pokemon', async (req, res) => {
       const db = getDb();
       const setIdNormalized = card.set?.id || '';
       const cardNumber = card.number || '';
-      const cardName = card.name || '';
-      const uniqueIdentifier = generateUniqueIdentifier(setIdNormalized, cardNumber, cardName);
+      const resolvedCardName = card.name || '';
+      const uniqueIdentifier = generateUniqueIdentifier(setIdNormalized, cardNumber, resolvedCardName);
 
       db.run(
         'UPDATE card_mappings SET rarity = ? WHERE uniqueIdentifier = ?',
         [card.rarity, uniqueIdentifier],
         (err) => {
           if (err) {
-            logger.warn(`Failed to update rarity for ${cardName}:`, err);
+            logger.warn(`Failed to update rarity for ${resolvedCardName}:`, err);
           } else {
-            logger.info(`✅ Updated rarity for ${cardName}: ${card.rarity}`);
+            logger.info(`Updated rarity for ${resolvedCardName}: ${card.rarity}`);
           }
         }
       );
@@ -909,6 +915,29 @@ router.get('/set-mappings/stats', async (req, res) => {
       error: 'Internal server error',
       message: (error as Error).message
     });
+  }
+});
+
+router.get('/graded-prices', async (req, res) => {
+  try {
+    const { cardId, cardName, setId, setName, cardNumber } = req.query;
+
+    if (!cardId || !cardName) {
+      return res.status(400).json({ error: 'cardId and cardName are required' });
+    }
+
+    const result = await getGradedPrices(
+      String(cardId),
+      String(cardName),
+      setId ? String(setId) : undefined,
+      setName ? String(setName) : undefined,
+      cardNumber ? String(cardNumber) : undefined
+    );
+
+    res.json({ data: result });
+  } catch (error: any) {
+    logger.error('Graded prices lookup failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch graded prices' });
   }
 });
 

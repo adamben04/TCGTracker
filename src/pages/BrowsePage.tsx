@@ -10,9 +10,8 @@ import { FilterSidebar, MarketplaceFilters } from '../features/cards/components/
 import { LoadingGrid } from '../components/common/LoadingSpinner';
 import { ErrorMessage } from '../components/common/ErrorMessage';
 import { EmptyState } from '../components/common/EmptyState';
-import { usePokemonCards } from '../hooks/usePokemonCards';
-import { pokemonApi } from '../services/pokemonApi';
-import { onepieceApi } from '../services/onepieceApi';
+import { useCards, isPokemonCard, isOnePieceCard, getCardPrice } from '../hooks/useCards';
+import { useGame } from '../contexts/GameContext';
 import { useCardModal } from '../contexts/CardModalContext';
 import { markOnboardingStep } from '../components/common/OnboardingChecklist';
 import { formatCurrency, getRarityBadgeClass } from '../utils/cardDisplay';
@@ -27,6 +26,7 @@ const DEFAULT_FILTERS: MarketplaceFilters = {
 
 export function BrowsePage() {
   const navigate = useNavigate();
+  const { isPokemon, isOnePiece } = useGame();
   const { openCard } = useCardModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = searchParams.get('q') ?? '';
@@ -49,7 +49,7 @@ export function BrowsePage() {
     setSortBy,
     setFilterBy,
     refetch,
-  } = usePokemonCards();
+  } = useCards();
 
   // URL is the source of truth for the query (shareable searches, back button).
   useEffect(() => {
@@ -82,32 +82,7 @@ export function BrowsePage() {
     setMarketplaceFilters(DEFAULT_FILTERS);
   };
 
-  const handleOnePieceSearch = useCallback(async (query: string) => {
-    setOnePieceLoading(true);
-    try {
-      if (!query.trim()) {
-        const allCards = await onepieceApi.getAllCards();
-        setOnePieceCards(allCards);
-      } else {
-        const results = await onepieceApi.searchCards(query);
-        setOnePieceCards(results);
-      }
-    } catch (err) {
-      console.error('One Piece search error:', err);
-      setOnePieceCards([]);
-    } finally {
-      setOnePieceLoading(false);
-    }
-  }, []);
-
-  // Load One Piece cards when switching to onepiece TCG
-  useEffect(() => {
-    if (tcg === 'onepiece') {
-      handleOnePieceSearch(searchQuery);
-    }
-  }, [tcg, searchQuery, handleOnePieceSearch]);
-
-  const handleAddToCollection = (_card: PokemonCard) => {
+  const handleAddToCollection = () => {
     navigate('/vault');
   };
 
@@ -115,8 +90,20 @@ export function BrowsePage() {
   const rarityOptions = Array.from(
     new Set(cards.map((card) => card.rarity).filter(Boolean) as string[])
   ).sort();
+
+  // For Pokemon cards, extract types; for One Piece, extract card colors
   const typeOptions = Array.from(
-    new Set(cards.flatMap((card) => (card.types && card.types.length > 0 ? card.types : [])))
+    new Set(
+      cards.flatMap((card) => {
+        if (isPokemonCard(card)) {
+          return card.types && card.types.length > 0 ? card.types : [];
+        }
+        if (isOnePieceCard(card)) {
+          return card.cardColor ? [card.cardColor] : [];
+        }
+        return [];
+      })
+    )
   ).sort();
 
   const cardsWithMarketplaceFilters = cards.filter((card) => {
@@ -128,15 +115,16 @@ export function BrowsePage() {
       return false;
     }
 
-    if (
-      marketplaceFilters.cardType !== 'all' &&
-      !(card.types || []).some((type) => type === marketplaceFilters.cardType)
-    ) {
-      return false;
+    if (marketplaceFilters.cardType !== 'all') {
+      if (isPokemonCard(card)) {
+        if (!(card.types || []).some((type) => type === marketplaceFilters.cardType)) return false;
+      } else if (isOnePieceCard(card)) {
+        if (card.cardColor !== marketplaceFilters.cardType) return false;
+      }
     }
 
     if (marketplaceFilters.priceRange !== 'all') {
-      const price = card.marketPrice ?? pokemonApi.extractCardPrice(card);
+      const price = getCardPrice(card);
       if (marketplaceFilters.priceRange === '0-10' && !(price >= 0 && price < 10)) return false;
       if (marketplaceFilters.priceRange === '10-50' && !(price >= 10 && price < 50)) return false;
       if (marketplaceFilters.priceRange === '50-150' && !(price >= 50 && price < 150)) return false;
@@ -154,13 +142,17 @@ export function BrowsePage() {
   if (marketplaceFilters.priceRange !== 'all')
     facetChips.push({ key: 'priceRange', label: `$${marketplaceFilters.priceRange}` });
 
+  const gameLabel = isPokemon ? 'Pokemon' : 'One Piece';
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <section className="mb-6 rounded-xl border border-border-default bg-surface-raised p-4 text-white shadow-sm">
+      <section className="card mb-6 !p-4">
         <SectionLabel className="text-accent/90">Marketplace</SectionLabel>
         <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Browse Pokemon Cards</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-ink-primary">
+              Browse {gameLabel} Cards
+            </h1>
             <p className="mt-1 text-sm text-ink-secondary">
               Analyze cards with marketplace filters, pricing surfaces, and collection actions.
             </p>
@@ -200,6 +192,7 @@ export function BrowsePage() {
         isLoading={isLoading}
         onOpenAdvancedFilters={() => setMobileFiltersOpen(true)}
         activeFilterCount={countActiveMarketplaceFilters(marketplaceFilters)}
+        isOnePiece={isOnePiece}
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -209,11 +202,11 @@ export function BrowsePage() {
       {(searchQuery || facetChips.length > 0) && !isLoading && !error && cardsWithMarketplaceFilters.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2" aria-live="polite">
           <p className="text-sm text-ink-secondary">
-            <span className="font-medium tabular-nums text-white">{cardsWithMarketplaceFilters.length}</span>{' '}
+            <span className="font-medium tabular-nums text-ink-primary">{cardsWithMarketplaceFilters.length}</span>{' '}
             {cardsWithMarketplaceFilters.length === 1 ? 'result' : 'results'}
             {searchQuery && (
               <>
-                {' '}for <span className="font-medium text-white">"{searchQuery}"</span>
+                {' '}for <span className="font-medium text-ink-primary">"{searchQuery}"</span>
               </>
             )}
           </p>
@@ -256,6 +249,7 @@ export function BrowsePage() {
           onReset={handleResetBrowseState}
           isMobileOpen={mobileFiltersOpen}
           onCloseMobile={() => setMobileFiltersOpen(false)}
+          isOnePiece={isOnePiece}
         />
 
         <section className="min-w-0">
@@ -283,11 +277,11 @@ export function BrowsePage() {
             <LoadingGrid />
           ) : cardsWithMarketplaceFilters.length > 0 ? (
             <CardGrid
-              cards={cardsWithMarketplaceFilters}
+              cards={cardsWithMarketplaceFilters as PokemonCard[]}
               viewMode={cardViewMode}
-              onCardClick={openCard}
+              onCardClick={(card) => openCard(card as PokemonCard)}
               onAddToCollection={handleAddToCollection}
-              onViewPriceHistory={openCard}
+              onViewPriceHistory={(card) => openCard(card as PokemonCard)}
             />
           ) : (
             <EmptyState

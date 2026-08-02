@@ -101,7 +101,15 @@ export function computeVolatility(points: PricePoint[], days: number = 30): Vola
   const recent = sorted.slice(-Math.max(days, 30));
   const prices = recent.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
   if (prices.length < 7) {
-    return { dailyVolatility: 0.02, weeklyVolatility: 0.05, monthlyVolatility: 0.10 };
+    // Return elevated uncertainty values instead of arbitrary defaults
+    // This naturally penalizes sparse-data cards through risk scoring
+    const dataRatio = prices.length / 7;
+    const uncertaintyScale = 1 + (1 - dataRatio) * 2; // 1x-3x multiplier
+    return {
+      dailyVolatility: 0.05 * uncertaintyScale,
+      weeklyVolatility: 0.12 * uncertaintyScale,
+      monthlyVolatility: 0.25 * uncertaintyScale,
+    };
   }
   const logReturns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
@@ -140,7 +148,11 @@ export function computeRecoveryMetrics(points: PricePoint[]): RecoveryMetrics {
   }
 
   const currentPrice = prices[prices.length - 1];
-  const peak90 = Math.max(...prices.slice(-90));
+  const recent90 = prices.slice(-Math.min(90, prices.length));
+  let peak90 = recent90[0];
+  for (const p of recent90) {
+    if (p > peak90) peak90 = p;
+  }
   const recentDrop = peak90 > 0 ? ((currentPrice - peak90) / peak90) * 100 : null;
 
   const recent30 = prices.slice(-30);
@@ -149,14 +161,26 @@ export function computeRecoveryMetrics(points: PricePoint[]): RecoveryMetrics {
   const avg30 = recent30.reduce((a, b) => a + b, 0) / recent30.length;
   const hasStabilized = Math.abs(recent10[recent10.length - 1] - recent10[0]) / recent10[0] < 0.05;
 
-  const minIdx = prices.lastIndexOf(Math.min(...prices.slice(-90)));
+  let minIdx = 0;
+  let minVal = prices[0];
+  const startIdx = Math.max(0, prices.length - 90);
+  for (let i = startIdx; i < prices.length; i++) {
+    if (prices[i] < minVal) {
+      minVal = prices[i];
+      minIdx = i;
+    }
+  }
   const daysSinceBottom = prices.length - 1 - minIdx;
 
   const priorDrops: number[] = [];
   for (let i = 0; i < prices.length - 60; i += 30) {
     const segment = prices.slice(i, i + 60);
-    const segPeak = Math.max(...segment);
-    const segTrough = Math.min(...segment);
+    let segPeak = segment[0];
+    let segTrough = segment[0];
+    for (const p of segment) {
+      if (p > segPeak) segPeak = p;
+      if (p < segTrough) segTrough = p;
+    }
     if (segPeak > 0) {
       const drop = ((segTrough - segPeak) / segPeak) * 100;
       if (drop < -10 && i + 60 <= prices.length) {
@@ -196,4 +220,52 @@ export function analyzeSimilarCards(
 
   const avgReturn = similar.reduce((a, b) => a + b.avgReturn90d, 0) / similar.length;
   return { similarAvgReturn: avgReturn, sampleSize: similar.length };
+}
+
+/**
+ * Computes the market-wide average return over a given number of days.
+ * This serves as a benchmark for comparing individual card predictions.
+ */
+export function computeMarketBenchmark(
+  allPriceHistories: PricePoint[][],
+  days: number = 90
+): { avgReturn: number; medianReturn: number; returnStdDev: number; sampleSize: number } {
+  const returns: number[] = [];
+
+  for (const history of allPriceHistories) {
+    const sorted = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+
+    if (prices.length < days + 1) continue;
+
+    const currentPrice = prices[prices.length - 1];
+    const pastPrice = prices[prices.length - 1 - days];
+
+    if (pastPrice > 0 && currentPrice > 0) {
+      returns.push((currentPrice - pastPrice) / pastPrice);
+    }
+  }
+
+  if (returns.length === 0) {
+    return { avgReturn: 0, medianReturn: 0, returnStdDev: 0, sampleSize: 0 };
+  }
+
+  const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const sortedReturns = [...returns].sort((a, b) => a - b);
+  const medianReturn = sortedReturns[Math.floor(sortedReturns.length / 2)];
+  const variance = returns.reduce((a, r) => a + (r - avgReturn) ** 2, 0) / returns.length;
+  const returnStdDev = Math.sqrt(variance);
+
+  return { avgReturn, medianReturn, returnStdDev, sampleSize: returns.length };
+}
+
+/**
+ * Computes excess return: how much a card's predicted return exceeds
+ * the market benchmark. Positive = outperforming, negative = underperforming.
+ */
+export function computeExcessReturn(
+  predictedReturn: number,
+  marketAvgReturn: number
+): number {
+  return predictedReturn - marketAvgReturn;
 }

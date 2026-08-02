@@ -8,6 +8,7 @@ import {
   getCardPriceHistory,
   getCardPriceHistoryForProduct,
 } from '../services/cardIdentifier';
+import { getOnePiecePriceHistory } from '../services/onePiecePriceHistoryService';
 
 // Type definitions for database query results
 interface PriceHistoryRow {
@@ -110,9 +111,9 @@ router.get('/card', (req: Request, res: Response): void => {
       });
     })
     .catch(err => {
+      logger.error('Price history query failed', { error: err.message });
       res.status(500).json({ 
-        error: 'Database error fetching price history.',
-        details: err.message 
+        error: 'Database error fetching price history.'
       });
     });
 });
@@ -334,6 +335,47 @@ const fallbackMatch = (cardName: string, setName: string, cardNumber: string | u
     });
   });
 };
+
+// One Piece price history — prefers TCGPlayer when OPTCG data is stale
+router.get('/onepiece/:catalogId', async (req: Request, res: Response): Promise<void> => {
+  const catalogId = decodeURIComponent(req.params.catalogId);
+  const days = req.query.days ? parseInt(req.query.days as string, 10) : undefined;
+
+  if (days != null && (Number.isNaN(days) || days < 1)) {
+    res.status(400).json({ error: 'Invalid days parameter' });
+    return;
+  }
+
+  try {
+    const result = await getOnePiecePriceHistory(catalogId, days);
+    if (!result) {
+      res.status(404).json({ error: 'Card not found', catalogId });
+      return;
+    }
+
+    if (result.priceHistory.length === 0) {
+      res.status(404).json({
+        message: 'No price history found for this card yet.',
+        catalogId,
+      });
+      return;
+    }
+
+    res.json({
+      catalogId: result.catalogId,
+      priceSource: result.priceSource,
+      currentPrice: result.currentPrice,
+      priceHistory: result.priceHistory.map((point) => ({
+        date: point.date,
+        price: point.price,
+        source: point.source,
+      })),
+    });
+  } catch (error) {
+    logger.error(`One Piece price history failed for ${catalogId}:`, error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
 
 // Get price history for a specific product
 router.get('/:productId', (req: Request, res: Response) => {

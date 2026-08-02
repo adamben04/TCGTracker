@@ -1,15 +1,12 @@
 import axios from 'axios';
 import { buildApiUrl } from '../config/env';
 
-import '../config/apiClient';
-
 export interface User {
   id: number;
   username: string;
   email: string;
   created_at: string;
   updated_at: string;
-  isAdmin?: boolean;
 }
 
 export interface AuthResponse {
@@ -53,9 +50,14 @@ class AuthService {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const response = await axios.get<{ user: User }>(buildApiUrl('/api/auth/me'));
-      this.setUser(response.data.user);
-      return response.data.user;
+      const response = await axios.get<{ user: User | null }>(buildApiUrl('/api/auth/me'));
+      const user = response.data.user;
+      if (!user) {
+        this.clearUser();
+        return null;
+      }
+      this.setUser(user);
+      return user;
     } catch {
       this.clearUser();
       return null;
@@ -77,8 +79,13 @@ class AuthService {
   }
 
   getUser(): User | null {
-    const userJson = localStorage.getItem(this.USER_KEY);
-    return userJson ? JSON.parse(userJson) : null;
+    try {
+      const userJson = localStorage.getItem(this.USER_KEY);
+      return userJson ? JSON.parse(userJson) : null;
+    } catch {
+      this.clearUser();
+      return null;
+    }
   }
 
   isAuthenticated(): boolean {
@@ -92,7 +99,6 @@ class AuthService {
   private clearUser(): void {
     localStorage.removeItem(this.USER_KEY);
   }
-
 }
 
 export const authService = new AuthService();

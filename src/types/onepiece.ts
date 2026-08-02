@@ -1,45 +1,67 @@
-export interface OnePieceSet {
-  id: string;          // e.g. "OP-01"
-  name: string;        // e.g. "Romance Dawn"
-  type: 'set' | 'starter' | 'promo';
-}
-
 export interface OnePieceCard {
-  id: string;              // card_set_id e.g. "OP01-001"
-  name: string;            // card_name
-  setId: string;           // set_id e.g. "OP-01"
-  setName: string;         // set_name e.g. "Romance Dawn"
-  number: string;          // same as id
-  rarity: string;          // L, C, UC, R, SR, SEC
-  color: string;           // Red, Blue, Green, Purple, Black, Yellow
-  cardType: string;        // Leader, Character, Event, Stage, DON!!
-  cost: number | null;     // DON!! cost
-  power: number | null;    // battle power
-  counter: number | null;  // counter power
-  life: number | null;     // life (leaders only)
-  attribute: string | null; // Slash, Strike, Ranged, Special, Wisdom
-  subTypes: string;        // e.g. "Straw Hat Crew"
-  cardText: string;        // effect text
-  imageUrl: string;
-  marketPrice: number;
-  inventoryPrice: number;
-  images?: { small: string; large: string };
-  // Union compatibility fields (set to undefined/empty so PokemonCard code paths don't crash)
-  tcgplayer?: undefined;
-  cardmarket?: undefined;
-  investmentData?: undefined;
-  set: { id: string; name: string; releaseDate: string; total: number; series: string; images?: { symbol?: string; logo?: string } };
-}
-
-export interface OnePiecePack {
   id: string;
   name: string;
-  tier: 'common' | 'uncommon' | 'rare' | 'ultra-rare' | 'secret-rare';
-  price: number;
-  averageValue: number;
-  cardsPerPack: number;
-  imageUrl: string;
-  description: string;
-  valueRanges: { min: number; max: number; probability: number }[];
-  tcg: 'onepiece';
+  images: {
+    small: string;
+    large: string;
+  };
+  set: {
+    id: string;
+    name: string;
+  };
+  /** Original card number e.g. OP01-120 — may be shared across variants */
+  number: string;
+  rarity?: string;
+  cardColor?: string;
+  cardType?: string;
+  cardCost?: string;
+  cardPower?: string;
+  counterAmount?: number;
+  life?: string;
+  subTypes?: string;
+  attribute?: string;
+  cardText?: string;
+  marketPrice?: number;
+  inventoryPrice?: number;
+  priceSource?: 'tcgplayer' | 'optcg';
+  tcgplayerProductId?: number;
+  cardImageId?: string;
 }
+
+export interface OnePieceSet {
+  id: string;
+  name: string;
+  total?: number;
+}
+
+export type OnePieceSortOption =
+  | 'price-high'
+  | 'price-low'
+  | 'name-asc'
+  | 'name-desc'
+  | 'set-asc'
+  | 'set-desc'
+  | 'rarity';
+
+export type OnePieceFilterOption = 'all';
+
+export type OnePieceColor = 'Red' | 'Blue' | 'Green' | 'Purple' | 'Yellow' | 'Black';
+
+export const ONE_PIECE_COLORS: OnePieceColor[] = ['Red', 'Blue', 'Green', 'Purple', 'Yellow', 'Black'];
+
+export const ONE_PIECE_RARITIES = [
+  'C',
+  'UC',
+  'R',
+  'SR',
+  'SEC',
+  'L',
+  'SP',
+  'P',
+  'AAA',
+  'AA',
+  'SA',
+  'TR',
+] as const;
+
+export const ONE_PIECE_CARD_TYPES = ['Leader', 'Character', 'Event', 'Stage'] as const;

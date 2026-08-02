@@ -147,6 +147,7 @@ export interface VaultCard {
   quantity: number; // Number of copies
   condition: CardCondition; // Card condition
   notes?: string; // Optional user notes
+  game?: 'pokemon' | 'onepiece'; // Which game this card belongs to
 }
 
 export type CardCondition = 'raw' | 'near-mint' | 'lightly-played' | 'moderately-played' | 'heavily-played' | 'damaged';
@@ -172,7 +173,7 @@ export interface Pack {
   imageUrl?: string;
   description?: string;
   valueRanges: ValueRange[]; // Probability distribution
-  tcg?: 'pokemon' | 'onepiece';
+  boostedValueRanges?: ValueRange[]; // Higher variance distribution (lower floor, higher ceiling)
 }
 
 export interface ValueRange {

@@ -2,17 +2,61 @@ import { getDb } from '../db/database';
 import { generateUniqueIdentifier } from './cardIdentifier';
 import { backupDatabaseToCloud } from './cloudBackupService';
 import { logger } from '../utils/logger';
+import { isSkippedDbJob, withDbJobLock } from '../utils/dbJobLock';
 import { syncCatalogData } from './catalogSync';
 import { tcgdexMarketProvider } from './providers/tcgdexMarketProvider';
-import { MarketPriceProvider } from './providers/contracts';
+import { MarketPriceProvider, MarketPriceSnapshot } from './providers/contracts';
+import { normalizeVariantKey } from '../utils/normalizeVariantKey';
+import { createPkmnPricesProvider, PkmnPricesMarketProvider } from './providers/pkmnPricesProvider';
+import { env } from '../config/env';
+
+export { normalizeVariantKey } from '../utils/normalizeVariantKey';
 
 const SYNC_TIMEZONE = 'America/New_York';
-let isUpdateRunning = false;
 
-export const normalizeVariantKey = (value?: string): string => {
-  if (!value) return 'normal';
-  const normalized = value.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return normalized || 'normal';
+const MAX_REASONABLE_PRICE = 50000;
+const MIN_PRICE = 0.01;
+
+// Initialize PkmnPrices provider
+const pkmnPricesProvider = createPkmnPricesProvider(env.apis.pkmnprices);
+
+/**
+ * Multi-provider wrapper that tries TCGdex first, then PkmnPrices, then returns null.
+ */
+class MultiSourceMarketProvider implements MarketPriceProvider {
+  private providers: MarketPriceProvider[];
+
+  constructor(providers: MarketPriceProvider[]) {
+    this.providers = providers;
+  }
+
+  async getSnapshotForCard(cardId: string, cardName?: string, setId?: string, setName?: string): Promise<MarketPriceSnapshot | null> {
+    for (const provider of this.providers) {
+      try {
+        const snapshot = await provider.getSnapshotForCard(cardId, cardName, setId, setName);
+        if (snapshot && snapshot.points.length > 0) {
+          return snapshot;
+        }
+      } catch (error) {
+        logger.debug('Provider failed, trying next', {
+          provider: provider.constructor.name,
+          cardId,
+          error: (error as Error).message,
+        });
+      }
+    }
+    return null;
+  }
+}
+
+const multiSourceProvider = new MultiSourceMarketProvider([
+  tcgdexMarketProvider,
+  pkmnPricesProvider,
+]);
+
+export const isValidPrice = (price: number | null | undefined): boolean => {
+  if (price == null || !Number.isFinite(price)) return false;
+  return price >= MIN_PRICE && price <= MAX_REASONABLE_PRICE;
 };
 
 export const getRunDate = (): string => {
@@ -23,6 +67,19 @@ export const getRunDate = (): string => {
     day: '2-digit',
   });
   return formatter.format(new Date());
+};
+
+export const hasCompletedPriceUpdateFor = async (runDate: string): Promise<boolean> => {
+  const db = getDb();
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT 1 FROM sync_runs
+       WHERE runType = 'price_update' AND runDate = ? AND status = 'completed'
+       LIMIT 1`,
+      [runDate],
+      (err, row) => (err ? reject(err) : resolve(!!row))
+    );
+  });
 };
 
 const createSyncRun = async (runType: string, runDate: string): Promise<number> => {
@@ -331,70 +388,80 @@ const snapshotFromPokemonCatalog = async (date: string) => {
   const stmt = db.prepare(priceInsertSql);
   let inserted = 0;
 
-  await new Promise<void>((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      try {
-        for (const row of refreshedRows) {
-          const parsedPrices = JSON.parse(row.tcgplayerPrices || '{}');
-          for (const [rawVariantKey, variantValue] of Object.entries(parsedPrices)) {
-            const priceData = variantValue as {
-              market?: number;
-              mid?: number;
-              low?: number;
-              high?: number;
-            };
-            const market = priceData.market ?? priceData.mid ?? priceData.low ?? 0;
-            if (!market || market <= 0) {
-              continue;
-            }
+  const runStmt = (params: unknown[]): Promise<void> =>
+    new Promise((resolve, reject) => {
+      stmt.run(params, (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
 
-            const variantKey = normalizeVariantKey(rawVariantKey);
-            const uniqueIdentifier = generateUniqueIdentifier(
-              row.setId,
-              row.cardNumber,
-              row.cardName,
-              variantKey
-            );
-            const parsedProductId = row.tcgplayerProductId
-              ? Number.parseInt(String(row.tcgplayerProductId), 10)
-              : Number.NaN;
-            const productId = Number.isFinite(parsedProductId)
-              ? parsedProductId
-              : deterministicProductId(row.cardId || `${row.setId}-${row.cardNumber}-${row.cardName}`, variantKey);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      db.run('BEGIN TRANSACTION', (err) => (err ? reject(err) : resolve()));
+    });
 
-            stmt.run([
-              productId,
-              date,
-              market,
-              variantKey,
-              row.cardName,
-              row.setName,
-              'catalog_fallback',
-              priceData.low ?? null,
-              priceData.high ?? null,
-              priceData.market ?? market,
-              null,
-              uniqueIdentifier,
-            ]);
-            inserted += 1;
-          }
+    for (const row of refreshedRows) {
+      const parsedPrices = JSON.parse(row.tcgplayerPrices || '{}');
+      for (const [rawVariantKey, variantValue] of Object.entries(parsedPrices)) {
+        const priceData = variantValue as {
+          market?: number;
+          mid?: number;
+          low?: number;
+          high?: number;
+        };
+        const market = priceData.market ?? priceData.mid ?? priceData.low ?? 0;
+        if (!market || market <= 0) {
+          continue;
         }
 
-        stmt.finalize();
-        db.run('COMMIT', (commitErr) => {
-          if (commitErr) {
-            reject(commitErr);
-            return;
-          }
-          resolve();
-        });
-      } catch (err) {
-        stmt.finalize();
-        db.run('ROLLBACK', () => reject(err));
+        if (!isValidPrice(market)) {
+          continue;
+        }
+
+        const variantKey = normalizeVariantKey(rawVariantKey);
+        const uniqueIdentifier = generateUniqueIdentifier(
+          row.setId,
+          row.cardNumber,
+          row.cardName,
+          variantKey
+        );
+        const parsedProductId = row.tcgplayerProductId
+          ? Number.parseInt(String(row.tcgplayerProductId), 10)
+          : Number.NaN;
+        const productId = Number.isFinite(parsedProductId)
+          ? parsedProductId
+          : deterministicProductId(row.cardId || `${row.setId}-${row.cardNumber}-${row.cardName}`, variantKey);
+
+        await runStmt([
+          productId,
+          date,
+          market,
+          variantKey,
+          row.cardName,
+          row.setName,
+          'catalog_fallback',
+          priceData.low ?? null,
+          priceData.high ?? null,
+          priceData.market ?? market,
+          null,
+          uniqueIdentifier,
+        ]);
+        inserted += 1;
       }
+    }
+
+    stmt.finalize();
+    await new Promise<void>((resolve, reject) => {
+      db.run('COMMIT', (err) => (err ? reject(err) : resolve()));
     });
-  });
+  } catch (err) {
+    stmt.finalize();
+    await new Promise<void>((resolve) => {
+      db.run('ROLLBACK', () => resolve());
+    });
+    throw err;
+  }
 
   return inserted;
 };
@@ -485,14 +552,17 @@ const snapshotFromMarketProvider = async (
 
           for (const point of fallbackPoints) {
             const variantKey = normalizeVariantKey(point.subTypeName || point.variantKey);
+            if (!isValidPrice(point.marketPrice)) {
+              continue;
+            }
             entries.push({
               row,
               variantKey,
               subTypeName: point.subTypeName || variantKey,
               productId: point.productId,
               marketPrice: point.marketPrice,
-              lowPrice: point.lowPrice,
-              highPrice: point.highPrice,
+              lowPrice: isValidPrice(point.lowPrice) ? point.lowPrice : undefined,
+              highPrice: isValidPrice(point.highPrice) ? point.highPrice : undefined,
               source: 'catalog_fallback',
             });
           }
@@ -511,14 +581,18 @@ const snapshotFromMarketProvider = async (
               ? candidateProductId
               : deterministicProductId(row.cardId, variantKey);
 
+          if (!isValidPrice(point.marketPrice)) {
+            continue;
+          }
+
           entries.push({
             row,
             variantKey,
             subTypeName: variantKey,
             productId,
             marketPrice: point.marketPrice,
-            lowPrice: point.lowPrice,
-            highPrice: point.highPrice,
+            lowPrice: isValidPrice(point.lowPrice) ? point.lowPrice : undefined,
+            highPrice: isValidPrice(point.highPrice) ? point.highPrice : undefined,
             volume: point.volume,
             source: 'tcgdex',
           });
@@ -536,67 +610,81 @@ const snapshotFromMarketProvider = async (
   let tcgdexAttempted = workerResults.reduce((s, r) => s + r.tcgdexAttempted, 0);
   let tcgdexSuccessful = workerResults.reduce((s, r) => s + r.tcgdexSuccessful, 0);
 
-  await new Promise<void>((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      try {
-        for (const entry of collected) {
-          const uniqueIdentifier = generateUniqueIdentifier(
-            entry.row.setId,
-            entry.row.cardNumber,
-            entry.row.cardName,
-            entry.variantKey
-          );
-
-          priceStmt.run([
-            entry.productId,
-            date,
-            entry.marketPrice,
-            entry.subTypeName,
-            entry.row.cardName,
-            entry.row.setName,
-            entry.source,
-            entry.lowPrice ?? null,
-            entry.highPrice ?? null,
-            entry.marketPrice,
-            entry.volume ?? null,
-            uniqueIdentifier,
-          ]);
-
-          mappingStmt.run([
-            entry.row.cardId,
-            entry.productId,
-            entry.row.cardName,
-            entry.row.setId,
-            entry.row.setName,
-            entry.row.cardNumber || null,
-            null,
-            entry.variantKey,
-            entry.row.tcgplayerProductId || null,
-            uniqueIdentifier,
-            entry.row.setId,
-            entry.row.imageSmall || null,
-            entry.row.imageLarge || null,
-            entry.row.imageSmall || entry.row.imageLarge ? 'catalog_sync' : null,
-          ]);
-        }
-
-        priceStmt.finalize();
-        mappingStmt.finalize();
-        db.run('COMMIT', (commitErr) => {
-          if (commitErr) {
-            reject(commitErr);
-            return;
-          }
-          resolve();
-        });
-      } catch (err) {
-        priceStmt.finalize();
-        mappingStmt.finalize();
-        db.run('ROLLBACK', () => reject(err));
-      }
+  const runPriceStmt = (params: unknown[]): Promise<void> =>
+    new Promise((resolve, reject) => {
+      priceStmt.run(params, (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
     });
-  });
+
+  const runMappingStmt = (params: unknown[]): Promise<void> =>
+    new Promise((resolve, reject) => {
+      mappingStmt.run(params, (err: Error | null) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      db.run('BEGIN TRANSACTION', (err) => (err ? reject(err) : resolve()));
+    });
+
+    for (const entry of collected) {
+      const uniqueIdentifier = generateUniqueIdentifier(
+        entry.row.setId,
+        entry.row.cardNumber,
+        entry.row.cardName,
+        entry.variantKey
+      );
+
+      await runPriceStmt([
+        entry.productId,
+        date,
+        entry.marketPrice,
+        entry.subTypeName,
+        entry.row.cardName,
+        entry.row.setName,
+        entry.source,
+        entry.lowPrice ?? null,
+        entry.highPrice ?? null,
+        entry.marketPrice,
+        entry.volume ?? null,
+        uniqueIdentifier,
+      ]);
+
+      await runMappingStmt([
+        entry.row.cardId,
+        entry.productId,
+        entry.row.cardName,
+        entry.row.setId,
+        entry.row.setName,
+        entry.row.cardNumber || null,
+        null,
+        entry.variantKey,
+        entry.row.tcgplayerProductId || null,
+        uniqueIdentifier,
+        entry.row.setId,
+        entry.row.imageSmall || null,
+        entry.row.imageLarge || null,
+        entry.row.imageSmall || entry.row.imageLarge ? 'catalog_sync' : null,
+      ]);
+    }
+
+    priceStmt.finalize();
+    mappingStmt.finalize();
+    await new Promise<void>((resolve, reject) => {
+      db.run('COMMIT', (err) => (err ? reject(err) : resolve()));
+    });
+  } catch (err) {
+    priceStmt.finalize();
+    mappingStmt.finalize();
+    await new Promise<void>((resolve) => {
+      db.run('ROLLBACK', () => resolve());
+    });
+    throw err;
+  }
 
   return {
     pricesWritten: collected.length,
@@ -606,15 +694,22 @@ const snapshotFromMarketProvider = async (
 };
 
 export const updatePriceData = async () => {
-  if (isUpdateRunning) {
+  const result = await withDbJobLock('price_update', () => performPriceUpdate(), { skipIfBusy: true });
+
+  if (isSkippedDbJob(result)) {
     return {
+      syncRunId: null,
       started: false,
       skipped: true,
-      reason: 'Update already running',
+      runDate: getRunDate(),
+      reason: result.reason,
     };
   }
 
-  isUpdateRunning = true;
+  return result;
+};
+
+const performPriceUpdate = async () => {
   const runDate = getRunDate();
   let syncRunId: number | null = null;
 
@@ -671,7 +766,6 @@ export const updatePriceData = async () => {
       groupsFailed,
       cloudBackup,
     };
-    
   } catch (error) {
     logger.error('An error occurred during the price data update process', {
       error: (error as Error).message,
@@ -691,7 +785,5 @@ export const updatePriceData = async () => {
       runDate,
       error: (error as Error).message,
     };
-  } finally {
-    isUpdateRunning = false;
   }
 };

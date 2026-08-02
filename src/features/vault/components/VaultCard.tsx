@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { VaultCard as VaultCardType } from '../../../types/pokemon';
 import { TrendingUp, TrendingDown, Trash2, Edit, Package } from 'lucide-react';
+import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { vaultService } from '../../../services/vaultService';
 import { pokemonApi } from '../../../services/pokemonApi';
 
@@ -14,6 +15,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
   const [isEditing, setIsEditing] = useState(false);
   const [editQuantity, setEditQuantity] = useState(vaultCard.quantity);
   const [editNotes, setEditNotes] = useState(vaultCard.notes || '');
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
   const { card, purchasePrice, purchaseDate, quantity, condition, notes } = vaultCard;
   const currentPrice = card.marketPrice || pokemonApi.extractCardPrice(card);
@@ -58,7 +60,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
   };
 
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface-inset overflow-hidden hover:border-violet-500/40 transition-colors duration-300">
+    <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface-inset shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-elevated">
       <div className="flex flex-col md:flex-row">
         {/* Card Image */}
         <div className="md:w-48 flex-shrink-0 bg-gradient-to-br from-white/[0.02] to-white/[0.06] p-4">
@@ -117,11 +119,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
                 <Edit className="w-4 h-4" />
               </button>
               <button
-                onClick={() => {
-                  if (window.confirm(`Remove ${card.name} from vault?`)) {
-                    onRemove(vaultCard.id);
-                  }
-                }}
+                onClick={() => setShowRemoveConfirm(true)}
                 className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-red-400"
                 title="Remove"
               >
@@ -135,24 +133,28 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
             <div className="mb-4 p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
               <div className="grid grid-cols-2 gap-4 mb-3">
                 <div>
-                  <label className="block text-sm font-medium text-ink-secondary mb-1">Quantity</label>
+                  <label htmlFor="vault-card-qty" className="block text-sm font-medium text-ink-secondary mb-1">Quantity</label>
                   <input
+                    id="vault-card-qty"
                     type="number"
                     min="1"
                     value={editQuantity}
                     onChange={(e) => setEditQuantity(parseInt(e.target.value) || 1)}
                     className="w-full px-3 py-2 border border-border-subtle bg-surface-hover rounded-lg text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                    aria-label="Card quantity"
                   />
                 </div>
               </div>
               <div className="mb-3">
-                <label className="block text-sm font-medium text-ink-secondary mb-1">Notes</label>
+                <label htmlFor="vault-card-notes" className="block text-sm font-medium text-ink-secondary mb-1">Notes</label>
                 <textarea
+                  id="vault-card-notes"
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   rows={2}
                   className="w-full px-3 py-2 border border-border-subtle bg-surface-hover rounded-lg text-white focus:ring-2 focus:ring-accent focus:border-accent"
-                  placeholder="Add notes about this card..."
+                    placeholder="Add notes about this card..."
+                    aria-label="Card notes"
                 />
               </div>
               <div className="flex gap-2">
@@ -233,6 +235,16 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showRemoveConfirm}
+        onConfirm={() => { onRemove(vaultCard.id); setShowRemoveConfirm(false); }}
+        onCancel={() => setShowRemoveConfirm(false)}
+        title={`Remove ${card.name}?`}
+        message={`Remove ${card.name} from your vault? This action can be undone by re-adding the card.`}
+        confirmLabel="Remove"
+        variant="destructive"
+      />
     </div>
   );
 };

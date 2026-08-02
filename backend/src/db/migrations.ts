@@ -527,34 +527,288 @@ export const migrations: Migration[] = [
   },
   {
     id: 11,
-    name: 'add_user_tracked_cards',
+    name: 'onepiece_catalog_variant_schema',
     up: async (db: Database) => {
       const run = (sql: string): Promise<void> =>
         new Promise((resolve, reject) => {
           db.run(sql, (err) => {
-            if (err && !err.message.includes('already exists')) reject(err);
+            if (err) reject(err);
             else resolve();
           });
         });
 
-      await run(`
-        CREATE TABLE IF NOT EXISTS user_tracked_cards (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER NOT NULL,
-          card_id TEXT NOT NULL,
-          card_data TEXT NOT NULL,
-          initial_price REAL DEFAULT 0,
-          added_at TEXT DEFAULT (datetime('now')),
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          UNIQUE(user_id, card_id)
-        )
-      `);
+      await run('DROP TABLE IF EXISTS onepiece_price_history');
+      await run('DROP TABLE IF EXISTS onepiece_catalog');
 
-      await run('CREATE INDEX IF NOT EXISTS idx_tracked_cards_user ON user_tracked_cards(user_id)');
-      logger.info('Created user_tracked_cards table');
+      await run(`CREATE TABLE onepiece_catalog (
+        catalogId TEXT PRIMARY KEY,
+        cardSetId TEXT NOT NULL,
+        cardImageId TEXT NOT NULL,
+        cardName TEXT NOT NULL,
+        setId TEXT NOT NULL,
+        setName TEXT NOT NULL,
+        rarity TEXT,
+        cardColor TEXT,
+        cardType TEXT,
+        cardCost TEXT,
+        cardPower TEXT,
+        counterAmount INTEGER,
+        life TEXT,
+        subTypes TEXT,
+        attribute TEXT,
+        cardText TEXT,
+        imageUrl TEXT,
+        marketPrice REAL,
+        inventoryPrice REAL,
+        syncedAt TEXT DEFAULT (datetime('now'))
+      )`);
+
+      await run(`CREATE TABLE onepiece_price_history (
+        catalogId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        marketPrice REAL,
+        inventoryPrice REAL,
+        source TEXT NOT NULL DEFAULT 'optcg',
+        PRIMARY KEY (catalogId, date, source)
+      )`);
+
+      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_name ON onepiece_catalog(cardName)');
+      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_set ON onepiece_catalog(setId, setName)');
+      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_card_set_id ON onepiece_catalog(cardSetId)');
+      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_card ON onepiece_price_history(catalogId)');
+      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_date ON onepiece_price_history(date)');
+
+      logger.info('Rebuilt One Piece catalog tables with per-variant catalogId primary key');
+    },
+    down: async () => {
+      logger.info('Skipping rollback of One Piece variant schema');
+    },
+  },
+  {
+    id: 13,
+    name: 'rebuild_graded_prices_for_pricecharting',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run('DROP INDEX IF EXISTS idx_graded_prices_card_grader');
+      await run('DROP INDEX IF EXISTS idx_graded_prices_grader');
+      await run('DROP INDEX IF EXISTS idx_graded_prices_card');
+      await run('DROP TABLE IF EXISTS graded_prices');
+
+      await run(`CREATE TABLE graded_prices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cardId TEXT NOT NULL,
+        cardName TEXT,
+        setId TEXT,
+        setName TEXT,
+        grader TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        price REAL,
+        soldListings INTEGER DEFAULT 0,
+        fetchedAt TEXT DEFAULT (datetime('now')),
+        UNIQUE(cardId, grader, grade)
+      )`);
+
+      await run('CREATE INDEX IF NOT EXISTS idx_graded_prices_card ON graded_prices(cardId)');
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_graded_prices_grader ON graded_prices(grader, grade)'
+      );
+
+      logger.info('Rebuilt graded_prices table for PriceCharting slab pricing');
+    },
+    down: async () => {
+      logger.info('Skipping rollback of graded_prices rebuild');
+    },
+  },
+  {
+    id: 14,
+    name: 'add_backtest_metrics_columns',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run('ALTER TABLE backtest_runs ADD COLUMN sharpe_ratio REAL');
+      await run('ALTER TABLE backtest_runs ADD COLUMN max_drawdown REAL');
+      await run('ALTER TABLE backtest_runs ADD COLUMN win_rate REAL');
+      await run('ALTER TABLE backtest_runs ADD COLUMN profit_factor REAL');
+
+      logger.info('Added sharpe_ratio, max_drawdown, win_rate, profit_factor columns to backtest_runs');
     },
     down: async (db: Database) => {
-      db.run('DROP TABLE IF EXISTS user_tracked_cards');
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run('ALTER TABLE backtest_runs DROP COLUMN sharpe_ratio');
+      await run('ALTER TABLE backtest_runs DROP COLUMN max_drawdown');
+      await run('ALTER TABLE backtest_runs DROP COLUMN win_rate');
+      await run('ALTER TABLE backtest_runs DROP COLUMN profit_factor');
+    },
+  },
+  {
+    id: 15,
+    name: 'add_backtest_market_distribution_columns',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run('ALTER TABLE backtest_runs ADD COLUMN market_median_return REAL');
+      await run('ALTER TABLE backtest_runs ADD COLUMN market_return_std_dev REAL');
+
+      logger.info('Added market_median_return and market_return_std_dev columns to backtest_runs');
+    },
+    down: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run('ALTER TABLE backtest_runs DROP COLUMN market_median_return');
+      await run('ALTER TABLE backtest_runs DROP COLUMN market_return_std_dev');
+    },
+  },
+  {
+    id: 16,
+    name: 'backfill_card_mapping_rarity_from_catalog',
+    up: async (db: Database) => {
+      await new Promise<void>((resolve, reject) => {
+        db.run(
+          `UPDATE card_mappings
+           SET rarity = (
+             SELECT cc.rarity FROM catalog_cards cc
+             WHERE cc.cardId = card_mappings.cardId
+               AND cc.rarity IS NOT NULL AND TRIM(cc.rarity) <> ''
+             LIMIT 1
+           )
+           WHERE (rarity IS NULL OR TRIM(rarity) = '')
+             AND EXISTS (
+               SELECT 1 FROM catalog_cards cc
+               WHERE cc.cardId = card_mappings.cardId
+                 AND cc.rarity IS NOT NULL AND TRIM(cc.rarity) <> ''
+             )`,
+          function (err) {
+            if (err) {
+              reject(err);
+              return;
+            }
+            logger.info(`Backfilled rarity on ${this.changes} card_mappings rows from catalog_cards`);
+            resolve();
+          }
+        );
+      });
+    },
+    down: async (_db: Database) => {
+      logger.info('Skipping rarity backfill rollback');
+    },
+  },
+  {
+    id: 17,
+    name: 'add_long_term_prediction_columns',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err && !err.message.includes('duplicate column')) reject(err);
+            else resolve();
+          });
+        });
+
+      const predictionColumns = [
+        'ALTER TABLE card_predictions ADD COLUMN predicted_180d_low REAL',
+        'ALTER TABLE card_predictions ADD COLUMN predicted_180d_mid REAL',
+        'ALTER TABLE card_predictions ADD COLUMN predicted_180d_high REAL',
+        'ALTER TABLE card_predictions ADD COLUMN predicted_365d_low REAL',
+        'ALTER TABLE card_predictions ADD COLUMN predicted_365d_mid REAL',
+        'ALTER TABLE card_predictions ADD COLUMN predicted_365d_high REAL',
+        'ALTER TABLE card_predictions ADD COLUMN expected_180d_return REAL',
+        'ALTER TABLE card_predictions ADD COLUMN expected_365d_return REAL',
+      ];
+
+      const resultColumns = [
+        'ALTER TABLE prediction_results ADD COLUMN actual_180d_price REAL',
+        'ALTER TABLE prediction_results ADD COLUMN actual_180d_return REAL',
+        'ALTER TABLE prediction_results ADD COLUMN actual_365d_price REAL',
+        'ALTER TABLE prediction_results ADD COLUMN actual_365d_return REAL',
+        'ALTER TABLE prediction_results ADD COLUMN error_180d REAL',
+        'ALTER TABLE prediction_results ADD COLUMN error_365d REAL',
+        'ALTER TABLE prediction_results ADD COLUMN direction_correct_180d INTEGER DEFAULT 0',
+        'ALTER TABLE prediction_results ADD COLUMN direction_correct_365d INTEGER DEFAULT 0',
+      ];
+
+      for (const sql of [...predictionColumns, ...resultColumns]) {
+        await run(sql);
+      }
+
+      logger.info('Added 180d/365d prediction columns to card_predictions and prediction_results');
+    },
+    down: async (_db: Database) => {
+      logger.info('Skipping rollback of long-term prediction columns (SQLite limitation)');
+    },
+  },
+  {
+    id: 18,
+    name: 'add_external_signal_scraper_columns',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err && !err.message.includes('duplicate column')) reject(err);
+            else resolve();
+          });
+        });
+
+      // Signals scraped from external sources often mention a card/set by name
+      // before we can resolve a concrete card_id.
+      await run('ALTER TABLE external_market_signals ADD COLUMN card_name TEXT');
+      await run('ALTER TABLE external_market_signals ADD COLUMN set_name TEXT');
+
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_external_signals_card_source_created ON external_market_signals(card_id, source_type, created_at)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_external_signals_card_name ON external_market_signals(card_name)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_external_signals_expires ON external_market_signals(expires_at)'
+      );
+
+      logger.info('Added card_name/set_name columns and lookup indexes to external_market_signals');
+    },
+    down: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      await run('DROP INDEX IF EXISTS idx_external_signals_card_source_created');
+      await run('DROP INDEX IF EXISTS idx_external_signals_card_name');
+      await run('DROP INDEX IF EXISTS idx_external_signals_expires');
+      logger.info('Dropped external signal scraper indexes (columns retained — SQLite limitation)');
     },
   },
 ];

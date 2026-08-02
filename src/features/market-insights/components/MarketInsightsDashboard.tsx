@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrendingUp,
-  TrendingDown,
   Activity,
-  Shield,
   AlertTriangle,
   BarChart3,
   RefreshCw,
@@ -16,6 +14,9 @@ import {
   XCircle,
   HelpCircle,
   ArrowDown,
+  Filter,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { marketInsightsApi } from '../../../services/marketInsightsApi';
 import {
@@ -25,11 +26,20 @@ import {
   PredictionCategory,
   CATEGORY_LABELS,
   CATEGORY_COLORS,
+  PREDICTION_THRESHOLDS,
+  PredictionFilters,
+  AVAILABLE_RARITIES,
+  AVAILABLE_ERAS,
+  PredictionWindow,
+  PREDICTION_WINDOWS,
+  PREDICTION_WINDOW_LABELS,
+  expectedReturnForWindow,
 } from '../types';
 import { PokemonCard } from '../../../types/pokemon';
 import { PredictionCard } from './PredictionCard';
 import { useResolvedPredictionCards } from '../hooks/useResolvedPredictionCards';
-import { useAuth } from '../../../hooks/useAuth';
+import { useGame } from '../../../contexts/GameContext';
+import { Package, Brain } from 'lucide-react';
 
 type SectionType = 'gainers' | 'recovery' | 'momentum' | 'stagnant' | 'overheated' | 'downtrend' | 'backtest' | 'forward';
 
@@ -67,13 +77,13 @@ const CATEGORY_MAP: Record<SectionType, PredictionCategory | 'all'> = {
 };
 
 export function MarketInsightsDashboard() {
-  const { isAdmin } = useAuth();
-  const canRunAdminActions = isAdmin || import.meta.env.DEV;
+  const { isOnePiece } = useGame();
   const [activeSection, setActiveSection] = useState<SectionType>('gainers');
   const [predictions, setPredictions] = useState<CardPrediction[]>([]);
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([]);
   const [forwardStatus, setForwardStatus] = useState<ForwardTestStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [runningPrediction, setRunningPrediction] = useState(false);
   const [runningBacktest, setRunningBacktest] = useState(false);
   const [backtestDate, setBacktestDate] = useState(() => {
@@ -82,7 +92,23 @@ export function MarketInsightsDashboard() {
     return d.toISOString().split('T')[0];
   });
   const [message, setMessage] = useState<string | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [predictionWindow, setPredictionWindow] = useState<PredictionWindow>('90d');
+
+  const defaultFilters = (): PredictionFilters => ({
+    minPrice: 2,
+    maxPrice: 10000,
+    minConfidence: 30,
+    rarities: [...AVAILABLE_RARITIES],
+    eras: [...AVAILABLE_ERAS.map(e => e.id)],
+    releaseDateFrom: undefined,
+    releaseDateTo: undefined,
+  });
+
+  // Draft filters edit in the panel; applied filters are what actually hit the API.
+  // Auto-fetching on every checkbox caused overlapping requests and empty flashes.
+  const [draftFilters, setDraftFilters] = useState<PredictionFilters>(defaultFilters);
+  const [appliedFilters, setAppliedFilters] = useState<PredictionFilters>(defaultFilters);
 
   const showMessage = useCallback((msg: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -90,39 +116,47 @@ export function MarketInsightsDashboard() {
     timeoutRef.current = setTimeout(() => setMessage(null), 5000);
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [predData, btData, ftStatus] = await Promise.all([
-        marketInsightsApi.getPredictions({ limit: 250 }),
-        marketInsightsApi.getBacktestResults().catch(() => ({ data: [] })),
+        marketInsightsApi.getPredictions({ limit: 250, window: predictionWindow, filters: appliedFilters }),
+        marketInsightsApi.getBacktestResults().catch(() => ({ data: [] as BacktestResult[] })),
         marketInsightsApi.getForwardTestStatus().catch(() => null),
       ]);
+      if (signal?.aborted) return;
       setPredictions(predData.data);
       setBacktestResults(btData.data || []);
       setForwardStatus(ftStatus);
-    } catch (err) {
+    } catch (err: any) {
+      if (signal?.aborted || err?.name === 'AbortError') return;
       console.error('Failed to load market insights data:', err);
+      setLoadError(err?.message || 'Failed to load predictions');
+      setPredictions([]);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }, []);
+  }, [appliedFilters, predictionWindow]);
 
   useEffect(() => {
-    loadData();
+    const controller = new AbortController();
+    loadData(controller.signal);
+    return () => controller.abort();
   }, [loadData]);
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
+  const handleApplyFilters = () => {
+    setAppliedFilters({ ...draftFilters });
+    setShowFilters(false);
+  };
+
+  const handleResetFilters = () => {
+    const next = defaultFilters();
+    setDraftFilters(next);
+    setAppliedFilters(next);
+  };
 
   const handleRunPredictions = async () => {
-    if (!canRunAdminActions) {
-      showMessage('Admin access required to run predictions.');
-      return;
-    }
     setRunningPrediction(true);
     try {
       const result = await marketInsightsApi.triggerPredictionRun();
@@ -136,16 +170,13 @@ export function MarketInsightsDashboard() {
   };
 
   const handleRunBacktest = async () => {
-    if (!canRunAdminActions) {
-      showMessage('Admin access required to run backtests.');
-      return;
-    }
     setRunningBacktest(true);
     try {
       await marketInsightsApi.runBacktest({ backtestDate, windowDays: 90 });
       showMessage('Backtest completed');
       const btData = await marketInsightsApi.getBacktestResults();
       setBacktestResults(btData.data || []);
+      setActiveSection('backtest');
     } catch (err: any) {
       showMessage(`Backtest failed: ${err.message}`);
     } finally {
@@ -155,14 +186,55 @@ export function MarketInsightsDashboard() {
 
   const sidebarSections: SectionType[] = ['gainers', 'recovery', 'momentum', 'stagnant', 'overheated', 'downtrend', 'backtest', 'forward'];
 
-  const filteredPredictions = (category?: PredictionCategory) => {
-    if (!category || category === 'all') return predictions.filter(p => p.currentPrice >= 5);
-    return predictions.filter(p => p.category === category && p.currentPrice >= 5).slice(0, 30);
+  const filteredPredictions = (category?: PredictionCategory | 'all') => {
+    if (!category || category === 'all') return predictions;
+    return predictions.filter(p => p.category === category);
   };
 
-  const sortedByReturn = [...predictions].sort((a, b) => b.expected90dReturn - a.expected90dReturn);
-  const sortedByDowntrend = [...predictions].sort((a, b) => a.expected90dReturn - b.expected90dReturn);
+  const windowReturn = (p: CardPrediction) => expectedReturnForWindow(p, predictionWindow);
+  const sortedByReturn = [...predictions].sort((a, b) => windowReturn(b) - windowReturn(a));
+  const sortedByDowntrend = [...predictions].sort((a, b) => windowReturn(a) - windowReturn(b));
+  const gainerPredictions = sortedByReturn
+    .filter(p => windowReturn(p) >= PREDICTION_THRESHOLDS.GAINERS_MIN_RETURN)
+    .slice(0, 20);
+  const downtrendPredictions = sortedByDowntrend
+    .filter(p => windowReturn(p) < PREDICTION_THRESHOLDS.DOWNTREND_MAX_RETURN)
+    .slice(0, 20);
   const { cardsById } = useResolvedPredictionCards(predictions);
+
+  const emptyHint = (section: 'gainers' | 'downtrend' | 'category') => {
+    if (loadError) return `Couldn't load predictions: ${loadError}`;
+    if (predictions.length === 0) {
+      return 'No predictions match these filters. Try resetting filters, or run a fresh prediction batch.';
+    }
+    if (section === 'gainers') {
+      return `Loaded ${predictions.length} cards, but none have ≥${PREDICTION_THRESHOLDS.GAINERS_MIN_RETURN * 100}% expected ${PREDICTION_WINDOW_LABELS[predictionWindow]} return. Try another window or loosen filters.`;
+    }
+    if (section === 'downtrend') {
+      return `Loaded ${predictions.length} cards, but none are in a clear ${PREDICTION_WINDOW_LABELS[predictionWindow]} downtrend.`;
+    }
+    return `Loaded ${predictions.length} cards, but none match this category.`;
+  };
+
+  if (isOnePiece) {
+    return (
+      <div className="mx-auto max-w-7xl">
+        <div className="flex flex-col items-center rounded-2xl border border-dashed border-border-strong bg-surface-raised p-12 text-center">
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-border-default bg-surface-inset">
+            <Brain className="h-8 w-8 text-ink-muted" aria-hidden="true" />
+          </div>
+          <h3 className="mb-2 text-xl font-semibold text-ink-primary">Coming Soon</h3>
+          <p className="mx-auto mb-6 max-w-md text-sm text-ink-muted">
+            One Piece market insights and AI predictions are under development. Browse One Piece cards to see market prices!
+          </p>
+          <a href="/browse" className="btn-secondary">
+            <Package className="h-4 w-4" aria-hidden="true" />
+            Browse One Piece Cards
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -174,43 +246,17 @@ export function MarketInsightsDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-ink-muted">
-            Backtest date:
-            <input
-              type="date"
-              value={backtestDate}
-              onChange={e => setBacktestDate(e.target.value)}
-              className="rounded-lg border border-border-default bg-surface-inset px-2 py-1 text-xs text-white"
-            />
-          </label>
-          <button
-            onClick={handleRunBacktest}
-            disabled={runningBacktest || !canRunAdminActions}
-            title={
-              canRunAdminActions
-                ? 'Run backtest for selected date'
-                : 'Admin access required'
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RotateCcw className={`h-3.5 w-3.5 ${runningBacktest ? 'animate-spin' : ''}`} />
-            Backtest
-          </button>
           <button
             onClick={handleRunPredictions}
-            disabled={runningPrediction || !canRunAdminActions}
-            title={
-              canRunAdminActions
-                ? 'Run a new prediction batch'
-                : 'Admin access required'
-            }
+            disabled={runningPrediction}
+            title="Run a new prediction batch"
             className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play className={`h-3.5 w-3.5 ${runningPrediction ? 'animate-pulse' : ''}`} />
             {runningPrediction ? 'Running...' : 'Run Predictions'}
           </button>
           <button
-            onClick={loadData}
+            onClick={() => loadData()}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:bg-surface-hover"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -228,6 +274,188 @@ export function MarketInsightsDashboard() {
           {message}
         </motion.div>
       )}
+
+      {loadError && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+          {loadError}
+        </div>
+      )}
+
+      <div className="mb-4 rounded-xl border border-border-default bg-surface-raised">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-ink-secondary hover:bg-surface-hover"
+        >
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4" />
+            <span>Filters</span>
+            <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-ink-muted">
+              ${appliedFilters.minPrice || 0} - ${appliedFilters.maxPrice || '∞'} | {appliedFilters.rarities?.length || 0} rarities | {appliedFilters.eras?.length || 0} eras
+            </span>
+          </div>
+          {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+        
+        {showFilters && (
+          <div className="border-t border-border-default px-4 py-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Min Price ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={draftFilters.minPrice || ''}
+                  onChange={e => setDraftFilters(prev => ({ ...prev, minPrice: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  placeholder="2"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Max Price ($)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={draftFilters.maxPrice || ''}
+                  onChange={e => setDraftFilters(prev => ({ ...prev, maxPrice: e.target.value ? parseFloat(e.target.value) : undefined }))}
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  placeholder="10000"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Min Confidence</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={draftFilters.minConfidence || 0}
+                  onChange={e => setDraftFilters(prev => ({ ...prev, minConfidence: parseInt(e.target.value) }))}
+                  className="w-full"
+                />
+                <div className="text-xs text-ink-muted">{draftFilters.minConfidence || 0}%</div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Era</label>
+                <div className="max-h-32 overflow-y-auto rounded-lg border border-border-default bg-surface-inset p-2">
+                  {AVAILABLE_ERAS.map(era => (
+                    <label key={era.id} className="flex items-center gap-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={draftFilters.eras?.includes(era.id) || false}
+                        onChange={e => {
+                          setDraftFilters(prev => {
+                            const current = prev.eras || [];
+                            const newEras = e.target.checked
+                              ? [...current, era.id]
+                              : current.filter(r => r !== era.id);
+                            return { ...prev, eras: newEras };
+                          });
+                        }}
+                        className="h-3 w-3 rounded"
+                      />
+                      <span className="text-xs text-ink-secondary">{era.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Rarities</label>
+                <div className="max-h-32 overflow-y-auto rounded-lg border border-border-default bg-surface-inset p-2">
+                  {AVAILABLE_RARITIES.map(rarity => (
+                    <label key={rarity} className="flex items-center gap-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={draftFilters.rarities?.includes(rarity) || false}
+                        onChange={e => {
+                          setDraftFilters(prev => {
+                            const current = prev.rarities || [];
+                            const newRarities = e.target.checked
+                              ? [...current, rarity]
+                              : current.filter(r => r !== rarity);
+                            return { ...prev, rarities: newRarities };
+                          });
+                        }}
+                        className="h-3 w-3 rounded"
+                      />
+                      <span className="text-xs text-ink-secondary">{rarity}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Release Date From</label>
+                <input
+                  type="date"
+                  value={draftFilters.releaseDateFrom || ''}
+                  onChange={e => setDraftFilters(prev => ({ ...prev, releaseDateFrom: e.target.value || undefined }))}
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-muted">Release Date To</label>
+                <input
+                  type="date"
+                  value={draftFilters.releaseDateTo || ''}
+                  onChange={e => setDraftFilters(prev => ({ ...prev, releaseDateTo: e.target.value || undefined }))}
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={handleResetFilters}
+                className="rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-medium text-ink-secondary hover:bg-surface-hover"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleApplyFilters}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-ink-muted">Prediction window:</span>
+        <div className="inline-flex rounded-lg border border-border-default bg-surface-inset p-0.5">
+          {PREDICTION_WINDOWS.map(w => (
+            <button
+              key={w}
+              onClick={() => setPredictionWindow(w)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                predictionWindow === w
+                  ? 'bg-accent text-white'
+                  : 'text-ink-muted hover:bg-surface-hover hover:text-ink-secondary'
+              }`}
+            >
+              {PREDICTION_WINDOW_LABELS[w]}
+            </button>
+          ))}
+        </div>
+        {!loading && (
+          <span className="text-xs text-ink-muted">
+            {predictions.length} cards loaded
+          </span>
+        )}
+      </div>
+
+      {/* Mobile section picker */}
+      <div className="mb-4 lg:hidden">
+        <select
+          value={activeSection}
+          onChange={e => setActiveSection(e.target.value as SectionType)}
+          className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+        >
+          {sidebarSections.map(section => (
+            <option key={section} value={section}>{SECTION_LABELS[section]}</option>
+          ))}
+        </select>
+      </div>
 
       <div className="flex gap-6">
         <nav className="hidden w-48 shrink-0 space-y-1 lg:block">
@@ -260,32 +488,41 @@ export function MarketInsightsDashboard() {
               transition={{ duration: 0.2 }}
             >
               {activeSection === 'backtest' ? (
-                <BacktestSection results={backtestResults} onRunBacktest={handleRunBacktest} />
+                <BacktestSection
+                  results={backtestResults}
+                  backtestDate={backtestDate}
+                  onBacktestDateChange={setBacktestDate}
+                  onRunBacktest={handleRunBacktest}
+                  runningBacktest={runningBacktest}
+                />
               ) : activeSection === 'forward' ? (
                 <ForwardSection status={forwardStatus} />
               ) : activeSection === 'gainers' ? (
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
-                  predictions={sortedByReturn.filter(p => p.expected90dReturn >= 0.05 && p.currentPrice >= 5).slice(0, 20)}
-                  emptyMessage="No cards match this category yet. Run predictions to see results."
+                  predictions={gainerPredictions}
+                  emptyMessage={emptyHint('gainers')}
                   cardsById={cardsById}
+                  window={predictionWindow}
                 />
               ) : activeSection === 'downtrend' ? (
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
-                  predictions={sortedByDowntrend.filter(p => p.expected90dReturn < -0.05 && p.currentPrice >= 5).slice(0, 20)}
-                  emptyMessage="No cards in downtrend. Run predictions to see results."
+                  predictions={downtrendPredictions}
+                  emptyMessage={emptyHint('downtrend')}
                   cardsById={cardsById}
+                  window={predictionWindow}
                 />
               ) : (
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
                   predictions={filteredPredictions(CATEGORY_MAP[activeSection] as PredictionCategory)}
-                  emptyMessage="No cards match this category yet. Run predictions to see results."
+                  emptyMessage={emptyHint('category')}
                   cardsById={cardsById}
+                  window={predictionWindow}
                 />
               )}
             </motion.div>
@@ -302,12 +539,14 @@ function CardGridSection({
   predictions,
   emptyMessage,
   cardsById,
+  window: predictionWindow,
 }: {
   title: string;
   icon: React.ReactNode;
   predictions: CardPrediction[];
   emptyMessage: string;
   cardsById: Record<string, PokemonCard>;
+  window?: PredictionWindow;
 }) {
   return (
     <div>
@@ -319,8 +558,8 @@ function CardGridSection({
         </span>
       </div>
       {predictions.length === 0 ? (
-        <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border-default">
-          <p className="text-sm text-ink-muted">{emptyMessage}</p>
+        <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-border-default px-6 py-8">
+          <p className="max-w-md text-center text-sm text-ink-muted">{emptyMessage}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -329,6 +568,7 @@ function CardGridSection({
               key={p.id}
               prediction={p}
               card={cardsById[p.cardId]}
+              window={predictionWindow}
             />
           ))}
         </div>
@@ -339,36 +579,55 @@ function CardGridSection({
 
 function BacktestSection({
   results,
+  backtestDate,
+  onBacktestDateChange,
   onRunBacktest,
+  runningBacktest,
 }: {
   results: BacktestResult[];
+  backtestDate: string;
+  onBacktestDateChange: (date: string) => void;
   onRunBacktest: () => void;
+  runningBacktest: boolean;
 }) {
   const latest = results[0];
 
-  if (!latest && results.length === 0) {
-    return (
-      <div>
-        <div className="mb-4 flex items-center gap-2">
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-cyan-400" />
           <h2 className="text-lg font-semibold text-white">Backtesting Results</h2>
         </div>
-        <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border-default">
-          <p className="text-sm text-ink-muted">
-            No backtest results yet. Run a backtest to see historical accuracy.
-          </p>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs text-ink-muted">
+            As-of date:
+            <input
+              type="date"
+              value={backtestDate}
+              onChange={e => onBacktestDateChange(e.target.value)}
+              className="rounded-lg border border-border-default bg-surface-inset px-2 py-1 text-xs text-white"
+            />
+          </label>
+          <button
+            onClick={onRunBacktest}
+            disabled={runningBacktest}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${runningBacktest ? 'animate-spin' : ''}`} />
+            {runningBacktest ? 'Running...' : 'Run Backtest'}
+          </button>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-2">
-        <BarChart3 className="h-5 w-5 text-cyan-400" />
-        <h2 className="text-lg font-semibold text-white">Backtesting Results</h2>
-      </div>
-
+      {results.length === 0 ? (
+        <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border-default">
+          <p className="text-sm text-ink-muted">
+            No backtest results yet. Pick a historical date and run a backtest.
+          </p>
+        </div>
+      ) : (
+        <>
       {latest && (
         <div className="mb-6 space-y-4">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -391,7 +650,7 @@ function BacktestSection({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             <MetricCard
               label="Market Avg Return"
               value={latest.market_avg_return != null ? `${(latest.market_avg_return * 100).toFixed(1)}%` : 'N/A'}
@@ -406,6 +665,29 @@ function BacktestSection({
               label="Avoid Avg Return"
               value={latest.avoid_avg_return != null ? `${(latest.avoid_avg_return * 100).toFixed(1)}%` : 'N/A'}
               positive={latest.avoid_avg_return != null && latest.avoid_avg_return < 0}
+            />
+            <MetricCard
+              label="Sharpe Ratio"
+              value={latest.sharpe_ratio != null ? latest.sharpe_ratio.toFixed(2) : 'N/A'}
+              positive={latest.sharpe_ratio != null && latest.sharpe_ratio > 1}
+            />
+            <MetricCard
+              label="Max Drawdown"
+              value={latest.max_drawdown != null ? `${(latest.max_drawdown * 100).toFixed(1)}%` : 'N/A'}
+              positive={latest.max_drawdown != null && latest.max_drawdown < 0.2}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            <MetricCard
+              label="Win Rate"
+              value={latest.win_rate != null ? `${(latest.win_rate * 100).toFixed(1)}%` : 'N/A'}
+              positive={latest.win_rate != null && latest.win_rate > 0.5}
+            />
+            <MetricCard
+              label="Profit Factor"
+              value={latest.profit_factor != null ? latest.profit_factor.toFixed(2) : 'N/A'}
+              positive={latest.profit_factor != null && latest.profit_factor > 1}
             />
             <MetricCard label="Window" value={`${latest.window_days}d`} />
           </div>
@@ -468,6 +750,8 @@ function BacktestSection({
           </div>
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -499,7 +783,7 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
   }
 
   const totalResolved = status.hit + status.missed + status.partiallyCorrect;
-  const accuracy = totalResolved > 0 ? (status.hit + status.partiallyCorrect * 0.5) / totalResolved : 0;
+  const accuracy = status.overallAccuracy ?? (totalResolved > 0 ? (status.hit + status.partiallyCorrect * 0.5) / totalResolved : 0);
 
   return (
     <div>
@@ -550,7 +834,7 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border-default">
+      <div className="mb-6 overflow-x-auto rounded-xl border border-border-default">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b border-border-default bg-surface-inset">
@@ -566,6 +850,8 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
               { label: '7-Day', data: status.byWindow._7d },
               { label: '30-Day', data: status.byWindow._30d },
               { label: '90-Day', data: status.byWindow._90d },
+              ...(status.byWindow._180d ? [{ label: '6-Month', data: status.byWindow._180d }] : []),
+              ...(status.byWindow._365d ? [{ label: '1-Year', data: status.byWindow._365d }] : []),
             ].map(({ label, data }) => (
               <tr key={label} className="border-b border-border-subtle last:border-0">
                 <td className="px-3 py-2 font-medium text-ink-secondary">{label}</td>
@@ -580,6 +866,75 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
           </tbody>
         </table>
       </div>
+
+      {status.byCategory && status.byCategory.length > 0 && (
+        <div className="mb-6">
+          <h3 className="mb-2 text-sm font-medium text-ink-secondary">Accuracy by Category</h3>
+          <div className="overflow-x-auto rounded-xl border border-border-default">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-border-default bg-surface-inset">
+                  <th className="px-3 py-2 font-medium text-ink-muted">Category</th>
+                  <th className="px-3 py-2 font-medium text-ink-muted">Total</th>
+                  <th className="px-3 py-2 font-medium text-ink-muted">Hit</th>
+                  <th className="px-3 py-2 font-medium text-ink-muted">Missed</th>
+                  <th className="px-3 py-2 font-medium text-ink-muted">Accuracy</th>
+                  <th className="px-3 py-2 font-medium text-ink-muted">Avg Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.byCategory.map((cat) => (
+                  <tr key={cat.category} className="border-b border-border-subtle last:border-0">
+                    <td className="px-3 py-2">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[cat.category as PredictionCategory] || ''}`}>
+                        {CATEGORY_LABELS[cat.category as PredictionCategory] || cat.category}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-ink-secondary">{cat.total}</td>
+                    <td className="px-3 py-2 text-emerald-400">{cat.hit}</td>
+                    <td className="px-3 py-2 text-red-400">{cat.missed}</td>
+                    <td className={`px-3 py-2 font-mono ${cat.accuracy != null && cat.accuracy > 0.5 ? 'text-emerald-400' : 'text-ink-muted'}`}>
+                      {cat.accuracy != null ? `${(cat.accuracy * 100).toFixed(1)}%` : 'N/A'}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-ink-muted">
+                      {cat.avgError != null ? `${(cat.avgError * 100).toFixed(1)}%` : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {status.byPriceRange && (
+        <div>
+          <h3 className="mb-2 text-sm font-medium text-ink-secondary">Accuracy by Price Range</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-border-default bg-surface-raised p-3">
+              <div className="text-xs text-ink-muted">Under $5</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-white">
+                {status.byPriceRange.under5.accuracy != null ? `${(status.byPriceRange.under5.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+              <div className="text-xs text-ink-muted">{status.byPriceRange.under5.total} cards</div>
+            </div>
+            <div className="rounded-xl border border-border-default bg-surface-raised p-3">
+              <div className="text-xs text-ink-muted">$5 - $50</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-white">
+                {status.byPriceRange.fiveToFifty.accuracy != null ? `${(status.byPriceRange.fiveToFifty.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+              <div className="text-xs text-ink-muted">{status.byPriceRange.fiveToFifty.total} cards</div>
+            </div>
+            <div className="rounded-xl border border-border-default bg-surface-raised p-3">
+              <div className="text-xs text-ink-muted">Over $50</div>
+              <div className="mt-1 font-mono text-lg font-semibold text-white">
+                {status.byPriceRange.overFifty.accuracy != null ? `${(status.byPriceRange.overFifty.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+              <div className="text-xs text-ink-muted">{status.byPriceRange.overFifty.total} cards</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

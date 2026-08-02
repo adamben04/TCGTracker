@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 const DB_SOURCE = (() => {
   const resolvedPath = path.resolve(env.databasePath);
@@ -31,7 +32,7 @@ export const getDb = () => {
   if (!db) {
     db = new sqlite3.Database(DB_SOURCE, (err) => {
       if (err) {
-        console.error(err.message);
+        logger.error('Failed to open database', { error: err.message });
         throw err;
       }
     });
@@ -66,19 +67,19 @@ export const initializeDatabase = (): Promise<void> => {
         updatedAt TEXT DEFAULT (datetime('now'))
       )`,
       `CREATE TABLE IF NOT EXISTS price_history (
+        uniqueIdentifier TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'tcgcsv',
         productId INTEGER,
-        date TEXT,
         price REAL,
         subTypeName TEXT,
         productName TEXT,
         groupName TEXT,
-        source TEXT DEFAULT 'tcgcsv',
         lowPrice REAL,
         highPrice REAL,
         marketPrice REAL,
         volume INTEGER,
-        uniqueIdentifier TEXT,
-        PRIMARY KEY (productId, date, subTypeName, source)
+        PRIMARY KEY (uniqueIdentifier, date, source)
       )`,
       `CREATE TABLE IF NOT EXISTS price_snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,9 +158,17 @@ export const initializeDatabase = (): Promise<void> => {
         predicted_90d_low REAL,
         predicted_90d_mid REAL,
         predicted_90d_high REAL,
+        predicted_180d_low REAL,
+        predicted_180d_mid REAL,
+        predicted_180d_high REAL,
+        predicted_365d_low REAL,
+        predicted_365d_mid REAL,
+        predicted_365d_high REAL,
         expected_7d_return REAL,
         expected_30d_return REAL,
         expected_90d_return REAL,
+        expected_180d_return REAL,
+        expected_365d_return REAL,
         confidence_score INTEGER DEFAULT 0,
         risk_score INTEGER DEFAULT 0,
         category TEXT,
@@ -168,6 +177,7 @@ export const initializeDatabase = (): Promise<void> => {
         risk_factors TEXT,
         external_signals_json TEXT,
         model_version TEXT DEFAULT '1.0.0',
+        UNIQUE(run_id, card_id),
         FOREIGN KEY (run_id) REFERENCES prediction_runs(id) ON DELETE CASCADE
       )`,
       `CREATE TABLE IF NOT EXISTS prediction_results (
@@ -176,17 +186,38 @@ export const initializeDatabase = (): Promise<void> => {
         actual_7d_price REAL,
         actual_30d_price REAL,
         actual_90d_price REAL,
+        actual_180d_price REAL,
+        actual_365d_price REAL,
         actual_7d_return REAL,
         actual_30d_return REAL,
         actual_90d_return REAL,
+        actual_180d_return REAL,
+        actual_365d_return REAL,
         error_7d REAL,
         error_30d REAL,
         error_90d REAL,
+        error_180d REAL,
+        error_365d REAL,
         direction_correct_7d INTEGER DEFAULT 0,
         direction_correct_30d INTEGER DEFAULT 0,
         direction_correct_90d INTEGER DEFAULT 0,
+        direction_correct_180d INTEGER DEFAULT 0,
+        direction_correct_365d INTEGER DEFAULT 0,
         status TEXT DEFAULT 'pending',
         FOREIGN KEY (prediction_id) REFERENCES card_predictions(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS graded_prices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cardId TEXT NOT NULL,
+        cardName TEXT,
+        setId TEXT,
+        setName TEXT,
+        grader TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        price REAL,
+        soldListings INTEGER DEFAULT 0,
+        fetchedAt TEXT DEFAULT (datetime('now')),
+        UNIQUE(cardId, grader, grade)
       )`,
       `CREATE TABLE IF NOT EXISTS external_market_signals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,6 +229,8 @@ export const initializeDatabase = (): Promise<void> => {
         sentiment_score INTEGER DEFAULT 0,
         relevance_score INTEGER DEFAULT 0,
         risk_type TEXT,
+        card_name TEXT,
+        set_name TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         expires_at TEXT
       )`,
@@ -213,13 +246,49 @@ export const initializeDatabase = (): Promise<void> => {
         strong_buy_false_positive_rate REAL,
         avoid_avg_return REAL,
         category_performance TEXT,
+        sharpe_ratio REAL,
+        max_drawdown REAL,
+        win_rate REAL,
+        profit_factor REAL,
+        market_median_return REAL,
+        market_return_std_dev REAL,
         created_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS onepiece_catalog (
+        catalogId TEXT PRIMARY KEY,
+        cardSetId TEXT NOT NULL,
+        cardImageId TEXT NOT NULL,
+        cardName TEXT NOT NULL,
+        setId TEXT NOT NULL,
+        setName TEXT NOT NULL,
+        rarity TEXT,
+        cardColor TEXT,
+        cardType TEXT,
+        cardCost TEXT,
+        cardPower TEXT,
+        counterAmount INTEGER,
+        life TEXT,
+        subTypes TEXT,
+        attribute TEXT,
+        cardText TEXT,
+        imageUrl TEXT,
+        marketPrice REAL,
+        inventoryPrice REAL,
+        syncedAt TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS onepiece_price_history (
+        catalogId TEXT NOT NULL,
+        date TEXT NOT NULL,
+        marketPrice REAL,
+        inventoryPrice REAL,
+        source TEXT NOT NULL DEFAULT 'optcg',
+        PRIMARY KEY (catalogId, date, source)
       )`,
     ];
 
     for (let i = 0; i < tables.length; i++) {
       await runDb(database, tables[i]);
-      console.log(`Database table ${i + 1} created successfully.`);
+      logger.info(`Database table ${i + 1} created successfully.`);
     }
 
     const indexes = [
@@ -245,25 +314,43 @@ export const initializeDatabase = (): Promise<void> => {
       'CREATE INDEX IF NOT EXISTS idx_prediction_results_status ON prediction_results(status)',
       'CREATE INDEX IF NOT EXISTS idx_prediction_results_prediction ON prediction_results(prediction_id)',
       'CREATE INDEX IF NOT EXISTS idx_external_signals_card ON external_market_signals(card_id)',
+      'CREATE INDEX IF NOT EXISTS idx_external_signals_card_source_created ON external_market_signals(card_id, source_type, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_external_signals_card_name ON external_market_signals(card_name)',
+      'CREATE INDEX IF NOT EXISTS idx_external_signals_expires ON external_market_signals(expires_at)',
       'CREATE INDEX IF NOT EXISTS idx_backtest_runs_date ON backtest_runs(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_name ON onepiece_catalog(cardName)',
+      'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_set ON onepiece_catalog(setId, setName)',
+      'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_card_set_id ON onepiece_catalog(cardSetId)',
+      'CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_card ON onepiece_price_history(catalogId)',
+      'CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_date ON onepiece_price_history(date)',
+      'CREATE INDEX IF NOT EXISTS idx_graded_prices_card ON graded_prices(cardId)',
+      'CREATE INDEX IF NOT EXISTS idx_graded_prices_grader ON graded_prices(grader, grade)',
     ];
 
     for (const indexSql of indexes) {
       await runDb(database, indexSql);
     }
 
-    console.log('All database tables and indexes ready.');
-    console.log(`Using database at ${DB_SOURCE}`);
+    logger.info('All database tables and indexes ready.');
+    logger.info(`Using database at ${DB_SOURCE}`);
 
     setTimeout(() => {
       database.run('PRAGMA auto_vacuum = INCREMENTAL', (vacuumErr) => {
         if (vacuumErr) {
-          console.error('Failed to set auto_vacuum mode:', vacuumErr);
+          logger.error('Failed to set auto_vacuum mode:', { error: vacuumErr.message });
         } else {
           database.run('PRAGMA incremental_vacuum(100)', () => {});
         }
       });
     }, 10000);
+
+    setInterval(() => {
+      database.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
+        if (err) {
+          logger.warn('WAL checkpoint failed', { error: err.message });
+        }
+      });
+    }, 30 * 60 * 1000);
   })();
 
   return dbInitPromise;

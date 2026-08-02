@@ -1,118 +1,268 @@
 import { OnePieceCard, OnePieceSet } from '../types/onepiece';
+import { cacheService } from './cacheService';
+import { buildApiUrl } from '../config/env';
+import { fetchFullOptcgCatalog, searchOptcgCatalog } from './onePieceOptcgCatalog';
+
+/** Vite dev proxy in development; direct API only as last resort in production. */
+function getOptcgBaseUrl(): string {
+  if (import.meta.env.DEV) {
+    return '/api/optcg';
+  }
+  return 'https://optcgapi.com/api';
+}
+
+interface OPTCGCardResponse {
+  inventory_price: number;
+  market_price: number;
+  card_name: string;
+  set_name: string;
+  card_text: string;
+  set_id: string;
+  rarity: string;
+  card_set_id: string;
+  card_color: string;
+  card_type: string;
+  life: string | null;
+  card_cost: string | null;
+  card_power: string | null;
+  sub_types: string | null;
+  counter_amount: number | null;
+  attribute: string | null;
+  date_scraped: string;
+  card_image_id: string;
+  card_image: string;
+}
+
+function buildCatalogId(raw: Pick<OPTCGCardResponse, 'set_id' | 'card_image_id' | 'card_name'>): string {
+  return `${raw.set_id}::${raw.card_image_id}::${raw.card_name}`;
+}
+
+function mapCard(raw: OPTCGCardResponse): OnePieceCard {
+  return {
+    id: buildCatalogId(raw),
+    name: raw.card_name,
+    images: {
+      small: raw.card_image,
+      large: raw.card_image,
+    },
+    set: {
+      id: raw.set_id,
+      name: raw.set_name,
+    },
+    number: raw.card_set_id,
+    rarity: raw.rarity || undefined,
+    cardColor: raw.card_color || undefined,
+    cardType: raw.card_type || undefined,
+    cardCost: raw.card_cost || undefined,
+    cardPower: raw.card_power || undefined,
+    counterAmount: raw.counter_amount ?? undefined,
+    life: raw.life || undefined,
+    subTypes: raw.sub_types || undefined,
+    attribute: raw.attribute || undefined,
+    cardText: raw.card_text || undefined,
+    marketPrice: raw.market_price ?? undefined,
+    inventoryPrice: raw.inventory_price ?? undefined,
+    cardImageId: raw.card_image_id,
+  };
+}
+
+async function fetchBackend<T>(endpoint: string, params?: Record<string, string>, retries = 2): Promise<T> {
+  const url = new URL(buildApiUrl(endpoint));
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v) url.searchParams.append(k, v);
+    });
+  }
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const response = await fetch(url.toString(), {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if ([429, 500, 502, 503, 504].includes(response.status) && attempt < retries) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`API ${response.status}: ${response.statusText}`);
+      }
+
+      return (await response.json()) as T;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err as Error;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError ?? new Error('Unknown API error');
+}
+
+async function fetchOptcgFallback<T>(path: string): Promise<T> {
+  const base = getOptcgBaseUrl();
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  const response = await fetch(`${base}${normalized}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`OPTCG API ${response.status}: ${response.statusText}`);
+  }
+  return response.json();
+}
 
 class OnePieceApiService {
-  private baseUrl = 'https://optcgapi.com/api';
-  private setsCache: OnePieceSet[] | null = null;
-  private allCardsCache: OnePieceCard[] | null = null;
+  async getSets(): Promise<OnePieceSet[]> {
+    const cacheKey = 'op_sets_all';
+    const cached = cacheService.get<OnePieceSet[]>(cacheKey);
+    if (cached) return cached;
 
-  async getAllSets(): Promise<OnePieceSet[]> {
-    if (this.setsCache) return this.setsCache;
-    
-    const [setsResp, decksResp] = await Promise.all([
-      fetch(`${this.baseUrl}/allSets/?format=json`),
-      fetch(`${this.baseUrl}/allDecks/?format=json`),
-    ]);
-    
-    const setsData = await setsResp.json();
-    const decksData = await decksResp.json();
-    
-    const sets: OnePieceSet[] = [
-      ...setsData.map((s: any) => ({ id: s.set_id, name: s.set_name, type: 'set' as const })),
-      ...decksData.map((d: any) => ({ id: d.structure_deck_id ?? d.st_id, name: d.structure_deck_name ?? d.st_name, type: 'starter' as const })),
-    ];
-    
-    this.setsCache = sets;
-    return sets;
-  }
-
-  async getAllCards(): Promise<OnePieceCard[]> {
-    if (this.allCardsCache) return this.allCardsCache;
-    
-    const [setsResp, decksResp, promoResp] = await Promise.all([
-      fetch(`${this.baseUrl}/allSetCards/?format=json`),
-      fetch(`${this.baseUrl}/allSTCards/?format=json`),
-      fetch(`${this.baseUrl}/allPromoCards/?format=json`).catch(() => ({ json: () => [] })),
-    ]);
-    
-    const setsCards = await setsResp.json();
-    const decksCards = await decksResp.json();
-    const promosCards = await promoResp.json();
-    
-    const allRaw = [...setsCards, ...decksCards, ...promosCards];
-    const cards = allRaw.map((c: any) => this.mapCard(c)).filter(Boolean);
-    
-    this.allCardsCache = cards;
-    return cards;
-  }
-
-  async searchCards(query: string): Promise<OnePieceCard[]> {
-    const all = await this.getAllCards();
-    const q = query.toLowerCase();
-    return all.filter(c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+    try {
+      const response = await fetchBackend<{ data?: OnePieceSet[] }>('/api/cards/onepiece/sets');
+      const sets = response.data ?? [];
+      cacheService.set(cacheKey, sets, 60 * 60 * 1000);
+      return sets;
+    } catch (err) {
+      console.error('Error fetching One Piece sets from backend, trying OPTCG:', err);
+      try {
+        const raw = await fetchOptcgFallback<{ set_name: string; set_id: string }[]>('/allSets/');
+        const sets = raw.map((s) => ({ id: s.set_id, name: s.set_name }));
+        cacheService.set(cacheKey, sets, 60 * 60 * 1000);
+        return sets;
+      } catch {
+        return [];
+      }
+    }
   }
 
   async getSetCards(setId: string): Promise<OnePieceCard[]> {
-    const all = await this.getAllCards();
-    return all.filter(c => c.setId === setId);
-  }
+    const cacheKey = `op_cards_v2_${setId}`;
+    const cached = cacheService.get<OnePieceCard[]>(cacheKey);
+    if (cached) return cached;
 
-  async getCardById(cardId: string): Promise<OnePieceCard | null> {
-    const all = await this.getAllCards();
-    return all.find(c => c.id === cardId) || null;
-  }
-
-  async getCardsWithPriceHistory(): Promise<OnePieceCard[]> {
     try {
-      const resp = await fetch(`${this.baseUrl}/sets/card/twoweeks/?format=json`);
-      const data = await resp.json();
-      return (data || []).map((c: any) => this.mapCard(c)).filter(Boolean);
-    } catch {
-      return this.getAllCards();
+      const response = await fetchBackend<{ data?: OnePieceCard[] }>(
+        `/api/cards/onepiece/set/${encodeURIComponent(setId)}`
+      );
+      const cards = response.data ?? [];
+      cacheService.set(cacheKey, cards, 15 * 60 * 1000);
+      return cards;
+    } catch (err) {
+      console.error(`Error fetching One Piece cards for set ${setId} from backend, trying OPTCG:`, err);
+      try {
+        const raw = await fetchOptcgFallback<OPTCGCardResponse[]>(`/sets/${encodeURIComponent(setId)}/`);
+        const cards = raw.map(mapCard);
+        cacheService.set(cacheKey, cards, 15 * 60 * 1000);
+        return cards;
+      } catch (fallbackErr) {
+        console.error(`One Piece set cards fallback failed for ${setId}:`, fallbackErr);
+        return [];
+      }
+    }
+  }
+
+  async searchCards(query?: string, setId?: string): Promise<OnePieceCard[]> {
+    if (!query || query.trim().length < 2) return [];
+
+    const cacheKey = `op_search_v3_${query}_${setId || 'all'}`;
+    const cached = cacheService.get<OnePieceCard[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await fetchBackend<{ data?: OnePieceCard[] }>('/api/cards/onepiece', {
+        query: query.trim(),
+        setId: setId || '',
+        limit: '2000',
+      });
+      const cards = (response.data || []).filter((c) => c?.id);
+      cacheService.set(cacheKey, cards, 10 * 60 * 1000);
+      return cards;
+    } catch (err) {
+      console.error('Backend One Piece search failed, falling back to full OPTCG catalog:', err);
+
+      try {
+        const catalog = await fetchFullOptcgCatalog(fetchOptcgFallback);
+        const filtered = searchOptcgCatalog(catalog, query, setId);
+        cacheService.set(cacheKey, filtered, 10 * 60 * 1000);
+        return filtered;
+      } catch (fallbackErr) {
+        console.error('One Piece search fallback failed:', fallbackErr);
+        return [];
+      }
+    }
+  }
+
+  async getCardById(cardSetId: string): Promise<OnePieceCard | null> {
+    const cacheKey = `op_card_${cardSetId}`;
+    const cached = cacheService.get<OnePieceCard>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await fetchBackend<{ data?: OnePieceCard }>(
+        `/api/cards/onepiece/card/${encodeURIComponent(cardSetId)}`
+      );
+      const card = response.data ?? null;
+      if (card) {
+        cacheService.set(cacheKey, card, 30 * 60 * 1000);
+      }
+      return card;
+    } catch (err) {
+      console.error(`Backend card fetch failed for ${cardSetId}, trying OPTCG:`, err);
+      try {
+        const raw = await fetchOptcgFallback<OPTCGCardResponse | OPTCGCardResponse[]>(
+          `/sets/card/${encodeURIComponent(cardSetId)}/`
+        );
+        const variants = Array.isArray(raw) ? raw : [raw];
+        if (!variants.length) return null;
+
+        const best = variants.reduce((a, b) =>
+          (b.market_price ?? 0) >= (a.market_price ?? 0) ? b : a
+        );
+        const card = mapCard(best);
+        cacheService.set(cacheKey, card, 30 * 60 * 1000);
+        return card;
+      } catch {
+        return null;
+      }
     }
   }
 
   extractCardPrice(card: OnePieceCard): number {
-    return card.marketPrice || card.inventoryPrice || 0;
+    return card.marketPrice ?? card.inventoryPrice ?? 0;
   }
 
-  private mapCard(raw: any): OnePieceCard | null {
-    if (!raw || !raw.card_set_id) return null;
-    
-    const setId = raw.set_id || raw.structure_deck_id || raw.st_id || '';
-    const setName = raw.set_name || raw.structure_deck_name || raw.st_name || 'Unknown';
-    
-    return {
-      id: raw.card_set_id,
-      name: raw.card_name || 'Unknown',
-      setId,
-      setName,
-      number: raw.card_set_id,
-      rarity: raw.rarity || 'C',
-      color: raw.card_color || 'Unknown',
-      cardType: raw.card_type || 'Character',
-      cost: raw.card_cost ? parseInt(raw.card_cost) : null,
-      power: raw.card_power ? parseInt(raw.card_power) : null,
-      counter: raw.counter_amount || null,
-      life: raw.life ? parseInt(raw.life) : null,
-      attribute: raw.attribute || null,
-      subTypes: raw.sub_types || '',
-      cardText: raw.card_text || '',
-      imageUrl: raw.card_image || '',
-      marketPrice: raw.market_price || 0,
-      inventoryPrice: raw.inventory_price || 0,
-      images: raw.card_image ? { small: raw.card_image, large: raw.card_image } : undefined,
-      tcgplayer: undefined,
-      cardmarket: undefined,
-      investmentData: undefined,
-      set: {
-        id: setId,
-        name: setName,
-        releaseDate: '',
-        total: 0,
-        series: 'One Piece',
-      },
-    };
+  async getPriceHistory(
+    catalogId: string,
+    currentPrice?: number
+  ): Promise<{ date: string; price: number }[]> {
+    const cacheKey = `op_price_history_v2_${catalogId}_${currentPrice ?? 'auto'}`;
+    const cached = cacheService.get<{ date: string; price: number }[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await fetchBackend<{
+        priceHistory?: { date: string; price: number }[];
+        currentPrice?: number;
+      }>(`/api/prices/onepiece/${encodeURIComponent(catalogId)}`);
+      const history = (response.priceHistory || []).filter((e) => e.price > 0 && e.date);
+      cacheService.set(cacheKey, history, 5 * 60 * 1000);
+      return history;
+    } catch (err) {
+      console.error(`Error fetching price history for ${catalogId}:`, err);
+      return [];
+    }
   }
 }
 
-export const onepieceApi = new OnePieceApiService();
+export const onePieceApi = new OnePieceApiService();

@@ -3,20 +3,23 @@ import cron from 'node-cron';
 import swaggerUi from 'swagger-ui-express';
 import priceHistoryRouter from './routes/priceHistory';
 import cardSearchRouter from './routes/cardSearch';
+import onePieceCardsRouter from './routes/onePieceCards';
+import { syncOnePieceData, isOnePieceCatalogIncomplete } from './services/onePieceSync';
 import setTrackerRouter from './routes/setTracker';
 import enhancedPacksRouter from './routes/enhancedPacks';
 import marketInsightsRouter from './routes/marketInsights';
 import trackedCardsRouter from './routes/trackedCards';
 import { initializeDatabase, getDb } from './db/database';
 import { runMigrations } from './db/migrations';
-import { updatePriceData } from './services/dataFetcher';
-import { backupDatabaseToCloud, getCloudBackupStatus } from './services/cloudBackupService';
+import { updatePriceData, getRunDate, hasCompletedPriceUpdateFor } from './services/dataFetcher';
+import { backupDatabaseToCloud, getCloudBackupStatus, restoreDatabaseFromCloud } from './services/cloudBackupService';
 import { syncCatalogData } from './services/catalogSync';
 import { backfillCardMappingImages } from './services/cardImageBackfillService';
 import { env } from './config/env';
 import { swaggerSpec } from './config/swagger';
 import { corsMiddleware, securityMiddleware } from './middleware/security';
-import { apiLimiter, authLimiter } from './middleware/rateLimiter';
+import { csrfProtection } from './middleware/csrf';
+import { apiLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { authenticate, AuthRequest } from './middleware/auth';
 import { requireAdmin } from './middleware/admin';
@@ -40,6 +43,7 @@ app.set('trust proxy', 1);
 
 app.use(securityMiddleware());
 app.use(corsMiddleware());
+app.use(csrfProtection);
 app.use(express.json({ limit: BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
@@ -92,7 +96,11 @@ function setupRoutes(
       logger.info('Running scheduled price data update...');
       try {
         const result = await updatePriceData();
-        logger.info('Price data update completed', result);
+        if (result.skipped) {
+          logger.warn('Daily price data update skipped', { reason: (result as { reason?: string }).reason });
+          return;
+        }
+        logger.info('Daily price data update completed', result);
         const imageResult = await backfillCardMappingImages();
         logger.info('Post-price-update image backfill completed', imageResult);
       } catch (error: any) {
@@ -101,6 +109,37 @@ function setupRoutes(
     },
     { timezone: 'America/New_York' }
   );
+
+  // Catch-up: node-cron never fires missed jobs (machine asleep at 2 AM ET,
+  // process not running, etc.), which silently freezes price data. Check every
+  // 30 minutes whether today's price update completed and run it if not.
+  const PRICE_CATCHUP_INTERVAL_MS = 30 * 60 * 1000;
+  const runPriceUpdateCatchUp = async () => {
+    try {
+      const today = getRunDate();
+      // Before 2 AM ET, today's run isn't due yet — leave it to the cron.
+      const etHour = parseInt(
+        new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }).format(new Date()),
+        10
+      );
+      if (etHour < 2) return;
+      if (await hasCompletedPriceUpdateFor(today)) return;
+
+      logger.warn('Price update for today has not completed — running catch-up', { runDate: today });
+      const result = await updatePriceData();
+      if (result.skipped) {
+        logger.info('Price update catch-up skipped', { reason: (result as { reason?: string }).reason });
+        return;
+      }
+      logger.info('Price update catch-up completed', result);
+      const imageResult = await backfillCardMappingImages();
+      logger.info('Post-catch-up image backfill completed', imageResult);
+    } catch (error: any) {
+      logger.error('Price update catch-up failed', { error: error.message });
+    }
+  };
+  setTimeout(() => void runPriceUpdateCatchUp(), 60_000);
+  setInterval(() => void runPriceUpdateCatchUp(), PRICE_CATCHUP_INTERVAL_MS);
 
   cron.schedule(
     '30 1 * * *',
@@ -118,12 +157,27 @@ function setupRoutes(
     { timezone: 'America/New_York' }
   );
 
-  app.use('/api/auth', authLimiter, createAuthRouter(authService));
+  cron.schedule(
+    '45 1 * * *',
+    async () => {
+      logger.info('Running scheduled One Piece catalog and price sync...');
+      try {
+        const result = await syncOnePieceData();
+        logger.info('One Piece sync completed', result);
+      } catch (error: any) {
+        logger.error('Failed to sync One Piece data', { error: error.message });
+      }
+    },
+    { timezone: 'America/New_York' }
+  );
+
+  app.use('/api/auth', createAuthRouter(authService));
   app.use('/api/alerts', createAlertsRouter(alertService));
   app.use('/api/portfolio', createPortfolioRouter(portfolioService));
   app.use('/api/prices', priceHistoryRouter);
   app.use('/api/cards', setTrackerRouter);
   app.use('/api/cards', cardSearchRouter);
+  app.use('/api/cards', onePieceCardsRouter);
   app.use('/api/packs', enhancedPacksRouter);
   app.use('/api/market-insights', marketInsightsRouter);
   app.use('/api/tracked-cards', trackedCardsRouter);
@@ -145,23 +199,78 @@ function setupRoutes(
     { timezone: 'America/New_York' }
   );
 
+  // Full signal scrape daily at 4:00 AM ET (after price update + prediction run).
+  cron.schedule(
+    '0 4 * * *',
+    async () => {
+      logger.info('Running scheduled signal scrape...');
+      try {
+        const { runSignalScrape } = await import('./services/scrapers/scraperRunner');
+        const result = await runSignalScrape();
+        logger.info('Scheduled signal scrape completed', result);
+      } catch (error: any) {
+        logger.error('Failed to run signal scrape', { error: error.message });
+      }
+    },
+    { timezone: 'America/New_York' }
+  );
+
+  // Fast-moving social/video sources refresh every 6 hours.
+  cron.schedule(
+    '30 */6 * * *',
+    async () => {
+      logger.info('Running scheduled social signal scrape...');
+      try {
+        const { runSignalScrape } = await import('./services/scrapers/scraperRunner');
+        const result = await runSignalScrape();
+        logger.info('Scheduled social signal scrape completed', result);
+      } catch (error: any) {
+        logger.error('Failed to run social signal scrape', { error: error.message });
+      }
+    },
+    { timezone: 'America/New_York' }
+  );
+
+  // Release-calendar pages change rarely — scrape weekly (Sunday 5:00 AM ET).
+  cron.schedule(
+    '0 5 * * 0',
+    async () => {
+      logger.info('Running scheduled weekly signal scrape...');
+      try {
+        const { runSignalScrape } = await import('./services/scrapers/scraperRunner');
+        const result = await runSignalScrape();
+        logger.info('Scheduled weekly signal scrape completed', result);
+      } catch (error: any) {
+        logger.error('Failed to run weekly signal scrape', { error: error.message });
+      }
+    },
+    { timezone: 'America/New_York' }
+  );
+
   app.post('/api/update', authenticate, requireAdmin, async (req, res) => {
     try {
       logger.info('Manual price data update requested');
       const result = await updatePriceData();
       if (result.skipped) {
-        res.status(409).json({ success: false, message: 'Update already running' });
+        const skippedResult = result as { reason?: string };
+        res.status(409).json({ success: false, message: skippedResult.reason || 'Update already running' });
+        return;
+      }
+      if (result.syncRunId == null) {
+        const errorResult = result as { error?: string };
+        res.status(409).json({ success: false, message: errorResult.error || 'Update failed to start' });
         return;
       }
       logger.info('Manual update finished', result);
+      const successResult = result as { syncRunId: number; totalPricesProcessed: number };
       res.status(202).json({
         success: true,
-        syncRunId: result.syncRunId,
-        message: `Data update process completed. Prices processed: ${result.totalPricesProcessed}`,
+        syncRunId: successResult.syncRunId,
+        message: `Data update process completed. Prices processed: ${successResult.totalPricesProcessed}`,
       });
     } catch (error: any) {
       logger.error('Error during manual update', { error: error.message });
-      res.status(500).json({ success: false, error: 'Update failed: ' + error.message });
+      res.status(500).json({ success: false, error: 'Update failed' });
     }
   });
 
@@ -216,17 +325,53 @@ function setupRoutes(
     }
   });
 
+  app.post('/api/cloud-backup/restore', authenticate, requireAdmin, async (_req, res) => {
+    try {
+      const result = await restoreDatabaseFromCloud();
+      res.status(result.restored || !result.enabled ? 200 : 500).json(result);
+      if (result.restored) {
+        logger.warn('Database restored from cloud — server restart recommended');
+        setTimeout(() => process.exit(0), 1000);
+      }
+    } catch (error: any) {
+      logger.error('Cloud restore endpoint failed', { error: error.message });
+      res.status(500).json({ success: false, error: 'Cloud restore failed' });
+    }
+  });
+
   app.post('/api/sync-catalog', authenticate, requireAdmin, async (_req, res) => {
     try {
       logger.info('Manual catalog sync requested');
-      syncCatalogData()
-        .then((result) => logger.info('Manual catalog sync completed', result))
-        .catch((error: any) => logger.error('Manual catalog sync failed', { error: error.message }));
-
+      (async () => {
+        try {
+          const result = await syncCatalogData();
+          logger.info('Manual catalog sync completed', result);
+        } catch (error: any) {
+          logger.error('Manual catalog sync failed', { error: error.message });
+        }
+      })();
       res.status(202).json({ success: true, message: 'Catalog sync started in background.' });
     } catch (error: any) {
       logger.error('Error starting manual catalog sync', { error: error.message });
       res.status(500).json({ success: false, error: 'Failed to start catalog sync process' });
+    }
+  });
+
+  app.post('/api/sync-onepiece', authenticate, requireAdmin, async (_req, res) => {
+    try {
+      logger.info('Manual One Piece sync requested');
+      (async () => {
+        try {
+          const result = await syncOnePieceData();
+          logger.info('Manual One Piece sync completed', result);
+        } catch (error: any) {
+          logger.error('Manual One Piece sync failed', { error: error.message });
+        }
+      })();
+      res.status(202).json({ success: true, message: 'One Piece sync started in background.' });
+    } catch (error: any) {
+      logger.error('Error starting manual One Piece sync', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to start One Piece sync process' });
     }
   });
 
@@ -256,8 +401,10 @@ function setupRoutes(
         version: '1.0.0',
         scheduledTasks: {
           catalogSync: 'Daily at 1:30 AM EST',
+          onePieceSync: 'Daily at 1:45 AM EST',
           dataUpdate: 'Daily at 2:00 AM EST',
           predictions: 'Daily at 3:00 AM EST',
+          signalScrape: 'Daily at 4:00 AM EST (social sources every 6 hours)',
         },
         endpoints: {
           auth: '/api/auth',
@@ -316,16 +463,42 @@ async function bootstrap() {
     const alertService = new AlertService(db);
     const portfolioService = new PortfolioService(db);
 
-    await initializeSetCodeService();
+    await Promise.all([
+      authService.init(),
+      alertService.init(),
+    ]);
+
     setupRoutes(authService, alertService, portfolioService);
 
-    setTimeout(() => {
-      backfillCardMappingImages()
-        .then((result) => logger.info('Startup image backfill completed', result))
-        .catch((error) =>
-          logger.warn('Startup image backfill failed (non-fatal)', { error: (error as Error).message })
-        );
-    }, 15_000);
+    void initializeSetCodeService().catch((error) => {
+      logger.error('Background set code service initialization failed', {
+        error: (error as Error).message,
+      });
+    });
+
+    (async () => {
+      await new Promise((r) => setTimeout(r, 15_000));
+      try {
+        const result = await backfillCardMappingImages();
+        logger.info('Startup image backfill completed', result);
+      } catch (error) {
+        logger.warn('Startup image backfill failed (non-fatal)', { error: (error as Error).message });
+      }
+    })();
+
+    (async () => {
+      await new Promise((r) => setTimeout(r, 20_000));
+      try {
+        const incomplete = await isOnePieceCatalogIncomplete();
+        if (incomplete) {
+          logger.info('One Piece catalog incomplete — running sync in background');
+          const result = await syncOnePieceData();
+          logger.info('One Piece sync completed', result);
+        }
+      } catch (error) {
+        logger.warn('One Piece catalog check / sync failed (non-fatal)', { error: (error as Error).message });
+      }
+    })();
   } catch (error) {
     logger.error('Failed to start server', { error });
     process.exit(1);

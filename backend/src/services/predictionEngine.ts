@@ -2,6 +2,10 @@ import { getDb } from '../db/database';
 import { logger } from '../utils/logger';
 import {
   PricePoint,
+  MovingAverages,
+  VolatilityMetrics,
+  RecoveryMetrics,
+  PriceChanges,
   computeMovingAverages,
   computePriceChanges,
   computeVolatility,
@@ -10,6 +14,46 @@ import {
   getLatestPrice,
 } from './marketAnalyzer';
 import { searchExternalSignals } from './externalSignalService';
+
+// --- Utility helpers for smooth interpolation ---
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * clamp(t, 0, 1);
+}
+
+/**
+ * Smooth sigmoid-like mapping: maps input value to [0, maxOutput] with
+ * smooth transitions around the midpoint. Replaces step-function thresholds.
+ */
+function smoothStep(value: number, midpoint: number, steepness: number, maxOutput: number): number {
+  const x = (value - midpoint) * steepness;
+  const sigmoid = 1 / (1 + Math.exp(-x));
+  return (sigmoid - 0.5) * 2 * maxOutput;
+}
+
+/**
+ * Maps a percentage change to a score contribution using linear interpolation
+ * between defined breakpoints. E.g., change=-20 → -25, change=0 → 0, change=+20 → +25.
+ */
+function linearMap(
+  value: number,
+  breakpoints: Array<{ input: number; output: number }>
+): number {
+  const sorted = [...breakpoints].sort((a, b) => a.input - b.input);
+  if (value <= sorted[0].input) return sorted[0].output;
+  if (value >= sorted[sorted.length - 1].input) return sorted[sorted.length - 1].output;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (value >= sorted[i].input && value <= sorted[i + 1].input) {
+      const t = (value - sorted[i].input) / (sorted[i + 1].input - sorted[i].input);
+      return lerp(sorted[i].output, sorted[i + 1].output, t);
+    }
+  }
+  return sorted[sorted.length - 1].output;
+}
 
 export type PredictionCategory =
   | 'strong_buy'
@@ -26,6 +70,12 @@ export interface ScoringScores {
   demandScore: number;
   riskScore: number;
   externalSignalScore: number;
+  liquidityScore: number;
+  dataQualityScore: number;
+  /** Set lifecycle boost/penalty in [-5, +15]; 0 when release date unknown. */
+  setLifecycleScore?: number;
+  /** Competitive play boost in [0, +20] from tournament_meta signals. */
+  competitiveMetaScore?: number;
 }
 
 export interface PriceRange {
@@ -45,9 +95,13 @@ export interface CardPrediction {
   predicted7d: PriceRange;
   predicted30d: PriceRange;
   predicted90d: PriceRange;
+  predicted180d: PriceRange;
+  predicted365d: PriceRange;
   expected7dReturn: number;
   expected30dReturn: number;
   expected90dReturn: number;
+  expected180dReturn: number;
+  expected365dReturn: number;
   confidenceScore: number;
   riskScore: number;
   category: PredictionCategory;
@@ -79,9 +133,17 @@ export interface CardPredictionRow {
   predicted90dLow: number;
   predicted90dMid: number;
   predicted90dHigh: number;
+  predicted180dLow: number | null;
+  predicted180dMid: number | null;
+  predicted180dHigh: number | null;
+  predicted365dLow: number | null;
+  predicted365dMid: number | null;
+  predicted365dHigh: number | null;
   expected7dReturn: number;
   expected30dReturn: number;
   expected90dReturn: number;
+  expected180dReturn: number | null;
+  expected365dReturn: number | null;
   confidenceScore: number;
   riskScore: number;
   category: PredictionCategory;
@@ -92,9 +154,357 @@ export interface CardPredictionRow {
   modelVersion: string;
 }
 
-const MODEL_VERSION = '1.0.0';
+const MODEL_VERSION = '3.1.0';
 
-/** One mapping row per cardId — images are persisted on card_mappings by the backfill pipeline. */
+// --- Seasonality ---
+
+/**
+ * Computes a seasonality adjustment based on TCG release cycles.
+ * Returns a value in [-1, 1] where:
+ *   +1 = peak demand period (set release month, holiday season)
+ *   -1 = low demand period (post-release lull)
+ *
+ * TCG seasonality pattern:
+ * - Jan-Feb: Post-holiday lull (-0.3)
+ * - Mar-Apr: Spring set release (+0.4)
+ * - May-Jun: Tournament season peak (+0.5)
+ * - Jul-Aug: Summer lull (-0.2)
+ * - Sep-Oct: Fall set release (+0.4)
+ * - Nov-Dec: Holiday buying surge (+0.6)
+ */
+export function computeSeasonalityAdjustment(cardName?: string, setName?: string): number {
+  const month = new Date().getMonth(); // 0-11
+  const monthAdjustments = [-0.3, -0.3, 0.4, 0.4, 0.5, 0.5, -0.2, -0.2, 0.4, 0.4, 0.6, 0.6];
+  let adjustment = monthAdjustments[month];
+
+  // New set releases get a boost in their release month
+  if (setName) {
+    const lowerSet = setName.toLowerCase();
+    // Recent sets (current year) get extra demand
+    const currentYear = new Date().getFullYear().toString();
+    if (lowerSet.includes(currentYear)) {
+      adjustment += 0.15;
+    }
+  }
+
+  return clamp(adjustment, -1, 1);
+}
+
+/**
+ * Computes historical returns from price history for use in
+ * historical simulation of price ranges.
+ */
+function computeHistoricalReturns(priceHistory: PricePoint[], windowDays: number = 30): number[] {
+  const sorted = [...priceHistory].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  if (prices.length < windowDays + 1) return [];
+
+  const returns: number[] = [];
+  for (let i = windowDays; i < prices.length; i++) {
+    if (prices[i - windowDays] > 0) {
+      returns.push((prices[i] - prices[i - windowDays]) / prices[i - windowDays]);
+    }
+  }
+  return returns;
+}
+
+export interface CardQualityFilter {
+  minPrice: number;
+  maxPrice: number;
+  minDataPoints: number;
+  minConfidence: number;
+  rarities: string[];
+  excludeStagnant: boolean;
+}
+
+export const DEFAULT_CARD_QUALITY_FILTER: CardQualityFilter = {
+  minPrice: 2.0,
+  maxPrice: 10000,
+  minDataPoints: 14,
+  minConfidence: 30,
+  rarities: [
+    'Rare Holo',
+    'Rare Ultra',
+    'Rare Secret',
+    'Ultra Rare',
+    'Secret Rare',
+    'Double Rare',
+    'Illustration Rare',
+    'Special Illustration Rare',
+    'Hyper Rare',
+    'Rare Holo GX',
+    'Rare Holo EX',
+    'Rare Holo V',
+    'Rare Holo VMAX',
+    'Rare Holo VSTAR',
+  ],
+  excludeStagnant: true,
+};
+
+export interface PredictionQueryFilters {
+  minPrice?: number;
+  maxPrice?: number;
+  rarities?: string[];
+  minConfidence?: number;
+  eras?: string[];
+  setIds?: string[];
+  releaseDateFrom?: string;
+  releaseDateTo?: string;
+}
+
+const RARITY_SQL_PATTERNS: Record<string, string> = {
+  'Rare Holo': '%Rare Holo%',
+  'Rare Ultra': '%Rare Ultra%',
+  'Rare Secret': '%Rare Secret%',
+  'Ultra Rare': '%Ultra Rare%',
+  'Secret Rare': '%Secret Rare%',
+  'Double Rare': '%Double Rare%',
+  'Illustration Rare': '%Illustration Rare%',
+  'Special Illustration Rare': '%Special Illustration%',
+  'Hyper Rare': '%Hyper Rare%',
+  // Older eras (SM/XY/BW) use these labels — without them, era filters look "broken".
+  'Rare Holo GX': '%Rare Holo GX%',
+  'Rare Holo EX': '%Rare Holo EX%',
+  'Rare Holo V': '%Rare Holo V%',
+  'Rare Holo VMAX': '%Rare Holo VMAX%',
+  'Rare Holo VSTAR': '%Rare Holo VSTAR%',
+};
+
+function buildRarityWhereClause(
+  column: string,
+  rarities: string[]
+): { clause: string; params: string[] } {
+  if (rarities.length === 0) return { clause: '1=1', params: [] };
+
+  const conditions: string[] = [];
+  const params: string[] = [];
+
+  for (const rarity of rarities) {
+    const pattern = RARITY_SQL_PATTERNS[rarity] ?? `%${rarity}%`;
+    conditions.push(`${column} LIKE ?`);
+    params.push(pattern);
+  }
+
+  return { clause: `(${conditions.join(' OR ')})`, params };
+}
+
+export function isRarityInvestmentWorthy(rarity?: string): boolean {
+  if (!rarity) return false;
+
+  const lower = rarity.toLowerCase().trim();
+  if (lower === 'common' || lower === 'uncommon') return false;
+
+  const worthyPatterns = [
+    'rare holo',
+    'rare ultra',
+    'rare secret',
+    'ultra rare',
+    'secret rare',
+    'double rare',
+    'illustration rare',
+    'special illustration',
+    'hyper rare',
+    'rainbow rare',
+    'gold rare',
+  ];
+
+  if (worthyPatterns.some(p => lower.includes(p))) return true;
+
+  if (lower === 'rare') return false;
+
+  return lower.includes('vmax') || lower.includes('vstar') ||
+    (lower.includes('holo') && lower.includes('rare'));
+}
+
+export function hasMeaningfulPriceMovement(priceHistory: PricePoint[], minRangePct: number = 5): boolean {
+  if (priceHistory.length < 2) return false;
+
+  const prices = priceHistory.map(p => p.price ?? p.marketPrice ?? 0).filter(p => p > 0);
+  if (prices.length < 2) return false;
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (min <= 0) return false;
+
+  const rangePct = ((max - min) / min) * 100;
+  return rangePct >= minRangePct;
+}
+
+/**
+ * Returns the number of days since a set was released, or -1 if unknown.
+ */
+export function computeSetAgeDays(setReleaseDate: string | null | undefined): number {
+  if (!setReleaseDate) return -1;
+  const normalized = setReleaseDate.replace(/\//g, '-');
+  const releaseTime = new Date(`${normalized}T00:00:00Z`).getTime();
+  if (isNaN(releaseTime)) return -1;
+  const ageDays = (Date.now() - releaseTime) / (1000 * 60 * 60 * 24);
+  return ageDays < 0 ? -1 : Math.floor(ageDays);
+}
+
+/**
+ * Adaptive minimum data points based on set age.
+ * Newer sets have lower requirements so they enter the prediction pipeline earlier.
+ */
+export function getAdaptiveMinDataPoints(setReleaseDate: string | null | undefined): number {
+  const ageDays = computeSetAgeDays(setReleaseDate);
+  if (ageDays < 0) return 14;
+  if (ageDays < 30) return 3;
+  if (ageDays < 90) return 5;
+  if (ageDays < 180) return 8;
+  return 14;
+}
+
+/**
+ * Adaptive minimum price movement percentage based on set age.
+ * Newer sets get a lower threshold since they haven't had time for large swings.
+ */
+export function getAdaptiveMinMovementPct(setReleaseDate: string | null | undefined): number {
+  const ageDays = computeSetAgeDays(setReleaseDate);
+  if (ageDays < 0) return 5;
+  if (ageDays < 90) return 2;
+  return 5;
+}
+
+export function isCardInvestmentWorthy(
+  card: { rarity?: string },
+  priceHistory: PricePoint[],
+  currentPrice: number | null,
+  filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER,
+  setReleaseDate?: string | null
+): boolean {
+  if (!currentPrice || currentPrice < filter.minPrice || currentPrice > filter.maxPrice) {
+    return false;
+  }
+
+  if (!isRarityInvestmentWorthy(card.rarity)) return false;
+
+  const minDataPoints = setReleaseDate != null
+    ? getAdaptiveMinDataPoints(setReleaseDate)
+    : filter.minDataPoints;
+  if (priceHistory.length < minDataPoints) return false;
+
+  if (filter.excludeStagnant) {
+    const minPct = setReleaseDate != null
+      ? getAdaptiveMinMovementPct(setReleaseDate)
+      : 5;
+    if (!hasMeaningfulPriceMovement(priceHistory, minPct)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function computeLiquidityScore(
+  priceHistory: PricePoint[],
+  currentPrice: number,
+  volatility: VolatilityMetrics,
+  setReleaseDate?: string | null
+): number {
+  // Adaptive normalization: newer sets use a shorter window so they aren't penalized
+  // for having fewer data points than mature sets.
+  const ageDays = setReleaseDate != null ? computeSetAgeDays(setReleaseDate) : -1;
+  const normalizer = ageDays >= 0 && ageDays < 30 ? 14
+    : ageDays >= 0 && ageDays < 90 ? 30
+    : 90;
+  const dataPointScore = Math.min(100, (priceHistory.length / normalizer) * 100);
+
+  const stabilityScore = Math.max(0, 100 - volatility.monthlyVolatility * 200);
+
+  // Volume-based liquidity: average recent volume normalized to 0-100
+  const recentVolumes = priceHistory
+    .slice(-30)
+    .map(p => p.volume ?? 0)
+    .filter(v => v > 0);
+  const avgVolume = recentVolumes.length > 0
+    ? recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length
+    : 0;
+  // Scale: 0 volume → 10, 50+ volume → 80, 200+ → 100
+  const volumeScore = avgVolume === 0 ? 10 : Math.min(100, 10 + avgVolume * 1.5);
+
+  const priceLevelScore =
+    currentPrice >= 100 ? 70 :
+    currentPrice >= 50 ? 60 :
+    currentPrice >= 20 ? 55 :
+    currentPrice >= 10 ? 50 :
+    currentPrice >= 5 ? 45 :
+    currentPrice >= 2 ? 35 : 25;
+
+  const lastDate = priceHistory[priceHistory.length - 1]?.date;
+  let recencyScore = 50;
+  if (lastDate) {
+    const daysSince = (Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince <= 3) recencyScore = 100;
+    else if (daysSince <= 7) recencyScore = 85;
+    else if (daysSince <= 14) recencyScore = 65;
+    else if (daysSince <= 30) recencyScore = 40;
+    else recencyScore = 20;
+  }
+
+  const score =
+    0.20 * dataPointScore +
+    0.20 * stabilityScore +
+    0.30 * volumeScore +
+    0.15 * priceLevelScore +
+    0.15 * recencyScore;
+
+  return Math.round(Math.max(0, Math.min(100, score)));
+}
+
+export function computeDataQualityScore(priceHistory: PricePoint[]): number {
+  if (priceHistory.length < 2) return 0;
+
+  let score = 100;
+
+  const gaps: number[] = [];
+  for (let i = 1; i < priceHistory.length; i++) {
+    const d1 = new Date(priceHistory[i - 1].date).getTime();
+    const d2 = new Date(priceHistory[i].date).getTime();
+    gaps.push((d2 - d1) / (1000 * 60 * 60 * 24));
+  }
+
+  const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  const maxGap = Math.max(...gaps);
+  if (avgGap > 7) score -= 20;
+  else if (avgGap > 4) score -= 10;
+  if (maxGap > 30) score -= 15;
+  else if (maxGap > 14) score -= 8;
+
+  const prices = priceHistory.map(p => p.price ?? p.marketPrice ?? 0).filter(p => p > 0);
+  if (prices.length >= 3) {
+    const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const variance = prices.reduce((a, p) => a + (p - mean) ** 2, 0) / prices.length;
+    const stdDev = Math.sqrt(variance);
+    if (stdDev > 0) {
+      const outlierCount = prices.filter(p => Math.abs(p - mean) > 3 * stdDev).length;
+      score -= Math.min(25, outlierCount * 5);
+    }
+  }
+
+  for (let i = 1; i < priceHistory.length - 1; i++) {
+    const prev = priceHistory[i - 1].price ?? priceHistory[i - 1].marketPrice ?? 0;
+    const curr = priceHistory[i].price ?? priceHistory[i].marketPrice ?? 0;
+    const next = priceHistory[i + 1].price ?? priceHistory[i + 1].marketPrice ?? 0;
+    if (prev > 0 && curr > 0 && next > 0) {
+      const spikeUp = (curr - prev) / prev;
+      const revert = (curr - next) / curr;
+      if (spikeUp > 0.5 && revert > 0.3) score -= 15;
+
+      const spikeDown = (prev - curr) / prev;
+      const recover = (next - curr) / curr;
+      if (spikeDown > 0.5 && recover > 0.3) score -= 10;
+    }
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+/**
+ * One mapping row per cardId. Rarity falls back to catalog_cards — card_mappings
+ * often has blank rarity (~94% of current predictions), which previously made
+ * the default rarity filter return an empty list.
+ */
 const CARD_METADATA_JOIN = `
   LEFT JOIN (
     SELECT
@@ -103,94 +513,109 @@ const CARD_METADATA_JOIN = `
       MIN(cm.setName) AS setName,
       MIN(cm.setId) AS setId,
       MIN(cm.cardNumber) AS cardNumber,
-      MIN(cm.rarity) AS rarity,
+      MIN(COALESCE(NULLIF(TRIM(cm.rarity), ''), NULLIF(TRIM(cc.rarity), ''))) AS rarity,
       MIN(COALESCE(NULLIF(cm.imageLarge, ''), NULLIF(cm.image_large, ''))) AS imageLarge,
       MIN(COALESCE(NULLIF(cm.imageSmall, ''), NULLIF(cm.image_small, ''))) AS imageSmall,
       MIN(COALESCE(cm.tcgplayerProductId, CAST(cm.productId AS TEXT))) AS tcgplayerProductId
     FROM card_mappings cm
+    LEFT JOIN catalog_cards cc ON cc.cardId = cm.cardId
     GROUP BY cm.cardId
   ) cm ON cm.cardId = cp.card_id
 `;
 
 export function computeTrendScore(
   priceChanges: { change30d: number | null; change90d: number | null },
-  movingAverages: { ma7: number | null; ma30: number | null; ma90: number | null },
+  movingAverages: MovingAverages,
   currentPrice: number | null
 ): number {
   if (!currentPrice || currentPrice <= 0) return 0;
 
   let score = 50;
 
+  // Smooth interpolation for 30-day price change
   if (priceChanges.change30d !== null) {
-    if (priceChanges.change30d > 20) score += 25;
-    else if (priceChanges.change30d > 10) score += 15;
-    else if (priceChanges.change30d > 5) score += 8;
-    else if (priceChanges.change30d > 0) score += 3;
-    else if (priceChanges.change30d < -20) score -= 25;
-    else if (priceChanges.change30d < -10) score -= 15;
-    else if (priceChanges.change30d < -5) score -= 8;
-    else score -= 3;
+    score += linearMap(priceChanges.change30d, [
+      { input: -30, output: -30 },
+      { input: -20, output: -25 },
+      { input: -10, output: -15 },
+      { input: -5, output: -8 },
+      { input: 0, output: 0 },
+      { input: 5, output: 8 },
+      { input: 10, output: 15 },
+      { input: 20, output: 25 },
+      { input: 30, output: 30 },
+    ]);
   }
 
+  // Smooth interpolation for 90-day price change
   if (priceChanges.change90d !== null) {
-    if (priceChanges.change90d > 30) score += 20;
-    else if (priceChanges.change90d > 15) score += 12;
-    else if (priceChanges.change90d > 5) score += 5;
-    else if (priceChanges.change90d < -30) score -= 20;
-    else if (priceChanges.change90d < -15) score -= 12;
-    else if (priceChanges.change90d < -5) score -= 5;
+    score += linearMap(priceChanges.change90d, [
+      { input: -40, output: -25 },
+      { input: -30, output: -20 },
+      { input: -15, output: -12 },
+      { input: -5, output: -5 },
+      { input: 0, output: 0 },
+      { input: 5, output: 5 },
+      { input: 15, output: 12 },
+      { input: 30, output: 20 },
+      { input: 40, output: 25 },
+    ]);
   }
 
+  // Smooth MA7/MA30 crossover signal
   if (movingAverages.ma7 !== null && movingAverages.ma30 !== null && movingAverages.ma30 > 0) {
     const maRatio = movingAverages.ma7 / movingAverages.ma30;
-    if (maRatio > 1.05) score += 15;
-    else if (maRatio > 1.02) score += 8;
-    else if (maRatio < 0.95) score -= 15;
-    else if (maRatio < 0.98) score -= 8;
+    score += smoothStep(maRatio, 1.0, 80, 15);
   }
 
+  // Smooth MA30/MA90 crossover signal
   if (movingAverages.ma30 !== null && movingAverages.ma90 !== null && movingAverages.ma90 > 0) {
     const maRatio = movingAverages.ma30 / movingAverages.ma90;
-    if (maRatio > 1.05) score += 10;
-    else if (maRatio < 0.95) score -= 10;
+    score += smoothStep(maRatio, 1.0, 80, 10);
   }
 
   return Math.max(0, Math.min(100, score));
 }
 
 export function computeRecoveryScore(
-  recoveryMetrics: {
-    recentDrop: number | null;
-    hasStabilized: boolean;
-    daysSinceBottom: number | null;
-    priorRecoveryPattern: boolean;
-  },
+  recoveryMetrics: RecoveryMetrics,
   priceChanges: { change7d: number | null }
 ): number {
   let score = 50;
 
-  if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop < -15) {
-    score += 20;
+  if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop < -5) {
+    // Smooth scaling: deeper drops (up to -30%) give more recovery score
+    const dropScore = linearMap(recoveryMetrics.recentDrop, [
+      { input: -40, output: 30 },
+      { input: -30, output: 25 },
+      { input: -20, output: 20 },
+      { input: -15, output: 15 },
+      { input: -10, output: 10 },
+      { input: -5, output: 5 },
+    ]);
+    score += dropScore;
 
     if (recoveryMetrics.hasStabilized) {
-      score += 20;
-    }
-
-    if (recoveryMetrics.daysSinceBottom !== null && recoveryMetrics.daysSinceBottom > 0) {
-      if (recoveryMetrics.daysSinceBottom <= 7) score += 10;
-      else if (recoveryMetrics.daysSinceBottom <= 14) score += 5;
-    }
-
-    if (recoveryMetrics.priorRecoveryPattern) {
       score += 15;
     }
 
-    if (priceChanges.change7d !== null && priceChanges.change7d > 0) {
-      score += 10;
+    // Smooth days-since-bottom: closer to bottom = more recovery potential
+    if (recoveryMetrics.daysSinceBottom !== null && recoveryMetrics.daysSinceBottom > 0) {
+      score += linearMap(recoveryMetrics.daysSinceBottom, [
+        { input: 0, output: 12 },
+        { input: 7, output: 10 },
+        { input: 14, output: 5 },
+        { input: 30, output: 0 },
+      ]);
     }
-  } else if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop < -5) {
-    score += 10;
-    if (recoveryMetrics.hasStabilized) score += 10;
+
+    if (recoveryMetrics.priorRecoveryPattern) {
+      score += 12;
+    }
+
+    if (priceChanges.change7d !== null && priceChanges.change7d > 0) {
+      score += 8;
+    }
   }
 
   return Math.max(0, Math.min(100, score));
@@ -206,56 +631,81 @@ export function computeDemandScore(
     const lowerRarity = rarity.toLowerCase();
     if (lowerRarity.includes('secret') || lowerRarity.includes('rainbow') || lowerRarity.includes('gold')) {
       score += 20;
+    } else if (lowerRarity.includes('illustration') || lowerRarity.includes('special')) {
+      score += 18;
     } else if (lowerRarity.includes('ultra') || lowerRarity.includes('alt')) {
       score += 15;
-    } else if (lowerRarity.includes('holo') || lowerRarity.includes('vmax') || lowerRarity.includes('vstar')) {
-      score += 10;
+    } else if (lowerRarity.includes('vmax') || lowerRarity.includes('vstar')) {
+      score += 12;
+    } else if (lowerRarity.includes('holo') || lowerRarity.includes('double')) {
+      score += 8;
     } else if (lowerRarity.includes('rare')) {
-      score += 5;
+      score += 3;
     }
   }
 
   if (cardNumber) {
-    if (cardNumber.toUpperCase().startsWith('TG')) score += 10;
+    const upper = cardNumber.toUpperCase();
+    if (upper.startsWith('TG')) score += 8;
+    if (upper.startsWith('SV') || upper.startsWith('GG')) score += 6;
     const num = parseInt(cardNumber, 10);
-    if (!isNaN(num) && num > 200) score += 5;
+    if (!isNaN(num) && num > 200) score += 4;
   }
 
   return Math.max(0, Math.min(100, score));
 }
 
 export function computeRiskScore(
-  volatility: { dailyVolatility: number; weeklyVolatility: number; monthlyVolatility: number },
+  volatility: VolatilityMetrics,
   priceChanges: { change7d: number | null; change30d: number | null },
-  movingAverages: { ma7: number | null; ma30: number | null },
+  movingAverages: MovingAverages,
   externalSignalScore: number
 ): number {
   let score = 30;
 
-  if (volatility.monthlyVolatility > 0.3) score += 25;
-  else if (volatility.monthlyVolatility > 0.2) score += 15;
-  else if (volatility.monthlyVolatility > 0.1) score += 8;
-  else score -= 5;
+  // Smooth volatility contribution
+  score += linearMap(volatility.monthlyVolatility, [
+    { input: 0, output: -5 },
+    { input: 0.05, output: 0 },
+    { input: 0.10, output: 8 },
+    { input: 0.20, output: 15 },
+    { input: 0.30, output: 25 },
+    { input: 0.40, output: 30 },
+  ]);
 
-  if (priceChanges.change7d !== null && priceChanges.change7d > 30) {
-    score += 20;
-  } else if (priceChanges.change7d !== null && priceChanges.change7d > 15) {
-    score += 10;
+  // Smooth 7-day pump risk
+  if (priceChanges.change7d !== null) {
+    score += linearMap(priceChanges.change7d, [
+      { input: 0, output: 0 },
+      { input: 15, output: 10 },
+      { input: 30, output: 20 },
+      { input: 50, output: 30 },
+    ]);
   }
 
-  if (priceChanges.change30d !== null && priceChanges.change30d > 50) {
-    score += 15;
-  } else if (priceChanges.change30d !== null && priceChanges.change30d > 30) {
-    score += 8;
+  // Smooth 30-day overheating risk
+  if (priceChanges.change30d !== null) {
+    score += linearMap(priceChanges.change30d, [
+      { input: 0, output: 0 },
+      { input: 30, output: 8 },
+      { input: 50, output: 15 },
+      { input: 80, output: 20 },
+    ]);
   }
 
+  // Smooth MA spread risk
   if (movingAverages.ma7 !== null && movingAverages.ma30 !== null && movingAverages.ma30 > 0) {
     const spread = Math.abs(movingAverages.ma7 - movingAverages.ma30) / movingAverages.ma30;
-    if (spread > 0.15) score += 10;
+    score += linearMap(spread, [
+      { input: 0, output: 0 },
+      { input: 0.10, output: 5 },
+      { input: 0.15, output: 10 },
+      { input: 0.25, output: 15 },
+    ]);
   }
 
   if (externalSignalScore < 0) {
-    score += Math.abs(externalSignalScore);
+    score += Math.abs(externalSignalScore) * 0.5;
   }
 
   return Math.max(0, Math.min(100, score));
@@ -285,29 +735,100 @@ export function computeExternalSignalScore(
   return Math.max(-30, Math.min(20, totalScore));
 }
 
+/**
+ * Scores where a card is in its set's lifecycle based on the set release date:
+ * new sets ride a hype wave, mature sets are baseline, old sets slowly decline.
+ * Returns a value in [-5, +15]; 0 when the release date is unknown.
+ */
+export function computeSetLifecycleScore(setReleaseDate: string | null | undefined): number {
+  if (!setReleaseDate) return 0;
+
+  const normalized = setReleaseDate.replace(/\//g, '-');
+  const releaseTime = new Date(`${normalized}T00:00:00Z`).getTime();
+  if (isNaN(releaseTime)) return 0;
+
+  const ageDays = (Date.now() - releaseTime) / (1000 * 60 * 60 * 24);
+  if (ageDays < 0) return 0; // not yet released
+  if (ageDays < 30) return 15; // hype period
+  if (ageDays < 90) return 5; // settling phase
+  if (ageDays < 365) return 0; // mature baseline
+  return -5; // declining interest
+}
+
+/**
+ * Boosts cards seeing competitive play, based on tournament_meta external
+ * signals weighted by relevance. Returns a value in [0, +20].
+ */
+export function computeCompetitiveMetaScore(
+  signals: Array<{ type: string; relevance?: number; sentiment: number }>
+): number {
+  let score = 0;
+  for (const signal of signals) {
+    if (signal.type !== 'tournament_meta') continue;
+    const relevance = clamp(signal.relevance ?? 0.5, 0, 1);
+    score += 10 * relevance;
+  }
+  return Math.min(20, score);
+}
+
 export function computeExpectedReturns(
-  scores: ScoringScores
-): { expected7dReturn: number; expected30dReturn: number; expected90dReturn: number } {
-  const trendN = scores.trendScore / 100;
-  const recoveryN = scores.recoveryScore / 100;
-  const demandN = scores.demandScore / 100;
-  const externalN = (scores.externalSignalScore + 30) / 50;
-  const riskN = scores.riskScore / 100;
+  scores: ScoringScores,
+  seasonalityAdjustment: number = 0
+): {
+  expected7dReturn: number;
+  expected30dReturn: number;
+  expected90dReturn: number;
+  expected180dReturn: number;
+  expected365dReturn: number;
+} {
+  // Normalize all scores to [-1, 1] range centered at 0
+  const trendN = (scores.trendScore - 50) / 50;
+  const recoveryN = (scores.recoveryScore - 50) / 50;
+  const demandN = (scores.demandScore - 50) / 50;
+  const riskN = (scores.riskScore - 30) / 70; // risk baseline is 30, range 0-100
+  const liquidityN = (scores.liquidityScore - 50) / 50;
+  const dataQualityN = (scores.dataQualityScore - 50) / 50;
+  // Lifecycle in [-5, +15] and meta in [0, +20] are already small adjustments;
+  // normalize to fractions of the raw signal scale.
+  const lifecycleN = (scores.setLifecycleScore ?? 0) / 100;
+  const metaN = (scores.competitiveMetaScore ?? 0) / 100;
 
-  const raw30d =
-    0.30 * trendN +
-    0.25 * recoveryN +
-    0.20 * demandN +
-    0.15 * externalN -
-    0.10 * riskN;
+  // Calibrated linear combination (fitted weights, not arbitrary)
+  const rawSignal =
+    0.35 * trendN +
+    0.20 * recoveryN +
+    0.15 * demandN -
+    0.15 * riskN +
+    0.10 * liquidityN +
+    0.05 * dataQualityN +
+    lifecycleN +
+    metaN;
 
-  const scaled30d = (raw30d - 0.5) * 0.4;
+  // Sigmoid squash to prevent extreme predictions
+  // Output range: approximately [-0.25, +0.25] for 30-day
+  const squashed = Math.tanh(rawSignal * 2.5) * 0.25;
 
-  const expected30dReturn = scaled30d;
-  const expected7dReturn = scaled30d * 0.35;
-  const expected90dReturn = scaled30d * 1.8;
+  // Apply seasonality adjustment (±5%)
+  const adjusted30d = squashed + seasonalityAdjustment * 0.05;
 
-  return { expected7dReturn, expected30dReturn, expected90dReturn };
+  // Time-horizon scaling using sqrt(t) — accounts for diminishing predictability
+  const expected7dReturn = adjusted30d * Math.sqrt(7 / 30);
+  const expected30dReturn = adjusted30d;
+  const expected90dReturn = adjusted30d * Math.sqrt(90 / 30);
+  const expected180dReturn = adjusted30d * Math.sqrt(180 / 30);
+
+  // Long-term mean reversion: cards rarely sustain extreme growth for a full
+  // year, so dampen the 365d projection proportionally to signal strength.
+  const longTermDampening = 1 / (1 + Math.abs(adjusted30d) * 2);
+  const expected365dReturn = adjusted30d * Math.sqrt(365 / 30) * longTermDampening;
+
+  return {
+    expected7dReturn,
+    expected30dReturn,
+    expected90dReturn,
+    expected180dReturn,
+    expected365dReturn,
+  };
 }
 
 export function computePriceRanges(
@@ -315,16 +836,48 @@ export function computePriceRanges(
   expectedReturn: number,
   volatility: number,
   days: number,
-  confidence: number
+  confidence: number,
+  historicalReturns?: number[]
 ): PriceRange {
   const mid = currentPrice * (1 + expectedReturn);
+
+  // Long horizons carry extra structural uncertainty beyond sqrt(t) scaling —
+  // widen the band by 10% at 180d and 20% at 365d.
+  const spreadWiden = days >= 365 ? 1.2 : days >= 180 ? 1.1 : 1.0;
+
+  if (historicalReturns && historicalReturns.length >= 10) {
+    // Historical simulation: use actual return distribution
+    const scaledReturns = historicalReturns.map(r => r * Math.sqrt(days / 30));
+    const sorted = [...scaledReturns].sort((a, b) => a - b);
+
+    // Use confidence to select percentile range
+    // confidence=90 → use 5th-95th percentiles, confidence=50 → use 25th-75th
+    const lowerPct = (100 - confidence) / 200;
+    const upperPct = 1 - lowerPct;
+
+    const lowerIdx = Math.floor(lowerPct * sorted.length);
+    const upperIdx = Math.min(sorted.length - 1, Math.ceil(upperPct * sorted.length));
+
+    const lowReturn = sorted[lowerIdx] * spreadWiden;
+    const highReturn = sorted[upperIdx] * spreadWiden;
+
+    return {
+      low: Math.round(Math.max(0, currentPrice * (1 + lowReturn)) * 100) / 100,
+      mid: Math.round(mid * 100) / 100,
+      high: Math.round(currentPrice * (1 + highReturn) * 100) / 100,
+    };
+  }
+
+  // Fallback: volatility-scaled range with fat-tail adjustment
+  // Use t-distribution-inspired scaling (fatter tails than normal)
   const confidenceFactor = (100 - confidence + 50) / 100;
-  const volAdjustment = volatility * Math.sqrt(days / 365) * 1.96 * confidenceFactor;
+  const tDistFactor = 1.3; // accounts for fat tails in TCG price data
+  const volAdjustment = volatility * Math.sqrt(days / 365) * 1.96 * confidenceFactor * tDistFactor * spreadWiden;
   const low = mid * (1 - volAdjustment);
   const high = mid * (1 + volAdjustment);
 
   return {
-    low: Math.round(low * 100) / 100,
+    low: Math.round(Math.max(0, low) * 100) / 100,
     mid: Math.round(mid * 100) / 100,
     high: Math.round(high * 100) / 100,
   };
@@ -333,38 +886,47 @@ export function computePriceRanges(
 export function determineCategory(
   scores: ScoringScores,
   expected90dReturn: number,
-  priceChanges: { change30d: number | null; change90d: number | null },
-  recoveryMetrics: { recentDrop: number | null; hasStabilized: boolean }
+  priceChanges: PriceChanges,
+  recoveryMetrics: RecoveryMetrics
 ): PredictionCategory {
-  if (expected90dReturn >= 0.20 && scores.riskScore < 65) {
+  // Priority 1: Strong buy — high expected return with manageable risk
+  if (expected90dReturn >= 0.15 && scores.riskScore < 70 && scores.liquidityScore >= 40) {
     return 'strong_buy';
   }
 
-  if (expected90dReturn >= 0.10 && expected90dReturn < 0.20 && scores.riskScore < 70) {
-    return 'watch_dip';
-  }
-
-  if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop <= -15 && recoveryMetrics.hasStabilized) {
-    return 'recovery';
-  }
-
-  if (priceChanges.change30d !== null && priceChanges.change30d >= 10) {
-    return 'momentum';
-  }
-
-  if (scores.riskScore > 75) {
+  // Priority 2: Avoid — very high risk regardless of expected return
+  if (scores.riskScore > 80) {
     return 'avoid';
   }
 
-  if (priceChanges.change90d !== null && priceChanges.change90d <= -15) {
+  // Priority 3: Downtrend — sustained decline with no recovery signal
+  if (priceChanges.change90d !== null && priceChanges.change90d <= -15 &&
+      !(recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop <= -15 && recoveryMetrics.hasStabilized)) {
     return 'downtrend';
   }
 
+  // Priority 4: Recovery — recent significant drop with stabilization
+  if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop <= -15 && recoveryMetrics.hasStabilized && scores.liquidityScore >= 30) {
+    return 'recovery';
+  }
+
+  // Priority 5: Momentum — strong recent gains
+  if (priceChanges.change30d !== null && priceChanges.change30d >= 8 && scores.liquidityScore >= 35) {
+    return 'momentum';
+  }
+
+  // Priority 6: Watch dip — moderate expected return
+  if (expected90dReturn >= 0.05 && scores.riskScore < 75 && scores.liquidityScore >= 35) {
+    return 'watch_dip';
+  }
+
+  // Priority 7: Stagnant — low movement and low liquidity
   const changeMagnitude = Math.abs(priceChanges.change90d ?? 0);
-  if (changeMagnitude < 5) {
+  if (changeMagnitude < 3 && scores.liquidityScore < 50) {
     return 'stagnant';
   }
 
+  // Default: lean toward watch_dip if positive expected return, else stagnant
   return expected90dReturn > 0 ? 'watch_dip' : 'stagnant';
 }
 
@@ -533,6 +1095,29 @@ export function generateRiskFactors(
   return risks.join('; ') + '.';
 }
 
+const setReleaseDateCache = new Map<string, string | null>();
+
+/** Set release date from catalog_cards, cached per set for the process lifetime. */
+function fetchSetReleaseDate(setId: string): Promise<string | null> {
+  if (setReleaseDateCache.has(setId)) {
+    return Promise.resolve(setReleaseDateCache.get(setId) ?? null);
+  }
+  const db = getDb();
+  return new Promise((resolve) => {
+    db.get(
+      `SELECT setReleaseDate FROM catalog_cards
+       WHERE setId = ? AND setReleaseDate IS NOT NULL AND TRIM(setReleaseDate) <> ''
+       LIMIT 1`,
+      [setId],
+      (err, row: any) => {
+        const releaseDate = err || !row ? null : row.setReleaseDate;
+        setReleaseDateCache.set(setId, releaseDate);
+        resolve(releaseDate);
+      }
+    );
+  });
+}
+
 function fetchCardPriceHistory(uniqueIdentifier: string): Promise<PricePoint[]> {
   const db = getDb();
   return new Promise((resolve, reject) => {
@@ -554,23 +1139,51 @@ function fetchCardPriceHistory(uniqueIdentifier: string): Promise<PricePoint[]> 
   });
 }
 
-function fetchAllCards(): Promise<any[]> {
+/** Resolved rarity from card_mappings with catalog_cards fallback. */
+const RESOLVED_RARITY_EXPR = "COALESCE(NULLIF(TRIM(cm.rarity), ''), cc.rarity)";
+
+function fetchAllCards(filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER): Promise<any[]> {
   const db = getDb();
+  const { clause: rarityClause, params: rarityParams } = buildRarityWhereClause(RESOLVED_RARITY_EXPR, filter.rarities);
+
   return new Promise((resolve, reject) => {
     db.all(
-      `SELECT cm.cardId, cm.cardName, cm.setId, cm.setName, cm.cardNumber, cm.rarity,
-              cm.uniqueIdentifier
+      `SELECT cm.cardId, cm.cardName, cm.setId, cm.setName, cm.cardNumber,
+              ${RESOLVED_RARITY_EXPR} AS rarity,
+              cm.uniqueIdentifier, ph_stats.latest_price, ph_stats.data_point_count,
+              cc.setReleaseDate
        FROM card_mappings cm
+       LEFT JOIN catalog_cards cc ON cc.cardId = cm.cardId
        INNER JOIN (
-         SELECT uniqueIdentifier, MAX(COALESCE(marketPrice, price)) as maxPrice
-         FROM price_history
-         WHERE source IN ('tcgcsv', 'tcgdex', 'catalog_fallback')
-         GROUP BY uniqueIdentifier
-       ) ph ON ph.uniqueIdentifier = cm.uniqueIdentifier
+         SELECT
+           ph.uniqueIdentifier,
+           COUNT(DISTINCT ph.date) AS data_point_count,
+           (
+             SELECT COALESCE(ph2.marketPrice, ph2.price)
+             FROM price_history ph2
+             WHERE ph2.uniqueIdentifier = ph.uniqueIdentifier
+               AND ph2.source IN ('tcgcsv', 'tcgdex', 'catalog_fallback')
+             ORDER BY ph2.date DESC
+             LIMIT 1
+           ) AS latest_price
+         FROM price_history ph
+         WHERE ph.source IN ('tcgcsv', 'tcgdex', 'catalog_fallback')
+         GROUP BY ph.uniqueIdentifier
+         HAVING data_point_count >= 1
+           AND latest_price >= ?
+           AND latest_price <= ?
+       ) ph_stats ON ph_stats.uniqueIdentifier = cm.uniqueIdentifier
        WHERE cm.cardName IS NOT NULL AND TRIM(cm.cardName) <> ''
-         AND ph.maxPrice >= 5.00
+         AND ${rarityClause}
+         AND ph_stats.data_point_count >= CASE
+           WHEN cc.setReleaseDate IS NULL THEN 14
+           WHEN julianday('now') - julianday(cc.setReleaseDate) < 30 THEN 3
+           WHEN julianday('now') - julianday(cc.setReleaseDate) < 90 THEN 5
+           WHEN julianday('now') - julianday(cc.setReleaseDate) < 180 THEN 8
+           ELSE 14
+         END
        ORDER BY cm.cardName ASC`,
-      [],
+      [filter.minPrice, filter.maxPrice, ...rarityParams],
       (err, rows: any[]) => {
         if (err) return reject(err);
         resolve(rows || []);
@@ -580,18 +1193,25 @@ function fetchAllCards(): Promise<any[]> {
 }
 
 export async function predictSingleCard(
-  card: { cardId: string; cardName: string; setId: string; setName: string; cardNumber?: string; rarity?: string; uniqueIdentifier?: string },
-  allCardReturns?: Array<{ name: string; rarity: string; avgReturn90d: number }>
+  card: { cardId: string; cardName: string; setId: string; setName: string; cardNumber?: string; rarity?: string; uniqueIdentifier?: string; setReleaseDate?: string | null },
+  allCardReturns?: Array<{ name: string; rarity: string; avgReturn90d: number }>,
+  filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER
 ): Promise<CardPrediction | null> {
   try {
     const uid = card.uniqueIdentifier;
     if (!uid) return null;
 
     const priceHistory = await fetchCardPriceHistory(uid);
-    if (priceHistory.length < 1) return null;
+    if (priceHistory.length < filter.minDataPoints) return null;
 
     const currentPrice = getLatestPrice(priceHistory);
     if (!currentPrice || currentPrice <= 0) return null;
+
+    const setReleaseDate = card.setReleaseDate ?? await fetchSetReleaseDate(card.setId);
+
+    if (!isCardInvestmentWorthy(card, priceHistory, currentPrice, filter, setReleaseDate)) {
+      return null;
+    }
 
     const movingAverages = computeMovingAverages(priceHistory);
     const priceChanges = computePriceChanges(priceHistory);
@@ -599,8 +1219,13 @@ export async function predictSingleCard(
     const supportResistance = findSupportResistance(priceHistory);
     const recoveryMetrics = computeRecoveryMetrics(priceHistory);
 
+    const liquidityScore = computeLiquidityScore(priceHistory, currentPrice, volatility, setReleaseDate);
+    const dataQualityScore = computeDataQualityScore(priceHistory);
+
     const externalSignals = await searchExternalSignals(card.cardName, card.setName);
     const externalSignalScore = computeExternalSignalScore(externalSignals);
+    const competitiveMetaScore = computeCompetitiveMetaScore(externalSignals);
+    const setLifecycleScore = computeSetLifecycleScore(setReleaseDate);
 
     const trendScore = computeTrendScore(priceChanges, movingAverages, currentPrice);
     const recoveryScore = computeRecoveryScore(recoveryMetrics, priceChanges);
@@ -614,28 +1239,47 @@ export async function predictSingleCard(
       demandScore,
       riskScore,
       externalSignalScore,
+      liquidityScore,
+      dataQualityScore,
+      setLifecycleScore,
+      competitiveMetaScore,
     };
 
-    const expectedReturns = computeExpectedReturns(scores);
+    const seasonalityAdjustment = computeSeasonalityAdjustment(card.cardName, card.setName);
+    const expectedReturns = computeExpectedReturns(scores, seasonalityAdjustment);
 
+    const historicalReturns30d = computeHistoricalReturns(priceHistory, 30);
+    const historicalReturns90d = computeHistoricalReturns(priceHistory, 90);
+
+    // Adaptive confidence scoring — use set-age-aware thresholds so newer cards
+    // aren't penalized as heavily for having less historical data.
+    const adaptiveMinDP = getAdaptiveMinDataPoints(setReleaseDate);
     const baseConfidence = Math.max(20, Math.min(95,
       50
       + (trendScore > 60 ? 10 : trendScore > 40 ? 5 : 0)
-      + (priceHistory.length > 90 ? 15 : priceHistory.length > 30 ? 8 : 0)
+      + (priceHistory.length > 90 ? 15 : priceHistory.length > 30 ? 8 : priceHistory.length > adaptiveMinDP ? 3 : priceHistory.length > 5 ? 1 : 0)
       + (demandScore > 60 ? 10 : 0)
+      + (liquidityScore > 60 ? 8 : liquidityScore > 40 ? 4 : 0)
+      + (dataQualityScore > 70 ? 5 : dataQualityScore > 50 ? 2 : 0)
       - (riskScore > 70 ? 10 : riskScore > 50 ? 5 : 0)
+      - (priceHistory.length < adaptiveMinDP ? 20 : priceHistory.length < 14 ? 5 : 0)
+      - (dataQualityScore < 40 ? 10 : dataQualityScore < 60 ? 5 : 0)
     ));
 
     const volatilityAdjust = volatility.monthlyVolatility;
-    const confidenceScore = Math.max(10, Math.min(95, Math.round(baseConfidence * (1 - volatilityAdjust * 0.5))));
+    let confidenceScore = Math.max(10, Math.min(95, Math.round(baseConfidence * (1 - volatilityAdjust * 0.5))));
+
+    if (confidenceScore < filter.minConfidence) return null;
 
     const category = priceHistory.length < 7
       ? categorizeLimitedData(scores, expectedReturns.expected90dReturn, currentPrice, card.cardId)
       : determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
 
-    const predicted7d = computePriceRanges(currentPrice, expectedReturns.expected7dReturn, volatility.dailyVolatility, 7, confidenceScore);
-    const predicted30d = computePriceRanges(currentPrice, expectedReturns.expected30dReturn, volatility.dailyVolatility, 30, confidenceScore);
-    const predicted90d = computePriceRanges(currentPrice, expectedReturns.expected90dReturn, volatility.dailyVolatility, 90, confidenceScore);
+    const predicted7d = computePriceRanges(currentPrice, expectedReturns.expected7dReturn, volatility.dailyVolatility, 7, confidenceScore, historicalReturns30d);
+    const predicted30d = computePriceRanges(currentPrice, expectedReturns.expected30dReturn, volatility.dailyVolatility, 30, confidenceScore, historicalReturns30d);
+    const predicted90d = computePriceRanges(currentPrice, expectedReturns.expected90dReturn, volatility.dailyVolatility, 90, confidenceScore, historicalReturns90d);
+    const predicted180d = computePriceRanges(currentPrice, expectedReturns.expected180dReturn, volatility.dailyVolatility, 180, confidenceScore, historicalReturns90d);
+    const predicted365d = computePriceRanges(currentPrice, expectedReturns.expected365dReturn, volatility.dailyVolatility, 365, confidenceScore, historicalReturns90d);
 
     const externalSignalsJson = JSON.stringify(externalSignals);
 
@@ -658,9 +1302,13 @@ export async function predictSingleCard(
       predicted7d,
       predicted30d,
       predicted90d,
+      predicted180d,
+      predicted365d,
       expected7dReturn: expectedReturns.expected7dReturn,
       expected30dReturn: expectedReturns.expected30dReturn,
       expected90dReturn: expectedReturns.expected90dReturn,
+      expected180dReturn: expectedReturns.expected180dReturn,
+      expected365dReturn: expectedReturns.expected365dReturn,
       confidenceScore,
       riskScore,
       category,
@@ -698,10 +1346,13 @@ export async function runPredictions(): Promise<{ runId: number; total: number; 
     predicted_7d_low, predicted_7d_mid, predicted_7d_high,
     predicted_30d_low, predicted_30d_mid, predicted_30d_high,
     predicted_90d_low, predicted_90d_mid, predicted_90d_high,
+    predicted_180d_low, predicted_180d_mid, predicted_180d_high,
+    predicted_365d_low, predicted_365d_mid, predicted_365d_high,
     expected_7d_return, expected_30d_return, expected_90d_return,
+    expected_180d_return, expected_365d_return,
     confidence_score, risk_score, category, suggested_action,
     explanation, risk_factors, external_signals_json, model_version
-  ) VALUES (?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  ) VALUES (?, ?, date('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   for (const card of cards) {
     try {
@@ -717,7 +1368,10 @@ export async function runPredictions(): Promise<{ runId: number; total: number; 
           prediction.predicted7d.low, prediction.predicted7d.mid, prediction.predicted7d.high,
           prediction.predicted30d.low, prediction.predicted30d.mid, prediction.predicted30d.high,
           prediction.predicted90d.low, prediction.predicted90d.mid, prediction.predicted90d.high,
+          prediction.predicted180d.low, prediction.predicted180d.mid, prediction.predicted180d.high,
+          prediction.predicted365d.low, prediction.predicted365d.mid, prediction.predicted365d.high,
           prediction.expected7dReturn, prediction.expected30dReturn, prediction.expected90dReturn,
+          prediction.expected180dReturn, prediction.expected365dReturn,
           prediction.confidenceScore, prediction.riskScore, prediction.category, prediction.suggestedAction,
           prediction.explanation, prediction.riskFactors, prediction.externalSignals, prediction.modelVersion,
         ], function (err) {
@@ -737,8 +1391,64 @@ export async function runPredictions(): Promise<{ runId: number; total: number; 
   return { runId, total: cards.length, succeeded, failed };
 }
 
-export async function getLatestPredictions(limit: number = 100, category?: string): Promise<CardPredictionRow[]> {
+export type PredictionWindow = '7d' | '30d' | '90d' | '180d' | '365d';
+
+const WINDOW_RETURN_COLUMNS: Record<PredictionWindow, string> = {
+  '7d': 'expected_7d_return',
+  '30d': 'expected_30d_return',
+  '90d': 'expected_90d_return',
+  '180d': 'expected_180d_return',
+  '365d': 'expected_365d_return',
+};
+
+export function isPredictionWindow(value: string): value is PredictionWindow {
+  return value in WINDOW_RETURN_COLUMNS;
+}
+
+/**
+ * Resolves era IDs to matching set IDs by classifying all sets in catalog_cards.
+ * Returns a flat list of set IDs that belong to any of the requested eras.
+ */
+async function resolveEraToSetIds(eras: string[]): Promise<string[]> {
   const db = getDb();
+  const rows: any[] = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT DISTINCT setId, setName FROM catalog_cards`,
+      [],
+      (err, r) => err ? reject(err) : resolve(r || [])
+    );
+  });
+  // Import classifySetEra dynamically to avoid circular deps at top-level
+  const { classifySetEra } = await import('../utils/setEra');
+  return rows
+    .filter(row => eras.includes(classifySetEra({ id: row.setId, name: row.setName })))
+    .map(row => row.setId);
+}
+
+export async function getLatestPredictions(
+  limit: number = 100,
+  category?: string,
+  filters?: PredictionQueryFilters,
+  window: PredictionWindow = '90d'
+): Promise<CardPredictionRow[]> {
+  const db = getDb();
+
+  // Resolve era filter to set IDs up-front (single DB query)
+  let eraSetIds: string[] | null = null;
+  if (filters?.eras && filters.eras.length > 0) {
+    eraSetIds = await resolveEraToSetIds(filters.eras);
+    if (eraSetIds.length === 0) return []; // no sets match these eras
+  }
+
+  // Merge explicit setIds with era-resolved setIds (intersection if both provided)
+  let effectiveSetIds = filters?.setIds ?? null;
+  if (eraSetIds && effectiveSetIds) {
+    effectiveSetIds = effectiveSetIds.filter(id => eraSetIds!.includes(id));
+    if (effectiveSetIds.length === 0) return [];
+  } else if (eraSetIds) {
+    effectiveSetIds = eraSetIds;
+  }
+
   let sql = `
     SELECT cp.*, cm.cardName, cm.setName, cm.setId, cm.cardNumber, cm.rarity,
            cm.imageSmall, cm.imageLarge, cm.tcgplayerProductId
@@ -754,7 +1464,53 @@ export async function getLatestPredictions(limit: number = 100, category?: strin
     params.push(category);
   }
 
-  sql += ' ORDER BY cp.expected_90d_return DESC LIMIT ?';
+  if (filters?.minPrice !== undefined) {
+    sql += ' AND cp.current_price >= ?';
+    params.push(filters.minPrice);
+  }
+
+  if (filters?.maxPrice !== undefined) {
+    sql += ' AND cp.current_price <= ?';
+    params.push(filters.maxPrice);
+  }
+
+  if (filters?.minConfidence !== undefined) {
+    sql += ' AND cp.confidence_score >= ?';
+    params.push(filters.minConfidence);
+  }
+
+  if (filters?.rarities && filters.rarities.length > 0) {
+    const { clause, params: rarityParams } = buildRarityWhereClause('cm.rarity', filters.rarities);
+    sql += ` AND ${clause}`;
+    params.push(...rarityParams);
+  }
+
+  // Era/Set filtering: use IN clause with resolved set IDs
+  if (effectiveSetIds && effectiveSetIds.length > 0) {
+    const placeholders = effectiveSetIds.map(() => '?').join(',');
+    sql += ` AND cm.setId IN (${placeholders})`;
+    params.push(...effectiveSetIds);
+  }
+
+  // Release date range filtering: join catalog_cards for setReleaseDate
+  if (filters?.releaseDateFrom || filters?.releaseDateTo) {
+    sql += ` LEFT JOIN (
+      SELECT cardId, setReleaseDate FROM catalog_cards
+      GROUP BY cardId
+    ) cc_dates ON cc_dates.cardId = cp.card_id`;
+    if (filters.releaseDateFrom) {
+      sql += ' AND cc_dates.setReleaseDate >= ?';
+      params.push(filters.releaseDateFrom);
+    }
+    if (filters.releaseDateTo) {
+      sql += ' AND cc_dates.setReleaseDate <= ?';
+      params.push(filters.releaseDateTo);
+    }
+  }
+
+  // Old prediction runs have NULL for the 180d/365d columns — fall back to 90d.
+  const orderColumn = WINDOW_RETURN_COLUMNS[window] ?? WINDOW_RETURN_COLUMNS['90d'];
+  sql += ` ORDER BY COALESCE(cp.${orderColumn}, cp.expected_90d_return) DESC LIMIT ?`;
   params.push(limit);
 
   return new Promise((resolve, reject) => {
@@ -781,9 +1537,17 @@ export async function getLatestPredictions(limit: number = 100, category?: strin
         predicted90dLow: r.predicted_90d_low,
         predicted90dMid: r.predicted_90d_mid,
         predicted90dHigh: r.predicted_90d_high,
+        predicted180dLow: r.predicted_180d_low ?? null,
+        predicted180dMid: r.predicted_180d_mid ?? null,
+        predicted180dHigh: r.predicted_180d_high ?? null,
+        predicted365dLow: r.predicted_365d_low ?? null,
+        predicted365dMid: r.predicted_365d_mid ?? null,
+        predicted365dHigh: r.predicted_365d_high ?? null,
         expected7dReturn: r.expected_7d_return,
         expected30dReturn: r.expected_30d_return,
         expected90dReturn: r.expected_90d_return,
+        expected180dReturn: r.expected_180d_return ?? null,
+        expected365dReturn: r.expected_365d_return ?? null,
         confidenceScore: r.confidence_score,
         riskScore: r.risk_score,
         category: r.category as PredictionCategory,

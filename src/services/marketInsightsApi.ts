@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import { CardPrediction, BacktestResult, ForwardTestStatus, CardPredictionDetail } from '../features/market-insights/types';
+import { CardPrediction, BacktestResult, ForwardTestStatus, CardPredictionDetail, PredictionFilters, PredictionWindow, ExternalSignal } from '../features/market-insights/types';
 
 const BASE_URL = `${env.apiUrl}/api/market-insights`;
 
@@ -19,12 +19,6 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
       /* response may not be JSON */
     }
 
-    if (response.status === 401) {
-      throw new Error('Sign in required. Use an admin account to run predictions or backtests.');
-    }
-    if (response.status === 403) {
-      throw new Error('Admin access required for this action.');
-    }
     throw new Error(detail || `API error: ${response.status}`);
   }
 
@@ -35,16 +29,38 @@ export const marketInsightsApi = {
   async getPredictions(params?: {
     limit?: number;
     category?: string;
+    window?: PredictionWindow;
+    filters?: PredictionFilters;
   }): Promise<{ data: CardPrediction[]; count: number; modelVersion: string }> {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.category) searchParams.set('category', params.category);
+    if (params?.window) searchParams.set('window', params.window);
+    if (params?.filters?.minPrice !== undefined) searchParams.set('minPrice', String(params.filters.minPrice));
+    if (params?.filters?.maxPrice !== undefined) searchParams.set('maxPrice', String(params.filters.maxPrice));
+    if (params?.filters?.minConfidence !== undefined) searchParams.set('minConfidence', String(params.filters.minConfidence));
+    if (params?.filters?.rarities && params.filters.rarities.length > 0) {
+      searchParams.set('rarities', params.filters.rarities.join(','));
+    }
+    if (params?.filters?.eras && params.filters.eras.length > 0) {
+      searchParams.set('eras', params.filters.eras.join(','));
+    }
+    if (params?.filters?.releaseDateFrom) {
+      searchParams.set('releaseDateFrom', params.filters.releaseDateFrom);
+    }
+    if (params?.filters?.releaseDateTo) {
+      searchParams.set('releaseDateTo', params.filters.releaseDateTo);
+    }
     const qs = searchParams.toString();
     return fetchJson(`${BASE_URL}/predictions${qs ? `?${qs}` : ''}`);
   },
 
   async getCardPrediction(cardId: string): Promise<CardPredictionDetail> {
     return fetchJson(`${BASE_URL}/card/${encodeURIComponent(cardId)}`);
+  },
+
+  async getAiExplanation(cardId: string): Promise<{ explanation: string; cached: boolean }> {
+    return fetchJson(`${BASE_URL}/card/${encodeURIComponent(cardId)}/explanation`);
   },
 
   async triggerPredictionRun(): Promise<{ success: boolean; runId: number; message: string }> {
@@ -71,5 +87,13 @@ export const marketInsightsApi = {
 
   async updateForwardTest(): Promise<{ success: boolean; updated: number }> {
     return fetchJson(`${BASE_URL}/forward-test/update`, { method: 'POST' });
+  },
+
+  async getExternalSignals(cardId: string): Promise<{ data: ExternalSignal[] }> {
+    return fetchJson(`${BASE_URL}/external-signals/${encodeURIComponent(cardId)}`);
+  },
+
+  async triggerSignalScrape(): Promise<{ success: boolean; scraped: number; stored: number; message: string }> {
+    return fetchJson(`${BASE_URL}/run-scrape`, { method: 'POST' });
   },
 };

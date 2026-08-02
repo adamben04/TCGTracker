@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { normalizeVariantKey } from '../utils/normalizeVariantKey';
 
 interface PriceHistoryPoint {
   date: string;
@@ -42,12 +43,9 @@ interface CardMatchResponse {
 
 export class PriceHistoryApi {
   private static baseUrl = `${env.apiUrl}/api/prices`;
-  private static normalizeVariantKey(value?: string): string {
-    if (!value) return 'normal';
-    const compact = value.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!compact) return 'normal';
-    return compact;
-  }
+  public static dataMode: 'live' | 'static' = 'live'; // Use live mode by default (backend server)
+  private static staticMappings: CardIdentifier[] | null = null;
+  private static latestPrices: { [uniqueIdentifier: string]: PricePoint } | null = null;
 
   /**
    * Gets price history for a specific card using its details (LIVE MODE ONLY)
@@ -131,11 +129,11 @@ export class PriceHistoryApi {
     priceHistory: PriceHistoryPoint[],
     preferredVariant?: string
   ): Array<{ date: string; price: number }> {
-    const preferred = this.normalizeVariantKey(preferredVariant);
+    const preferred = normalizeVariantKey(preferredVariant);
     const byDate = new Map<string, { price: number; score: number }>();
 
     const scoreVariant = (subTypeName?: string): number => {
-      const rowVariant = this.normalizeVariantKey(subTypeName);
+      const rowVariant = normalizeVariantKey(subTypeName);
       if (rowVariant === preferred) return 3;
       if (preferred !== 'normal' && rowVariant.includes(preferred)) return 2;
       if (preferred === 'normal' && (rowVariant === 'normal' || rowVariant === 'unlimited')) return 2;
@@ -217,7 +215,38 @@ export class PriceHistoryApi {
     productId?: string;
     variant?: string;
   }): Promise<Array<{ date: string; price: number }>> {
-    const variantKey = this.normalizeVariantKey(card.variant);
+    const variantKey = normalizeVariantKey(card.variant);
+
+    if (PriceHistoryApi.dataMode === 'static') {
+      const matchedCard = await this.findCardStatically(card);
+      if (!matchedCard || !matchedCard.uniqueIdentifier) {
+        return [];
+      }
+      try {
+        const response = await fetch(`/data/prices/${matchedCard.uniqueIdentifier}.json`);
+        if (!response.ok) {
+          // Silently return empty array - many cards don't have price files
+          return [];
+        }
+        
+        // Check if response is actually JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          // Silently fail - price file doesn't exist or is not valid JSON
+          return [];
+        }
+        
+        const data = await response.json();
+        const normalizedData = (data || []).filter((point: PriceHistoryPoint) => {
+          const pointVariant = normalizeVariantKey(point.subTypeName);
+          return variantKey === 'normal' ? true : pointVariant === variantKey;
+        });
+        return this.formatPriceHistory(normalizedData, card.variant);
+      } catch {
+        // Silently fail - price file doesn't exist or is invalid
+        return [];
+      }
+    }
 
     try {
       const fetchHistory = async (variantToUse?: string) => {

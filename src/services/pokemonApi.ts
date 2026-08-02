@@ -1,12 +1,33 @@
 import { PokemonCard, PokemonSet } from '../types/pokemon';
 import { cacheService } from './cacheService';
-import { env, buildApiUrl } from '../config/env';
+import { buildApiUrl } from '../config/env';
+import { dedupeCards } from '../utils/cardPrice';
 
 function estimateResultVolume(query?: string): 'small' | 'large' {
   if (!query) return 'large';
   const trimmed = query.trim();
   if (trimmed.length >= 6 && !trimmed.includes('*')) return 'small';
   return 'large';
+}
+
+const POKEMON_TCG_IMG_HOST = 'https://images.pokemontcg.io';
+const POKEMON_TCG_IMG_PROXY = '/images/pokemontcg';
+
+export function proxyImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  return url.replace(POKEMON_TCG_IMG_HOST, POKEMON_TCG_IMG_PROXY);
+}
+
+function rewriteCardImages<T extends { images?: { small?: string; large?: string } }>(card: T): T {
+  if (!card.images) return card;
+  return {
+    ...card,
+    images: {
+      ...card.images,
+      small: proxyImageUrl(card.images.small),
+      large: proxyImageUrl(card.images.large),
+    },
+  };
 }
 
 class PokemonApiService {
@@ -89,7 +110,7 @@ class PokemonApiService {
           maxPages: volume === 'large' ? '10' : '2',
         });
 
-        const cards = (response.data || []).filter((card) => card?.id);
+        const cards = dedupeCards((response.data || []).filter((card) => card?.id)).map(rewriteCardImages);
         cacheService.set(cacheKey, cards, 5 * 60 * 1000);
         return cards;
       } catch (err) {
@@ -134,8 +155,9 @@ class PokemonApiService {
       if (!card) {
         return null;
       }
-      cacheService.set(cacheKey, card, 30 * 60 * 1000);
-      return card;
+      const rewritten = rewriteCardImages(card);
+      cacheService.set(cacheKey, rewritten, 30 * 60 * 1000);
+      return rewritten;
     } catch (err) {
       console.error(`Error fetching card ${id}:`, err);
       return null;

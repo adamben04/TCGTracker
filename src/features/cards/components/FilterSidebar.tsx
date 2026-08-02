@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react';
 import { SortOption } from '../../../types/pokemon';
+import { OnePieceSortOption } from '../../../types/onepiece';
 import { getSortOptions } from '../../../utils/sorting';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 
@@ -16,12 +17,13 @@ interface FilterSidebarProps {
   onCloseMobile?: () => void;
   filters: MarketplaceFilters;
   onFiltersChange: (filters: MarketplaceFilters) => void;
-  sortBy: SortOption;
-  onSortChange: (sort: SortOption) => void;
+  sortBy: SortOption | OnePieceSortOption;
+  onSortChange: (sort: SortOption | OnePieceSortOption) => void;
   setOptions: string[];
   rarityOptions: string[];
   typeOptions: string[];
   onReset: () => void;
+  isOnePiece?: boolean;
 }
 
 const priceRanges = [
@@ -75,21 +77,22 @@ function SidebarPanel({
   rarityOptions,
   typeOptions,
   onReset,
+  isOnePiece = false,
 }: Omit<FilterSidebarProps, 'isMobileOpen' | 'onCloseMobile'>) {
-  const sortOptions = getSortOptions();
+  const sortOptions = getSortOptions(isOnePiece ? 'onepiece' : 'pokemon');
 
   const setFilter = (key: keyof MarketplaceFilters, value: string) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 
   const selectClass =
-    'h-10 w-full rounded-lg border border-border-default bg-surface-inset px-3 text-sm text-ink-primary focus:border-accent focus:outline-none';
+    'h-10 w-full rounded-lg border border-border-default bg-surface-inset px-3 text-sm text-ink-primary transition-colors duration-200 focus:border-accent focus:outline-none';
 
   return (
-    <div className="h-full rounded-xl border border-border-default bg-surface-raised p-4 shadow-sm">
+    <div className="card h-full !p-4">
       <div className="mb-2 flex items-center justify-between">
         <SectionLabel className="!flex items-center gap-2 !text-ink-secondary">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-violet-300" />
+          <SlidersHorizontal className="h-3.5 w-3.5 text-accent" />
           Filters
         </SectionLabel>
         <button
@@ -104,8 +107,9 @@ function SidebarPanel({
       <FilterGroup title="Sort" defaultOpen>
         <select
           value={sortBy}
-          onChange={(e) => onSortChange(e.target.value as SortOption)}
+          onChange={(e) => onSortChange(e.target.value as SortOption | OnePieceSortOption)}
           className={selectClass}
+          aria-label="Sort cards"
         >
           {sortOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -116,7 +120,7 @@ function SidebarPanel({
       </FilterGroup>
 
       <FilterGroup title="Set">
-        <select value={filters.setName} onChange={(e) => setFilter('setName', e.target.value)} className={selectClass}>
+        <select value={filters.setName} onChange={(e) => setFilter('setName', e.target.value)} className={selectClass} aria-label="Filter by set">
           <option value="all">All Sets</option>
           {setOptions.map((setName) => (
             <option key={setName} value={setName}>
@@ -127,7 +131,7 @@ function SidebarPanel({
       </FilterGroup>
 
       <FilterGroup title="Rarity">
-        <select value={filters.rarity} onChange={(e) => setFilter('rarity', e.target.value)} className={selectClass}>
+        <select value={filters.rarity} onChange={(e) => setFilter('rarity', e.target.value)} className={selectClass} aria-label="Filter by rarity">
           <option value="all">All Rarities</option>
           {rarityOptions.map((rarity) => (
             <option key={rarity} value={rarity}>
@@ -142,6 +146,7 @@ function SidebarPanel({
           value={filters.priceRange}
           onChange={(e) => setFilter('priceRange', e.target.value)}
           className={selectClass}
+          aria-label="Filter by price range"
         >
           {priceRanges.map((range) => (
             <option key={range.value} value={range.value}>
@@ -151,8 +156,8 @@ function SidebarPanel({
         </select>
       </FilterGroup>
 
-      <FilterGroup title="Type" defaultOpen={false}>
-        <select value={filters.cardType} onChange={(e) => setFilter('cardType', e.target.value)} className={selectClass}>
+      <FilterGroup title={isOnePiece ? 'Color' : 'Type'} defaultOpen={true}>
+        <select value={filters.cardType} onChange={(e) => setFilter('cardType', e.target.value)} className={selectClass} aria-label={`Filter by ${isOnePiece ? 'color' : 'type'}`}>
           <option value="all">All Types</option>
           {typeOptions.map((type) => (
             <option key={type} value={type}>
@@ -177,7 +182,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
 
     {isMobileOpen && (
       <div className="fixed inset-0 z-40 bg-black/55 lg:hidden" role="dialog" aria-modal="true">
-        <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm border-l border-border-subtle bg-[#0b111d] p-4">
+        <div className="absolute right-0 top-0 h-full w-[88%] max-w-sm animate-slide-down border-l border-border-subtle bg-surface-base p-4 shadow-elevated">
           <div className="mb-3 flex justify-end">
             <button
               type="button"
