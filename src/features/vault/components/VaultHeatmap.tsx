@@ -3,6 +3,7 @@ import { ResponsiveContainer, Tooltip, Treemap } from 'recharts';
 import { VaultCard } from '../../../types/pokemon';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { formatCurrency, formatPercent } from '../../../utils/cardDisplay';
+import { pokemonApi } from '../../../services/pokemonApi';
 
 interface VaultHeatmapProps {
   vaultCards: VaultCard[];
@@ -31,7 +32,7 @@ function buildSlices(vaultCards: VaultCard[]): SetSlice[] {
   const bySet = new Map<string, SetSlice>();
   for (const entry of vaultCards) {
     const set = entry.card.set;
-    const marketPrice = entry.card.marketPrice ?? 0;
+    const marketPrice = entry.card.marketPrice || pokemonApi.extractCardPrice(entry.card);
     const current = marketPrice * entry.quantity;
     const cost = entry.purchasePrice * entry.quantity;
     const slice = bySet.get(set.id) ?? {

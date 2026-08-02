@@ -72,14 +72,14 @@ export const VaultPortfolioBySet: React.FC<VaultPortfolioBySetProps> = ({
     <section className="space-y-4">
       <div>
         <SectionLabel className="text-violet-300/90">By set</SectionLabel>
-        <h3 className="mt-1 text-lg font-semibold text-gray-900">Portfolio breakdown</h3>
-        <p className="text-sm text-gray-600">Value and performance grouped by expansion</p>
+        <h3 className="mt-1 text-lg font-semibold text-white">Portfolio breakdown</h3>
+        <p className="text-sm text-ink-secondary">Value and performance grouped by expansion</p>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-border-default bg-surface-inset shadow-sm">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <tr className="border-b border-border-default bg-surface-inset text-xs font-semibold uppercase tracking-wide text-ink-muted">
               <th className="px-4 py-3">Set</th>
               <th className="px-4 py-3 text-right">Cards</th>
               <th className="px-4 py-3 text-right">Invested</th>
@@ -90,27 +90,27 @@ export const VaultPortfolioBySet: React.FC<VaultPortfolioBySetProps> = ({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.setId} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/80">
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={row.setId} className="border-b border-border-default last:border-0 hover:bg-surface-inset/80">
+                <td className="px-4 py-3 font-medium text-white">
                   <span className="inline-flex items-center gap-2">
                     <Layers className="h-4 w-4 text-violet-500" />
                     {row.setName}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-700">{row.cardCount}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">{row.cardCount}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">
                   {formatCurrency(row.purchaseValue)}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">
                   {formatCurrency(row.marketValue)}
                 </td>
                 <td
                   className={`px-4 py-3 text-right tabular-nums font-medium ${
-                    row.profit >= 0 ? 'text-emerald-600' : 'text-red-600'
+                    row.profit >= 0 ? 'text-emerald-400' : 'text-red-400'
                   }`}
                 >
                   {formatCurrency(row.profit, { signed: true })}
-                  <span className="ml-1 text-xs text-gray-500">
+                  <span className="ml-1 text-xs text-ink-muted">
                     ({formatPercent(row.profitPct, { signed: true })})
                   </span>
                 </td>
@@ -119,7 +119,7 @@ export const VaultPortfolioBySet: React.FC<VaultPortfolioBySetProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenSet(row.setId)}
-                      className="rounded-lg p-1.5 text-gray-400 hover:bg-violet-50 hover:text-violet-600"
+                      className="rounded-lg p-1.5 text-ink-muted hover:bg-violet-500/10 hover:text-violet-400"
                       title="Open set tracker"
                     >
                       <ChevronRight className="h-4 w-4" />

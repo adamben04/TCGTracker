@@ -12,15 +12,16 @@ export const PackShop: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
 
   useEffect(() => {
     loadPacks();
-  }, []);
+  }, [tcg]);
 
   const loadPacks = async () => {
     setIsLoading(true);
     try {
-      setPacks(tieredPackService.getAvailablePacks());
+      setPacks(tieredPackService.getAvailablePacks(tcg));
     } catch (error) {
       console.error('Error loading packs:', error);
     } finally {
@@ -47,6 +48,16 @@ export const PackShop: React.FC = () => {
         return 'from-yellow-400 to-amber-600';
       case 'platinum':
         return 'from-violet-400 to-fuchsia-700';
+      case 'common':
+        return 'from-blue-500 to-blue-700';
+      case 'uncommon':
+        return 'from-green-500 to-emerald-700';
+      case 'rare':
+        return 'from-purple-500 to-violet-700';
+      case 'ultra-rare':
+        return 'from-orange-500 to-red-700';
+      case 'secret-rare':
+        return 'from-rose-500 to-pink-700';
       default:
         return 'from-blue-500 to-indigo-700';
     }
@@ -70,6 +81,28 @@ export const PackShop: React.FC = () => {
         <p className="mt-2 text-sm text-ink-muted">
           Open tiered packs with play-money odds — results are simulated, not financial advice.
         </p>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-ink-muted font-medium">TCG:</span>
+        <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
+          <button
+            onClick={() => setTcg('pokemon')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+            }`}
+          >
+            Pokemon
+          </button>
+          <button
+            onClick={() => setTcg('onepiece')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+            }`}
+          >
+            One Piece
+          </button>
+        </div>
       </div>
 
       {history.packsOpened > 0 && (

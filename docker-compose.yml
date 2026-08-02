@@ -14,6 +14,7 @@ services:
       - HOST=0.0.0.0
       - DATABASE_PATH=/app/data/tcg-prices.db
       - CORS_ORIGIN=http://localhost,http://localhost:80,http://localhost:5173
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a random 64+ char secret before deploying}
     volumes:
       - backend-data:/app/data
       - ./backend/.env:/app/.env:ro

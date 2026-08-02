@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrendingUp,
@@ -82,10 +82,12 @@ export function MarketInsightsDashboard() {
     return d.toISOString().split('T')[0];
   });
   const [message, setMessage] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showMessage = useCallback((msg: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setMessage(msg);
-    setTimeout(() => setMessage(null), 5000);
+    timeoutRef.current = setTimeout(() => setMessage(null), 5000);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -109,6 +111,12 @@ export function MarketInsightsDashboard() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const handleRunPredictions = async () => {
     if (!canRunAdminActions) {
@@ -148,8 +156,8 @@ export function MarketInsightsDashboard() {
   const sidebarSections: SectionType[] = ['gainers', 'recovery', 'momentum', 'stagnant', 'overheated', 'downtrend', 'backtest', 'forward'];
 
   const filteredPredictions = (category?: PredictionCategory) => {
-    if (!category || category === 'all') return predictions;
-    return predictions.filter(p => p.category === category);
+    if (!category || category === 'all') return predictions.filter(p => p.currentPrice >= 5);
+    return predictions.filter(p => p.category === category && p.currentPrice >= 5).slice(0, 30);
   };
 
   const sortedByReturn = [...predictions].sort((a, b) => b.expected90dReturn - a.expected90dReturn);
@@ -259,7 +267,7 @@ export function MarketInsightsDashboard() {
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
-                  predictions={sortedByReturn.filter(p => p.expected90dReturn >= 0.05).slice(0, 20)}
+                  predictions={sortedByReturn.filter(p => p.expected90dReturn >= 0.05 && p.currentPrice >= 5).slice(0, 20)}
                   emptyMessage="No cards match this category yet. Run predictions to see results."
                   cardsById={cardsById}
                 />
@@ -267,7 +275,7 @@ export function MarketInsightsDashboard() {
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
-                  predictions={sortedByDowntrend.filter(p => p.expected90dReturn < -0.05).slice(0, 20)}
+                  predictions={sortedByDowntrend.filter(p => p.expected90dReturn < -0.05 && p.currentPrice >= 5).slice(0, 20)}
                   emptyMessage="No cards in downtrend. Run predictions to see results."
                   cardsById={cardsById}
                 />

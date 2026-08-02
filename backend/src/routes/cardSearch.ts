@@ -347,6 +347,15 @@ router.get('/stats', async (req, res) => {
         });
       }
 
+      if (!row) {
+        return res.json({
+          totalCards: 0,
+          totalSets: 0,
+          totalEntries: 0,
+          source: 'local_database'
+        });
+      }
+
       res.json({
         totalCards: row.totalCards || 0,
         totalSets: row.totalSets || 0,

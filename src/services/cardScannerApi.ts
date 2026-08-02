@@ -1,6 +1,23 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_CARD_SCANNER_API_URL || 'http://localhost:5001';
+const getScannerApiUrl = (): string => {
+  const configured = import.meta.env.VITE_CARD_SCANNER_API_URL;
+  if (configured) return configured;
+  
+  // In development, use localhost directly
+  if (import.meta.env.DEV) {
+    return 'http://localhost:5001';
+  }
+  
+  // In production, use same origin (nginx proxies /scanner/ to the card-scanner service)
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  
+  return 'http://localhost:5001';
+};
+
+const API_BASE_URL = getScannerApiUrl();
 
 export interface ScanResult {
   success: boolean;

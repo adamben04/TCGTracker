@@ -20,6 +20,8 @@ import {
 } from '../../../services/setTrackerService';
 import { setWishlistService } from '../../../services/setWishlistService';
 import { PokemonSet } from '../../../types/pokemon';
+import { OnePieceCard } from '../../../types/onepiece';
+import { onepieceApi } from '../../../services/onepieceApi';
 import { formatCurrency, formatPercent } from '../../../utils/cardDisplay';
 import { sortSetTrackerCards, SetCardSort } from '../../../utils/setCardSort';
 import { SectionLabel } from '../../../components/common/SectionLabel';
@@ -34,6 +36,69 @@ interface SetDetailProps {
 }
 
 type FilterMode = 'all' | 'owned' | 'missing' | 'wishlist';
+
+function isOnePieceSet(setId: string): boolean {
+  return setId.startsWith('OP-') || setId.startsWith('ST-') || setId.startsWith('EB-') || setId.startsWith('PRB-');
+}
+
+function OnePieceCardGrid({ cards }: { cards: OnePieceCard[] }) {
+  const colorMap: Record<string, string> = {
+    Red: 'bg-red-500/20 text-red-300',
+    Blue: 'bg-blue-500/20 text-blue-300',
+    Green: 'bg-green-500/20 text-green-300',
+    Purple: 'bg-purple-500/20 text-purple-300',
+    Black: 'bg-gray-500/20 text-gray-300',
+    Yellow: 'bg-yellow-500/20 text-yellow-300',
+  };
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {cards.map((card) => (
+        <div
+          key={card.id}
+          className="rounded-xl border border-border-default bg-surface-raised p-3 shadow-sm"
+        >
+          {card.imageUrl && (
+            <img
+              src={card.imageUrl}
+              alt={card.name}
+              className="mb-2 h-40 w-full rounded-lg object-cover"
+            />
+          )}
+          <p className="font-semibold text-white text-sm">{card.name}</p>
+          <p className="mt-0.5 text-xs text-ink-muted">{card.number}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${colorMap[card.color] || 'bg-gray-500/20 text-gray-300'}`}>
+              {card.color}
+            </span>
+            <span className="inline-block rounded-md bg-surface-hover px-2 py-0.5 text-xs text-ink-secondary">
+              {card.cardType}
+            </span>
+            {card.cost !== null && (
+              <span className="inline-block rounded-md bg-surface-hover px-2 py-0.5 text-xs text-ink-secondary">
+                Cost: {card.cost}
+              </span>
+            )}
+            {card.power !== null && (
+              <span className="inline-block rounded-md bg-surface-hover px-2 py-0.5 text-xs text-ink-secondary">
+                Power: {card.power}
+              </span>
+            )}
+            {card.counter !== null && (
+              <span className="inline-block rounded-md bg-surface-hover px-2 py-0.5 text-xs text-ink-secondary">
+                Counter: +{card.counter}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-ink-muted">{card.rarity}</p>
+          {card.marketPrice > 0 && (
+            <p className="mt-1 text-xs text-green-400">${card.marketPrice.toFixed(2)}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   const [setMeta, setSetMeta] = useState<PokemonSet | null>(null);
@@ -50,12 +115,39 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   );
   const [vaultCard, setVaultCard] = useState<SetTrackerCard | null>(null);
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
+  const [onePieceCards, setOnePieceCards] = useState<OnePieceCard[]>([]);
+
+  const isOP = isOnePieceSet(setId);
 
   const reload = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     const wish = setWishlistService.getWishlistForSet(setId);
     setWishlistIds(wish);
+
+    if (isOP) {
+      try {
+        const opCards = await onepieceApi.getSetCards(setId);
+        setOnePieceCards(opCards);
+        if (opCards.length > 0) {
+          const first = opCards[0];
+          setSetMeta({
+            id: first.setId,
+            name: first.setName,
+            series: 'One Piece',
+            releaseDate: '',
+            total: opCards.length,
+            images: { symbol: undefined, logo: undefined },
+          } as unknown as PokemonSet);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     try {
       const [cardsRes, summaryRes, history] = await Promise.all([
         setTrackerService.getSetCards(setId, wish),
@@ -71,7 +163,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [setId, historyRange]);
+  }, [setId, historyRange, isOP]);
 
   useEffect(() => {
     reload();
@@ -246,7 +338,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {filterButtons.map(({ key, label }) => (
+          {!isOP && filterButtons.map(({ key, label }) => (
             <button
               key={key}
               type="button"
@@ -260,48 +352,58 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
               {label}
             </button>
           ))}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SetCardSort)}
-            className="rounded-lg border border-border-subtle bg-surface-hover px-3 py-1.5 text-sm text-ink-secondary focus:border-violet-500/50 focus:outline-none"
-            aria-label="Sort cards"
-          >
-            <option value="number">Sort: Card #</option>
-            <option value="price-high">Sort: Price high → low</option>
-            <option value="price-low">Sort: Price low → high</option>
-            <option value="name">Sort: Name</option>
-            <option value="rarity">Sort: Rarity</option>
-          </select>
+          {!isOP && (
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SetCardSort)}
+              className="rounded-lg border border-border-subtle bg-surface-hover px-3 py-1.5 text-sm text-ink-secondary focus:border-violet-500/50 focus:outline-none"
+              aria-label="Sort cards"
+            >
+              <option value="number">Sort: Card #</option>
+              <option value="price-high">Sort: Price high → low</option>
+              <option value="price-low">Sort: Price low → high</option>
+              <option value="name">Sort: Name</option>
+              <option value="rarity">Sort: Rarity</option>
+            </select>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() =>
-            setMeta && setTrackerService.exportChecklistCsv(setMeta.name, cards, wishlistIds)
-          }
-          className="inline-flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-hover px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary"
-        >
-          <Download className="h-4 w-4" />
-          Export CSV
-        </button>
+        {!isOP && (
+          <button
+            type="button"
+            onClick={() =>
+              setMeta && setTrackerService.exportChecklistCsv(setMeta.name, cards, wishlistIds)
+            }
+            className="inline-flex items-center gap-2 rounded-lg border border-border-subtle bg-surface-hover px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+        )}
       </div>
 
-      <SetBinderGrid
-        cards={sortSetTrackerCards(cards, sortBy)}
-        wishlistIds={wishlistIds}
-        filter={filter}
-        onToggleWishlist={handleToggleWishlist}
-        onAddToVault={handleAddToVault}
-      />
+      {isOP ? (
+        <OnePieceCardGrid cards={onePieceCards} />
+      ) : (
+        <SetBinderGrid
+          cards={sortSetTrackerCards(cards, sortBy)}
+          wishlistIds={wishlistIds}
+          filter={filter}
+          onToggleWishlist={handleToggleWishlist}
+          onAddToVault={handleAddToVault}
+        />
+      )}
 
-      <AddToVaultModal
-        card={vaultCard}
-        isOpen={vaultModalOpen}
-        onClose={() => {
-          setVaultModalOpen(false);
-          setVaultCard(null);
-        }}
-        onSuccess={handleVaultSuccess}
-      />
+      {!isOP && (
+        <AddToVaultModal
+          card={vaultCard}
+          isOpen={vaultModalOpen}
+          onClose={() => {
+            setVaultModalOpen(false);
+            setVaultCard(null);
+          }}
+          onSuccess={handleVaultSuccess}
+        />
+      )}
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, LogOut, Settings, User, Vault } from 'lucide-react';
+import { ChevronDown, LogIn, LogOut, Settings, User, Vault } from 'lucide-react';
 import { authService, User as AuthUser } from '../../services/authService';
 
 export const UserMenu: React.FC = () => {
@@ -91,10 +91,18 @@ export const UserMenu: React.FC = () => {
             </button>
           )}
           {!user && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-ink-muted">
-              <User className="h-3.5 w-3.5" />
-              Sign in when backend auth is enabled
-            </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                navigate('/login');
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-accent hover:bg-surface-hover"
+            >
+              <LogIn className="h-4 w-4" />
+              Sign in
+            </button>
           )}
         </div>
       )}

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Star, Layers } from 'lucide-react';
 import { PokemonSet } from '../../../types/pokemon';
+import { OnePieceSet } from '../../../types/onepiece';
 import { setTrackerService } from '../../../services/setTrackerService';
 import { setWishlistService } from '../../../services/setWishlistService';
+import { onepieceApi } from '../../../services/onepieceApi';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { ErrorMessage } from '../../../components/common/ErrorMessage';
@@ -62,8 +64,41 @@ function SetCard({
   );
 }
 
+function OnePieceSetCard({
+  set,
+  onSelect,
+}: {
+  set: OnePieceSet;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className="group relative flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border-default bg-surface-raised p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-border-strong"
+    >
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-sm font-bold text-red-400">
+        {set.id}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-white">{set.name}</p>
+        <p className="mt-0.5 text-xs text-ink-muted">{set.type}</p>
+      </div>
+    </div>
+  );
+}
+
 export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
+  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
   const [sets, setSets] = useState<PokemonSet[]>([]);
+  const [onePieceSets, setOnePieceSets] = useState<OnePieceSet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -76,8 +111,13 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await setTrackerService.getSets();
-        if (!cancelled) setSets(data);
+        if (tcg === 'pokemon') {
+          const data = await setTrackerService.getSets();
+          if (!cancelled) setSets(data);
+        } else {
+          const data = await onepieceApi.getAllSets();
+          if (!cancelled) setOnePieceSets(data);
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -87,9 +127,21 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tcg]);
 
   const filtered = useMemo(() => {
+    if (tcg === 'onepiece') {
+      const q = search.trim().toLowerCase();
+      let list = onePieceSets;
+      if (q) {
+        list = list.filter(
+          (s) =>
+            s.name.toLowerCase().includes(q) ||
+            s.id.toLowerCase().includes(q)
+        );
+      }
+      return list;
+    }
     let list = sets;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -106,7 +158,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       list = list.filter((s) => pinned.has(s.id));
     }
     return list;
-  }, [sets, search, pinnedOnly]);
+  }, [tcg, sets, onePieceSets, search, pinnedOnly]);
 
   const grouped = useMemo(() => groupSetsByEra(filtered), [filtered]);
   const showGrouped = !search.trim() && !pinnedOnly;
@@ -149,6 +201,14 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
         </p>
       </section>
 
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-ink-muted font-medium">TCG:</span>
+        <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
+          <button onClick={() => setTcg('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
+          <button onClick={() => setTcg('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[200px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
@@ -174,7 +234,17 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
         </button>
       </div>
 
-      {showGrouped ? (
+      {tcg === 'onepiece' ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(filtered as OnePieceSet[]).map((set) => (
+            <OnePieceSetCard
+              key={set.id}
+              set={set}
+              onSelect={() => onSelectSet(set.id)}
+            />
+          ))}
+        </div>
+      ) : showGrouped ? (
         <div className="space-y-8">
           {grouped.map((group) => (
             <section key={group.era} className="relative space-y-3 border-l-2 border-border-default pl-5">
@@ -207,7 +277,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
           {filtered.map((set) => (
             <SetCard
               key={set.id}
-              set={set}
+              set={set as PokemonSet}
               onSelect={() => onSelectSet(set.id)}
               onTogglePin={(e) => handleTogglePin(e, set.id)}
               pinned={setWishlistService.isPinned(set.id)}

@@ -228,35 +228,50 @@ export function CardScanner() {
           <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10">
             <Camera className="h-10 w-10 text-amber-300/80" />
           </div>
-          <h2 className="text-xl font-semibold text-ink-primary">Scanner warming up…</h2>
+          <h2 className="text-xl font-semibold text-ink-primary">Card Scanner Offline</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-ink-muted">
-            We&apos;re trying to reach the recognition service on port 5001. Start the Python backend
-            locally, or wait — we&apos;ll retry automatically.
+            The card recognition service is not running. This feature requires the Python backend
+            to be started separately.
           </p>
 
-          <div className="mx-auto mt-6 max-w-xs">
-            <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-ink-muted">
-              <span>Auto-retry</span>
-              <span>{retryProgress}%</span>
+          {retryProgress < 100 && (
+            <div className="mx-auto mt-6 max-w-xs">
+              <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-ink-muted">
+                <span>Auto-retry ({Math.round(retryProgress / 100 * 12)}/12)</span>
+                <span>{retryProgress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-accent/70 transition-all duration-500"
+                  style={{ width: `${retryProgress}%` }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-accent/70 transition-all duration-500"
-                style={{ width: `${retryProgress}%` }}
-              />
-            </div>
-          </div>
+          )}
 
-          <div className="mt-6 rounded-lg border border-border-subtle bg-black/40 p-4 text-left font-mono text-xs">
-            <p className="mb-2 text-ink-muted"># Start the scanner backend</p>
-            <p className="text-emerald-400">cd card-scanner-backend</p>
-            <p className="text-emerald-400">pip install -r requirements.txt</p>
-            <p className="text-emerald-400">python app.py</p>
+          {retryProgress >= 100 && (
+            <p className="mt-4 text-sm text-amber-300/80">
+              Could not connect after 12 attempts. Start the backend and click retry.
+            </p>
+          )}
+
+          <div className="mt-6 rounded-lg border border-border-subtle bg-black/40 p-4 text-left">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-ink-muted">Quick start</p>
+            <div className="font-mono text-xs space-y-1">
+              <p className="text-emerald-400">$ cd card-scanner-backend</p>
+              <p className="text-emerald-400">$ python -m venv venv</p>
+              <p className="text-emerald-400">$ source venv/bin/activate</p>
+              <p className="text-emerald-400">$ pip install -r requirements.txt</p>
+              <p className="text-emerald-400">$ python app.py</p>
+            </div>
+            <p className="mt-2 text-[10px] text-ink-muted">
+              Server runs on http://localhost:5001
+            </p>
           </div>
 
           <button type="button" onClick={recheckBackend} className="btn-primary mt-6">
             <RefreshCw className="h-4 w-4" />
-            Retry now
+            Retry connection
           </button>
         </div>
       </div>

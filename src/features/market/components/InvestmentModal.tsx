@@ -70,9 +70,9 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.id, isOpen]);
 
-  const handleTrack = () => {
+  const handleTrack = async () => {
     if (card) {
-      priceTrackingService.trackCard(card);
+      await priceTrackingService.trackCard(card);
       setIsTracked(true);
     }
   };
@@ -146,18 +146,24 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
       <Modal isOpen={isOpen} onClose={onClose} size="detail">
         <div className="min-w-0">
           <div className="flex gap-4 sm:gap-5">
-            <img
-              src={card.images.large || card.images.small}
-              alt=""
-              className="aspect-[5/7] w-[8.5rem] shrink-0 rounded-xl border border-border-default bg-surface-inset object-contain shadow-md sm:w-[9.5rem]"
-              loading="lazy"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                if (card.images.small && target.src !== card.images.small) {
-                  target.src = card.images.small;
-                }
-              }}
-            />
+            {card.images?.large || card.images?.small ? (
+              <img
+                src={card.images.large || card.images.small}
+                alt=""
+                className="aspect-[5/7] w-[8.5rem] shrink-0 rounded-xl border border-border-default bg-surface-inset object-contain shadow-md sm:w-[9.5rem]"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (card.images?.small && target.src !== card.images.small) {
+                    target.src = card.images.small;
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex aspect-[5/7] w-[8.5rem] shrink-0 items-center justify-center rounded-xl border border-border-default bg-surface-inset text-ink-muted shadow-md sm:w-[9.5rem]">
+                <Database className="h-8 w-8" />
+              </div>
+            )}
 
             <div className="min-w-0 flex-1">
               <h2 className="text-xl font-bold leading-tight text-white sm:text-2xl">{card.name}</h2>

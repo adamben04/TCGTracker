@@ -76,10 +76,6 @@ class AuthService {
     await axios.post(buildApiUrl('/api/auth/change-password'), { oldPassword, newPassword });
   }
 
-  getToken(): string | null {
-    return null;
-  }
-
   getUser(): User | null {
     const userJson = localStorage.getItem(this.USER_KEY);
     return userJson ? JSON.parse(userJson) : null;
@@ -97,9 +93,6 @@ class AuthService {
     localStorage.removeItem(this.USER_KEY);
   }
 
-  getAuthHeaders(): Record<string, string> {
-    return {};
-  }
 }
 
 export const authService = new AuthService();

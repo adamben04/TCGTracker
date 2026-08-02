@@ -26,18 +26,18 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg">
-          <div className="text-sm text-green-700 font-medium">PSA 10 Population</div>
-          <div className="text-2xl font-bold text-green-800">{psaData.population.grade10.toLocaleString()}</div>
-          <div className="text-xs text-green-600">
+        <div className="bg-gradient-to-r from-emerald-500/10 to-emerald-500/20 p-4 rounded-lg">
+          <div className="text-sm text-emerald-400 font-medium">PSA 10 Population</div>
+          <div className="text-2xl font-bold text-emerald-300">{psaData.population.grade10.toLocaleString()}</div>
+          <div className="text-xs text-emerald-400">
             {psaData.popReport.grade10Percentage.toFixed(1)}% of total
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg">
-          <div className="text-sm text-blue-700 font-medium">Return Rate (9+)</div>
-          <div className="text-2xl font-bold text-blue-800">{psaData.returnRate.toFixed(1)}%</div>
-          <div className="text-xs text-blue-600">
+        <div className="bg-gradient-to-r from-sky-500/10 to-sky-500/20 p-4 rounded-lg">
+          <div className="text-sm text-sky-400 font-medium">Return Rate (9+)</div>
+          <div className="text-2xl font-bold text-sky-300">{psaData.returnRate.toFixed(1)}%</div>
+          <div className="text-xs text-sky-400">
             {(psaData.population.grade10 + psaData.population.grade9).toLocaleString()} cards
           </div>
         </div>
@@ -110,10 +110,10 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
         <h4 className="text-lg font-semibold mb-3">Price by Grade</h4>
         <div className="grid grid-cols-2 gap-3">
           {populationData.filter(item => item.price > 0).map((item, index) => (
-            <div key={item.grade} className="bg-gray-50 p-3 rounded-lg">
-              <div className="text-sm text-gray-600">{item.grade}</div>
-              <div className="text-xl font-bold text-gray-900">${item.price}</div>
-              <div className="text-xs text-gray-500">
+            <div key={item.grade} className="bg-surface-inset p-3 rounded-lg">
+              <div className="text-sm text-ink-secondary">{item.grade}</div>
+              <div className="text-xl font-bold text-white">${item.price}</div>
+              <div className="text-xs text-ink-muted">
                 {item.population.toLocaleString()} available
               </div>
             </div>
@@ -122,23 +122,23 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
       </div>
 
       {/* Investment Insights */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg">
-        <h4 className="text-lg font-semibold mb-2 text-purple-800">Investment Insights</h4>
+      <div className="bg-gradient-to-r from-violet-500/10 to-pink-500/10 p-4 rounded-lg">
+        <h4 className="text-lg font-semibold mb-2 text-violet-300">Investment Insights</h4>
         <div className="space-y-2 text-sm">
           {psaData.popReport.lowPop && (
-            <div className="flex items-center gap-2 text-green-700">
+            <div className="flex items-center gap-2 text-emerald-400">
               <span className="w-2 h-2 bg-green-500 rounded-full"></span>
               Low population card - potential for price appreciation
             </div>
           )}
           {psaData.returnRate > 50 && (
-            <div className="flex items-center gap-2 text-blue-700">
+            <div className="flex items-center gap-2 text-sky-400">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               High return rate - good for raw card investment
             </div>
           )}
           {psaData.popReport.grade10Percentage < 10 && (
-            <div className="flex items-center gap-2 text-purple-700">
+            <div className="flex items-center gap-2 text-violet-400">
               <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
               Rare PSA 10 - premium graded examples command high prices
             </div>

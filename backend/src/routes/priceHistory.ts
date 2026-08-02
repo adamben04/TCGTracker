@@ -473,12 +473,12 @@ router.get('/compare/:productId', (req: Request, res: Response) => {
     const typedRows = rows as PriceComparisonRow[];
     
     // Calculate percentage changes
-    const period1Data = typedRows.find(r => r.period === 'period1');
-    const period2Data = typedRows.find(r => r.period === 'period2');
+    const outerData = typedRows.find(r => r.period === 'outer');
+    const innerData = typedRows.find(r => r.period === 'inner');
     
     let priceChange = null;
-    if (period1Data && period2Data && period1Data.avgPrice > 0) {
-      priceChange = ((period2Data.avgPrice - period1Data.avgPrice) / period1Data.avgPrice) * 100;
+    if (outerData && innerData && outerData.avgPrice > 0) {
+      priceChange = ((innerData.avgPrice - outerData.avgPrice) / outerData.avgPrice) * 100;
     }
     
     res.json({ 

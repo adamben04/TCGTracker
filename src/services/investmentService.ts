@@ -1,7 +1,5 @@
 import { PricePoint } from '../types/pokemon';
-import { env } from '../config/env';
-
-const BACKEND_API_URL = `${env.apiUrl}/api`;
+import { buildApiUrl } from '../config/env';
 
 interface BackendPriceData {
   productId: number;
@@ -21,7 +19,7 @@ interface BackendSearchResult {
 class InvestmentService {
   async getPriceHistory(productId: string): Promise<PricePoint[]> {
     try {
-      const response = await fetch(`${BACKEND_API_URL}/prices/${productId}`);
+      const response = await fetch(buildApiUrl(`/api/prices/${productId}`));
       if (!response.ok) {
         throw new Error(`API request failed: ${response.status} ${response.statusText}`);
       }
@@ -46,7 +44,7 @@ class InvestmentService {
   async getPriceHistoryByName(cardName: string): Promise<PricePoint[]> {
     try {
       // First, search for cards with similar names
-      const searchResponse = await fetch(`${BACKEND_API_URL}/prices/search/${encodeURIComponent(cardName)}`);
+      const searchResponse = await fetch(buildApiUrl(`/api/prices/search/${encodeURIComponent(cardName)}`));
       if (!searchResponse.ok) {
         throw new Error(`Search API request failed: ${searchResponse.status} ${searchResponse.statusText}`);
       }

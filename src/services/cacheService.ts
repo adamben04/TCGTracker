@@ -74,8 +74,24 @@ class CacheService {
 
 export const cacheService = new CacheService();
 
-// Clean expired entries every 2 minutes
-setInterval(() => {
-  cacheService.clearExpired();
-}, 2 * 60 * 1000);
+let cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startCacheCleanup(): void {
+  if (cleanupInterval) return;
+  cleanupInterval = setInterval(() => {
+    cacheService.clearExpired();
+  }, 2 * 60 * 1000);
+}
+
+export function stopCacheCleanup(): void {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+  }
+}
+
+// Auto-start in browser environments
+if (typeof window !== 'undefined') {
+  startCacheCleanup();
+}
 

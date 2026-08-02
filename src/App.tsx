@@ -37,6 +37,12 @@ const SetIndex = lazy(() =>
 const SetDetail = lazy(() =>
   import('./features/sets/components/SetDetail').then((m) => ({ default: m.SetDetail }))
 );
+const LoginPage = lazy(() =>
+  import('./pages/LoginPage').then((m) => ({ default: m.LoginPage }))
+);
+const RegisterPage = lazy(() =>
+  import('./pages/RegisterPage').then((m) => ({ default: m.RegisterPage }))
+);
 
 const PAGE_CONTAINER = 'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8';
 
@@ -137,6 +143,8 @@ function App() {
                     </div>
                   }
                 />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

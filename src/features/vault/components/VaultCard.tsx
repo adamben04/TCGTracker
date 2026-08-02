@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { VaultCard as VaultCardType } from '../../../types/pokemon';
 import { TrendingUp, TrendingDown, Trash2, Edit, Package } from 'lucide-react';
 import { vaultService } from '../../../services/vaultService';
+import { pokemonApi } from '../../../services/pokemonApi';
 
 interface VaultCardProps {
   vaultCard: VaultCardType;
@@ -15,7 +16,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
   const [editNotes, setEditNotes] = useState(vaultCard.notes || '');
 
   const { card, purchasePrice, purchaseDate, quantity, condition, notes } = vaultCard;
-  const currentPrice = card.marketPrice || 0;
+  const currentPrice = card.marketPrice || pokemonApi.extractCardPrice(card);
   const totalPurchaseValue = purchasePrice * quantity;
   const totalCurrentValue = currentPrice * quantity;
   const profit = totalCurrentValue - totalPurchaseValue;
@@ -68,7 +69,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
               className="w-full h-auto rounded-lg shadow-md hover:scale-105 transition-transform duration-300"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (target.src !== card.images.large && card.images.large) {
+                if (target.src !== card.images?.large && card.images?.large) {
                   target.src = card.images.large;
                 } else {
                   target.remove();

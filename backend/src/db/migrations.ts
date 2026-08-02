@@ -525,6 +525,38 @@ export const migrations: Migration[] = [
       logger.info('Skipping rollback of set_id_aliases (SQLite limitation)');
     },
   },
+  {
+    id: 11,
+    name: 'add_user_tracked_cards',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err && !err.message.includes('already exists')) reject(err);
+            else resolve();
+          });
+        });
+
+      await run(`
+        CREATE TABLE IF NOT EXISTS user_tracked_cards (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          card_id TEXT NOT NULL,
+          card_data TEXT NOT NULL,
+          initial_price REAL DEFAULT 0,
+          added_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE(user_id, card_id)
+        )
+      `);
+
+      await run('CREATE INDEX IF NOT EXISTS idx_tracked_cards_user ON user_tracked_cards(user_id)');
+      logger.info('Created user_tracked_cards table');
+    },
+    down: async (db: Database) => {
+      db.run('DROP TABLE IF EXISTS user_tracked_cards');
+    },
+  },
 ];
 
 // Run pending migrations

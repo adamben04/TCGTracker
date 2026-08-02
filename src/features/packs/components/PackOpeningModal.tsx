@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Pack, PackPull } from '../../../types/pokemon';
 import { Modal } from '../../../components/common/Modal';
@@ -19,6 +19,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
   const [packPull, setPackPull] = useState<PackPull | null>(null);
   const [revealedCards, setRevealedCards] = useState<number>(0);
   const [showResults, setShowResults] = useState(false);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const skipRef = useRef(false);
 
   /** Delay that resolves early when the user hits Skip. */
@@ -35,6 +36,10 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
   const handleSkip = () => {
     skipRef.current = true;
   };
+
+  const handleImageError = useCallback((cardId: string) => {
+    setFailedImages(prev => new Set(prev).add(cardId));
+  }, []);
 
   const handleOpenPack = async () => {
     if (!pack) return;
@@ -116,6 +121,11 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
       case 'silver': return 'from-gray-300 to-gray-500';
       case 'gold': return 'from-yellow-400 to-yellow-600';
       case 'platinum': return 'from-purple-400 to-purple-600';
+      case 'common': return 'from-blue-400 to-blue-600';
+      case 'uncommon': return 'from-green-400 to-green-600';
+      case 'rare': return 'from-purple-400 to-purple-600';
+      case 'ultra-rare': return 'from-orange-400 to-red-600';
+      case 'secret-rare': return 'from-rose-400 to-pink-600';
       default: return 'from-blue-400 to-blue-600';
     }
   };
@@ -277,30 +287,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
                       
                       {/* Card */}
                       <div className={`relative rounded-2xl overflow-hidden shadow-2xl border-4 bg-gradient-to-br ${getRarityColor(card.rarity)} p-1 transform hover:scale-105 transition-transform`}>
-                        {card.images?.small ? (
-                          <img
-                            src={card.images.small}
-                            alt={card.name}
-                            className="w-80 h-auto rounded-xl"
-                            onError={(e) => {
-                              // Show placeholder if image fails to load
-                              const target = e.target as HTMLImageElement;
-                              const parent = target.parentElement;
-                              if (parent) {
-                                target.style.display = 'none';
-                                parent.innerHTML += `
-                                  <div class="w-80 h-[440px] bg-gradient-to-br from-gray-700 to-gray-900 rounded-xl flex flex-col items-center justify-center text-white p-6">
-                                    <div class="text-center">
-                                      <p class="text-xl font-bold mb-2">${card.name}</p>
-                                      <p class="text-sm text-gray-400 mb-2">${card.set.name}</p>
-                                      <p class="text-xs text-gray-500">Image not available</p>
-                                    </div>
-                                  </div>
-                                `;
-                              }
-                            }}
-                          />
-                        ) : (
+                        {failedImages.has(card.id || card.name) || !card.images?.small ? (
                           <div className="w-80 h-[440px] bg-gradient-to-br from-gray-700 to-gray-900 rounded-xl flex flex-col items-center justify-center text-white p-6">
                             <div className="text-center">
                               <p className="text-xl font-bold mb-2">{card.name}</p>
@@ -308,6 +295,13 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
                               <p className="text-xs text-gray-500">Image not available</p>
                             </div>
                           </div>
+                        ) : (
+                          <img
+                            src={card.images.small}
+                            alt={card.name}
+                            className="w-80 h-auto rounded-xl"
+                            onError={() => handleImageError(card.id || card.name)}
+                          />
                         )}
                         
                         {/* Sparkle effects for rare cards */}
@@ -378,30 +372,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
                 return (
                   <div key={index} className="relative group">
                     <div className={`rounded-2xl overflow-hidden shadow-2xl border-4 bg-gradient-to-br ${getRarityColor(card.rarity)} p-1 hover:scale-105 transition-transform`}>
-                      {card.images?.small ? (
-                        <img
-                          src={card.images.small}
-                          alt={card.name}
-                          className="w-72 h-auto rounded-xl"
-                          onError={(e) => {
-                            // Show placeholder if image fails to load
-                            const target = e.target as HTMLImageElement;
-                            const parent = target.parentElement;
-                            if (parent) {
-                              target.style.display = 'none';
-                              parent.innerHTML += `
-                                <div class="w-72 h-[396px] bg-gradient-to-br from-gray-700 to-gray-900 rounded-xl flex flex-col items-center justify-center text-white p-6">
-                                  <div class="text-center">
-                                    <p class="text-lg font-bold mb-2">${card.name}</p>
-                                    <p class="text-xs text-gray-400 mb-2">${card.set.name}</p>
-                                    <p class="text-xs text-gray-500">Image not available</p>
-                                  </div>
-                                </div>
-                              `;
-                            }
-                          }}
-                        />
-                      ) : (
+                      {failedImages.has(card.id || card.name) || !card.images?.small ? (
                         <div className="w-72 h-[396px] bg-gradient-to-br from-gray-700 to-gray-900 rounded-xl flex flex-col items-center justify-center text-white p-6">
                           <div className="text-center">
                             <p className="text-lg font-bold mb-2">{card.name}</p>
@@ -409,6 +380,13 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
                             <p className="text-xs text-gray-500">Image not available</p>
                           </div>
                         </div>
+                      ) : (
+                        <img
+                          src={card.images.small}
+                          alt={card.name}
+                          className="w-72 h-auto rounded-xl"
+                          onError={() => handleImageError(card.id || card.name)}
+                        />
                       )}
                     </div>
                     <div className="mt-4 text-center">

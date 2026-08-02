@@ -29,6 +29,7 @@ const envSchema = z.object({
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('development'),
   ADMIN_USERNAME: z.string().default('admin'),
+  AUTH_BYPASS_ENABLED: z.string().default('false'),
   CLOUD_SYNC_ENABLED: z.string().default('false'),
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
@@ -94,6 +95,7 @@ export const env = {
   admin: {
     username: parsedEnv.data.ADMIN_USERNAME,
   },
+  authBypassEnabled: parsedEnv.data.AUTH_BYPASS_ENABLED.toLowerCase() === 'true',
   isDevelopment: parsedEnv.data.NODE_ENV === 'development',
   isProduction: parsedEnv.data.NODE_ENV === 'production',
   isTest: parsedEnv.data.NODE_ENV === 'test',

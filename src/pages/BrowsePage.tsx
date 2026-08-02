@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PokemonCard } from '../types/pokemon';
+import { OnePieceCard } from '../types/onepiece';
 import { SearchFilters } from '../features/cards/components/SearchAndSort';
 import { CardGrid, CardViewMode, ViewModeToggle } from '../features/cards/components/CardGrid';
 import { countActiveMarketplaceFilters } from '../utils/marketplaceFilters';
@@ -11,8 +12,11 @@ import { ErrorMessage } from '../components/common/ErrorMessage';
 import { EmptyState } from '../components/common/EmptyState';
 import { usePokemonCards } from '../hooks/usePokemonCards';
 import { pokemonApi } from '../services/pokemonApi';
+import { onepieceApi } from '../services/onepieceApi';
 import { useCardModal } from '../contexts/CardModalContext';
 import { markOnboardingStep } from '../components/common/OnboardingChecklist';
+import { formatCurrency, getRarityBadgeClass } from '../utils/cardDisplay';
+import { BookPlus, Eye, LineChart } from 'lucide-react';
 
 const DEFAULT_FILTERS: MarketplaceFilters = {
   setName: 'all',
@@ -30,6 +34,9 @@ export function BrowsePage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>('grid');
   const [marketplaceFilters, setMarketplaceFilters] = useState<MarketplaceFilters>(DEFAULT_FILTERS);
+  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
+  const [onePieceCards, setOnePieceCards] = useState<OnePieceCard[]>([]);
+  const [onePieceLoading, setOnePieceLoading] = useState(false);
 
   const {
     cards,
@@ -74,6 +81,31 @@ export function BrowsePage() {
     setFilterBy('all');
     setMarketplaceFilters(DEFAULT_FILTERS);
   };
+
+  const handleOnePieceSearch = useCallback(async (query: string) => {
+    setOnePieceLoading(true);
+    try {
+      if (!query.trim()) {
+        const allCards = await onepieceApi.getAllCards();
+        setOnePieceCards(allCards);
+      } else {
+        const results = await onepieceApi.searchCards(query);
+        setOnePieceCards(results);
+      }
+    } catch (err) {
+      console.error('One Piece search error:', err);
+      setOnePieceCards([]);
+    } finally {
+      setOnePieceLoading(false);
+    }
+  }, []);
+
+  // Load One Piece cards when switching to onepiece TCG
+  useEffect(() => {
+    if (tcg === 'onepiece') {
+      handleOnePieceSearch(searchQuery);
+    }
+  }, [tcg, searchQuery, handleOnePieceSearch]);
 
   const handleAddToCollection = (_card: PokemonCard) => {
     navigate('/vault');
@@ -135,6 +167,28 @@ export function BrowsePage() {
           </div>
         </div>
       </section>
+
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-ink-muted font-medium">TCG:</span>
+        <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
+          <button
+            onClick={() => setTcg('pokemon')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+            }`}
+          >
+            Pokemon
+          </button>
+          <button
+            onClick={() => setTcg('onepiece')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+            }`}
+          >
+            One Piece
+          </button>
+        </div>
+      </div>
 
       <SearchFilters
         searchQuery={searchQuery}
@@ -205,7 +259,25 @@ export function BrowsePage() {
         />
 
         <section className="min-w-0">
-          {error ? (
+          {tcg === 'onepiece' ? (
+            onePieceLoading ? (
+              <LoadingGrid />
+            ) : onePieceCards.length > 0 ? (
+              <section className="animate-fade-in">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                  {onePieceCards.map((card) => (
+                    <OnePieceCardItem key={card.id} card={card} onClick={() => openCard(card as any)} />
+                  ))}
+                </div>
+              </section>
+            ) : (
+              <EmptyState
+                hasSearchQuery={!!searchQuery}
+                onResetFilters={handleResetBrowseState}
+                onTrySearch={handleSearchChange}
+              />
+            )
+          ) : error ? (
             <ErrorMessage message={error} onRetry={refetch} />
           ) : isLoading ? (
             <LoadingGrid />
@@ -227,5 +299,123 @@ export function BrowsePage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function OnePieceCardItem({ card, onClick }: { card: OnePieceCard; onClick: () => void }) {
+  const price = card.marketPrice ?? 0;
+  const imageUrl = card.images?.small || card.imageUrl;
+
+  return (
+    <article
+      className={[
+        'group relative overflow-hidden rounded-lg border border-border-default bg-surface-raised shadow-sm',
+        'transition-colors duration-150 hover:border-border-strong',
+      ].join(' ')}
+    >
+      <div className="relative aspect-[63/88] overflow-hidden bg-surface-inset cursor-pointer" onClick={onClick}>
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={`${card.name} card image`}
+            className="relative z-0 h-full w-full object-contain p-2.5 transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-ink-muted">
+            No image available
+          </div>
+        )}
+
+        <div className="absolute bottom-2 left-2 right-2 z-20 grid grid-cols-3 gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-border-default bg-surface-overlay px-2 py-1 text-[11px] font-medium text-ink-primary hover:bg-surface-hover"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            View
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-border-default bg-surface-overlay px-2 py-1 text-[11px] font-medium text-ink-primary hover:bg-surface-hover"
+          >
+            <BookPlus className="h-3.5 w-3.5" />
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClick();
+            }}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-border-default bg-surface-overlay px-2 py-1 text-[11px] font-medium text-ink-primary hover:bg-surface-hover"
+          >
+            <LineChart className="h-3.5 w-3.5" />
+            History
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full text-left"
+        aria-label={`Open details for ${card.name}`}
+      >
+        <div className="space-y-1.5 px-3.5 py-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3
+              className="truncate text-[13px] font-semibold leading-tight text-ink-primary"
+              title={card.name}
+            >
+              {card.name || 'Unknown Card'}
+            </h3>
+            <span className="shrink-0 font-mono text-[10px] text-ink-muted">
+              #{card.number || '—'}
+            </span>
+          </div>
+          <p className="truncate text-xs text-ink-muted" title={card.setName}>
+            {card.setName || 'Unknown set'}
+          </p>
+
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle pt-2">
+            {card.rarity ? (
+              <span
+                className={`inline-flex max-w-[55%] items-center truncate rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${getRarityBadgeClass(card.rarity)}`}
+                title={card.rarity}
+              >
+                {card.rarity}
+              </span>
+            ) : (
+              <span className="text-[10px] text-ink-muted">—</span>
+            )}
+            <span className="flex items-center gap-1.5">
+              <span
+                className={`font-mono text-sm font-bold tabular-nums ${price > 0 ? 'text-ink-primary' : 'text-ink-muted'}`}
+              >
+                {price > 0 ? formatCurrency(price) : 'Unpriced'}
+              </span>
+            </span>
+          </div>
+
+          {card.color && (
+            <div className="pt-1">
+              <span className="inline-flex items-center rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-medium text-ink-secondary">
+                {card.color}
+              </span>
+            </div>
+          )}
+        </div>
+      </button>
+    </article>
   );
 }

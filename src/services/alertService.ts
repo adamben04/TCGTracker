@@ -1,7 +1,5 @@
 import axios from 'axios';
 import { env } from '../config/env';
-import { authService } from './authService';
-
 const API_URL = env.apiUrl;
 
 export interface PriceAlert {
@@ -18,9 +16,7 @@ export interface PriceAlert {
 
 class AlertServiceFrontend {
   async getAlerts(): Promise<PriceAlert[]> {
-    const response = await axios.get<{ alerts: PriceAlert[] }>(`${API_URL}/api/alerts`, {
-      headers: authService.getAuthHeaders(),
-    });
+    const response = await axios.get<{ alerts: PriceAlert[] }>(`${API_URL}/api/alerts`);
     return response.data.alerts;
   }
 
@@ -32,24 +28,17 @@ class AlertServiceFrontend {
   ): Promise<PriceAlert> {
     const response = await axios.post<{ alert: PriceAlert }>(
       `${API_URL}/api/alerts`,
-      { cardId, cardName, targetPrice, condition },
-      { headers: authService.getAuthHeaders() }
+      { cardId, cardName, targetPrice, condition }
     );
     return response.data.alert;
   }
 
   async deleteAlert(alertId: number): Promise<void> {
-    await axios.delete(`${API_URL}/api/alerts/${alertId}`, {
-      headers: authService.getAuthHeaders(),
-    });
+    await axios.delete(`${API_URL}/api/alerts/${alertId}`);
   }
 
   async toggleAlert(alertId: number, isActive: boolean): Promise<void> {
-    await axios.put(
-      `${API_URL}/api/alerts/${alertId}/toggle`,
-      { isActive },
-      { headers: authService.getAuthHeaders() }
-    );
+    await axios.put(`${API_URL}/api/alerts/${alertId}/toggle`, { isActive });
   }
 }
 

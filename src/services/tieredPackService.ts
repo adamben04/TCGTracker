@@ -1,11 +1,89 @@
 import { Pack, PackPull, PokemonCard, PackOpeningHistory, ValueRange } from '../types/pokemon';
 import { pokemonApi } from './pokemonApi';
 import { env } from '../config/env';
+import { onepieceApi } from './onepieceApi';
+import { OnePieceCard } from '../types/onepiece';
 
 const PACK_HISTORY_KEY = 'tcg_tiered_pack_history';
 
+const ONE_PIECE_PACKS: Pack[] = [
+  {
+    id: 'op-standard',
+    name: 'One Piece Booster Pack',
+    tier: 'common',
+    price: 4.99,
+    averageValue: 5.50,
+    cardsPerPack: 5,
+    imageUrl: '',
+    description: 'Standard One Piece TCG booster pack. 5 random cards.',
+    valueRanges: [
+      { min: 0, max: 1, probability: 15, label: '$0-1' },
+      { min: 1, max: 3, probability: 35, label: '$1-3' },
+      { min: 3, max: 8, probability: 30, label: '$3-8' },
+      { min: 8, max: 20, probability: 15, label: '$8-20' },
+      { min: 20, max: 100, probability: 5, label: '$20-100' },
+    ],
+    tcg: 'onepiece',
+  },
+  {
+    id: 'op-premium',
+    name: 'One Piece Premium Pack',
+    tier: 'rare',
+    price: 14.99,
+    averageValue: 16.00,
+    cardsPerPack: 8,
+    imageUrl: '',
+    description: 'Premium One Piece pack with 8 cards including guaranteed rare.',
+    valueRanges: [
+      { min: 0, max: 3, probability: 10, label: '$0-3' },
+      { min: 3, max: 8, probability: 25, label: '$3-8' },
+      { min: 8, max: 20, probability: 35, label: '$8-20' },
+      { min: 20, max: 50, probability: 20, label: '$20-50' },
+      { min: 50, max: 200, probability: 10, label: '$50-200' },
+    ],
+    tcg: 'onepiece',
+  },
+  {
+    id: 'op-starter',
+    name: 'One Piece Starter Deck',
+    tier: 'uncommon',
+    price: 9.99,
+    averageValue: 11.00,
+    cardsPerPack: 6,
+    imageUrl: '',
+    description: 'One Piece starter deck cards. Guaranteed leader card.',
+    valueRanges: [
+      { min: 0, max: 2, probability: 10, label: '$0-2' },
+      { min: 2, max: 5, probability: 30, label: '$2-5' },
+      { min: 5, max: 12, probability: 35, label: '$5-12' },
+      { min: 12, max: 25, probability: 20, label: '$12-25' },
+      { min: 25, max: 80, probability: 5, label: '$25-80' },
+    ],
+    tcg: 'onepiece',
+  },
+  {
+    id: 'op-secret',
+    name: 'One Piece Secret Rare Hunt',
+    tier: 'secret-rare',
+    price: 29.99,
+    averageValue: 35.00,
+    cardsPerPack: 10,
+    imageUrl: '',
+    description: 'High-value One Piece pack. 10 cards with boosted SR/SEC odds.',
+    valueRanges: [
+      { min: 0, max: 5, probability: 5, label: '$0-5' },
+      { min: 5, max: 15, probability: 15, label: '$5-15' },
+      { min: 15, max: 40, probability: 30, label: '$15-40' },
+      { min: 40, max: 100, probability: 30, label: '$40-100' },
+      { min: 100, max: 500, probability: 20, label: '$100-500' },
+    ],
+    tcg: 'onepiece',
+  },
+];
+
 class TieredPackService {
-  // No caching - always fetch fresh from DB
+  private cardPoolCache: PokemonCard[] | null = null;
+  private onePieceCardPoolCache: OnePieceCard[] | null = null;
 
   // Define tiered packs with GameStop-style odds
   private tieredPacks: Pack[] = [
@@ -103,34 +181,69 @@ class TieredPackService {
 
 
   // Get all available tiered packs
-  getAvailablePacks(): Pack[] {
-    return this.tieredPacks;
+  getAvailablePacks(tcg?: 'pokemon' | 'onepiece'): Pack[] {
+    const allPacks = [...this.tieredPacks, ...ONE_PIECE_PACKS];
+    if (tcg) {
+      return allPacks.filter(pack => {
+        if (tcg === 'pokemon') return !pack.tcg || pack.tcg === 'pokemon';
+        return pack.tcg === tcg;
+      });
+    }
+    return allPacks;
+  }
+
+  // Get only One Piece packs
+  getOnePiecePacks(): Pack[] {
+    return ONE_PIECE_PACKS;
   }
 
   // Open a tiered pack
   async openPack(pack: Pack): Promise<PackPull> {
     try {
-      const cardPool = await this.fetchCardPool();
+      let cardPool: any[];
+      
+      if (pack.tcg === 'onepiece') {
+        const onePieceCards = await this.fetchOnePieceCardPool();
+        cardPool = onePieceCards.map(card => ({
+          ...card,
+          marketPrice: card.marketPrice || onepieceApi.extractCardPrice(card),
+        }));
+      } else {
+        cardPool = await this.fetchCardPool();
+      }
+
       console.log("cardPool: ", cardPool);
       if (cardPool.length === 0) {
         throw new Error('Unable to fetch cards. Please check your connection.');
       }
 
-      const selectedCard = this.selectCardFromRange(cardPool, pack.valueRanges);
-      console.log("selectedCard: ", selectedCard);
-      if (!selectedCard) {
+      const cardsPerPack = pack.cardsPerPack || 1;
+      const selectedCards: any[] = [];
+      const seenIds = new Set<string>();
+
+      for (let i = 0; i < cardsPerPack; i++) {
+        const card = this.selectCardFromRange(cardPool, pack.valueRanges, seenIds);
+        if (!card) break;
+        seenIds.add(card.id);
+        selectedCards.push(card);
+      }
+
+      if (selectedCards.length === 0) {
         throw new Error('No suitable card found in the pool for this value range.');
       }
 
       // Backend handles images (stored -> deterministic)
       // If no images available, card.images will be undefined
 
-      const totalValue = selectedCard.marketPrice || pokemonApi.extractCardPrice(selectedCard);
+      const totalValue = selectedCards.reduce((sum, card) => sum + (
+        card.marketPrice ||
+        (pack.tcg === 'onepiece' ? onepieceApi.extractCardPrice(card) : pokemonApi.extractCardPrice(card))
+      ), 0);
       const profit = totalValue - pack.price;
 
       const packPull: PackPull = {
         pack,
-        cards: [selectedCard],
+        cards: selectedCards,
         totalValue,
         profit,
         openedAt: new Date().toISOString()
@@ -160,8 +273,11 @@ class TieredPackService {
     return ranges[0];
   }
 
-  // Fetch a large pool of cards from various sets
   private async fetchCardPool(): Promise<PokemonCard[]> {
+    if (this.cardPoolCache) {
+      return this.cardPoolCache;
+    }
+
     const resp = await fetch(`${env.apiUrl}/api/cards/pool?limit=10000`);
     
     if (!resp.ok) {
@@ -175,7 +291,6 @@ class TieredPackService {
       throw new Error('No cards returned from database');
     }
     
-    // Filter out cards with no price
     const cardsWithPrices = allCards.filter((card: PokemonCard) => {
       const price = card.marketPrice || pokemonApi.extractCardPrice(card);
       return price > 0 && price < 10000;
@@ -185,13 +300,13 @@ class TieredPackService {
       throw new Error('No cards with valid prices found');
     }
 
-    // Debug: Log max price in pool
     const prices = cardsWithPrices.map((card: PokemonCard) => card.marketPrice || pokemonApi.extractCardPrice(card));
     const maxPrice = Math.max(...prices);
     const minPrice = Math.min(...prices);
     console.log(`📊 Card pool stats: ${cardsWithPrices.length} cards, price range: $${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`);
 
-    return this.shuffleArray([...cardsWithPrices]);
+    this.cardPoolCache = this.shuffleArray([...cardsWithPrices]);
+    return this.cardPoolCache;
   }
 
   // Shuffle array for randomness
@@ -207,7 +322,8 @@ class TieredPackService {
   // Select a random card from the pool based on rolled value range
   private selectCardFromRange(
     cardPool: PokemonCard[],
-    ranges: ValueRange[]
+    ranges: ValueRange[],
+    excludeIds: Set<string> = new Set()
   ): PokemonCard | null {
     const rolledRange = this.selectValueRange(ranges);
     
@@ -226,7 +342,7 @@ class TieredPackService {
         (card as PokemonCard & { uniqueIdentifier?: string }).uniqueIdentifier ||
         `${card.set?.id || 'unknown'}-${card.number || 'unknown'}-${card.name || 'unknown'}`;
       
-      if (seenIds.has(cardId)) return false;
+      if (seenIds.has(cardId) || excludeIds.has(cardId)) return false;
       seenIds.add(cardId);
       return true;
     });
@@ -303,9 +419,32 @@ class TieredPackService {
     localStorage.removeItem(PACK_HISTORY_KEY);
   }
 
-  // Clear card pool cache (no-op since we don't cache anymore)
   clearCache(): void {
-    // No-op
+    this.cardPoolCache = null;
+  }
+
+  // Fetch One Piece card pool from API
+  async fetchOnePieceCardPool(): Promise<OnePieceCard[]> {
+    if (this.onePieceCardPoolCache) {
+      return this.onePieceCardPoolCache;
+    }
+
+    const cards = await onepieceApi.getAllCards();
+    const cardsWithPrices = cards.filter((card: OnePieceCard) => {
+      const price = card.marketPrice || onepieceApi.extractCardPrice(card);
+      return price > 0 && price < 10000;
+    });
+
+    if (cardsWithPrices.length === 0) {
+      throw new Error('No One Piece cards with valid prices found');
+    }
+
+    this.onePieceCardPoolCache = this.shuffleArray([...cardsWithPrices]);
+    return this.onePieceCardPoolCache;
+  }
+
+  clearOnePieceCache(): void {
+    this.onePieceCardPoolCache = null;
   }
 }
 

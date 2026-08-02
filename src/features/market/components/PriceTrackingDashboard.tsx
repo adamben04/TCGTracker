@@ -4,6 +4,8 @@ import { TrendingUp, TrendingDown, AlertCircle, Plus, Trash2, Search, Star, Targ
 import { priceTrackingService, TrackedCard, PriceAlert } from '../../../services/priceTrackingService';
 import { pokemonApi } from '../../../services/pokemonApi';
 import { PokemonCard } from '../../../types/pokemon';
+import { onepieceApi } from '../../../services/onepieceApi';
+import { OnePieceCard } from '../../../types/onepiece';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
 import { MiniSparkline } from '../../../components/common/MiniSparkline';
@@ -21,23 +23,51 @@ export const PriceTrackingDashboard: React.FC = () => {
   const [selectedCardForAlert, setSelectedCardForAlert] = useState<TrackedCard | null>(null);
   const [alertTarget, setAlertTarget] = useState('');
   const [alertType, setAlertType] = useState<'above' | 'below'>('above');
+  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    setTrackedCards(priceTrackingService.getTrackedCards());
-    setAlerts(priceTrackingService.getAlerts());
+  useEffect(() => {
+    if (trackedCards.length === 0) return;
+
+    const interval = setInterval(() => {
+      // Reload prices from localStorage/backend periodically
+      loadData();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [trackedCards.length]);
+
+  const loadData = async () => {
+    const cards = await priceTrackingService.getTrackedCards();
+    setTrackedCards(cards);
+    const alerts = await priceTrackingService.getAlerts();
+    setAlerts(alerts);
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
-    
     setIsSearching(true);
     try {
-      const results = await pokemonApi.searchCards(searchQuery);
-      setSearchResults(results.slice(0, 10));
+      if (tcg === 'onepiece') {
+        const results = await onepieceApi.searchCards(searchQuery);
+        const mapped = results.slice(0, 10).map(card => ({
+          id: card.id,
+          name: card.name,
+          images: card.images || { small: card.imageUrl, large: card.imageUrl },
+          set: card.set,
+          number: card.number,
+          rarity: card.rarity,
+          marketPrice: card.marketPrice,
+          tcgplayer: undefined,
+          cardmarket: undefined,
+        })) as PokemonCard[];
+        setSearchResults(mapped);
+      } else {
+        const results = await pokemonApi.searchCards(searchQuery);
+        setSearchResults(results.slice(0, 10));
+      }
     } catch (error) {
       console.error('Search error:', error);
     } finally {
@@ -45,23 +75,23 @@ export const PriceTrackingDashboard: React.FC = () => {
     }
   };
 
-  const handleTrackCard = (card: PokemonCard) => {
-    priceTrackingService.trackCard(card);
+  const handleTrackCard = async (card: PokemonCard) => {
+    await priceTrackingService.trackCard(card);
     markOnboardingStep('track');
     loadData();
     setSearchResults([]);
     setSearchQuery('');
   };
 
-  const handleUntrack = (cardId: string) => {
-    priceTrackingService.untrackCard(cardId);
+  const handleUntrack = async (cardId: string) => {
+    await priceTrackingService.untrackCard(cardId);
     loadData();
   };
 
-  const handleCreateAlert = () => {
+  const handleCreateAlert = async () => {
     if (!selectedCardForAlert || !alertTarget) return;
     
-    priceTrackingService.createAlert(
+    await priceTrackingService.createAlert(
       selectedCardForAlert.id,
       selectedCardForAlert.card.name,
       parseFloat(alertTarget),
@@ -74,8 +104,8 @@ export const PriceTrackingDashboard: React.FC = () => {
     loadData();
   };
 
-  const handleDeleteAlert = (alertId: string) => {
-    priceTrackingService.deleteAlert(alertId);
+  const handleDeleteAlert = async (alertId: string) => {
+    await priceTrackingService.deleteAlert(alertId);
     loadData();
   };
 
@@ -131,6 +161,14 @@ export const PriceTrackingDashboard: React.FC = () => {
           <Plus className="h-5 w-5 text-emerald-400" />
           Add card to track
         </h3>
+
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs text-ink-muted font-medium">TCG:</span>
+          <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
+            <button onClick={() => setTcg('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
+            <button onClick={() => setTcg('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">

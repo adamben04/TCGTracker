@@ -10,13 +10,16 @@ export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction
   res.status(403).json({ error: 'Admin access required' });
 };
 
-/** Skip auth in local development; require admin account in production. */
+/**
+ * Skip auth only when explicitly opted in for local development.
+ * Fails closed: production (or an unset NODE_ENV) always requires admin auth.
+ */
 export const requireAdminUnlessDev = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
-  if (env.isDevelopment) {
+  if (env.isDevelopment && env.authBypassEnabled) {
     next();
     return;
   }

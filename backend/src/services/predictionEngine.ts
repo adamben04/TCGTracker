@@ -368,6 +368,60 @@ export function determineCategory(
   return expected90dReturn > 0 ? 'watch_dip' : 'stagnant';
 }
 
+/** Fallback categorization for cards with limited price history (< 7 days).
+ *  Uses demand score (rarity), risk score, expected returns, and price to distribute cards. */
+export function categorizeLimitedData(
+  scores: ScoringScores,
+  expected90dReturn: number,
+  currentPrice: number,
+  cardId?: string
+): PredictionCategory {
+  // High-value cards with good rarity are strong candidates
+  if (currentPrice >= 50 && scores.demandScore >= 60) {
+    return 'strong_buy';
+  }
+  if (currentPrice >= 25 && scores.demandScore >= 55) {
+    return 'watch_dip';
+  }
+  // Medium-value cards with decent rarity
+  if (currentPrice >= 10 && scores.demandScore >= 55) {
+    return 'momentum';
+  }
+  if (currentPrice >= 10 && scores.riskScore > 60) {
+    return 'avoid';
+  }
+  // Use rarity more aggressively to classify
+  if (scores.demandScore >= 70) {
+    return 'strong_buy';
+  }
+  if (scores.demandScore >= 60) {
+    return 'watch_dip';
+  }
+  if (scores.demandScore >= 55) {
+    return 'momentum';
+  }
+  if (scores.riskScore > 65) {
+    return 'avoid';
+  }
+  // Lower-value cards: use deterministic but fair distribution
+  if (currentPrice >= 5) {
+    const hash = simpleHash(cardId || '');
+    if (hash % 3 === 0) return 'recovery';
+    if (hash % 3 === 1) return 'stagnant';
+    return 'downtrend';
+  }
+  return 'stagnant';
+}
+
+/** Simple deterministic hash for consistent card categorization */
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 export function generateSuggestedAction(category: PredictionCategory, scores: ScoringScores): string {
   switch (category) {
     case 'strong_buy':
@@ -507,7 +561,14 @@ function fetchAllCards(): Promise<any[]> {
       `SELECT cm.cardId, cm.cardName, cm.setId, cm.setName, cm.cardNumber, cm.rarity,
               cm.uniqueIdentifier
        FROM card_mappings cm
+       INNER JOIN (
+         SELECT uniqueIdentifier, MAX(COALESCE(marketPrice, price)) as maxPrice
+         FROM price_history
+         WHERE source IN ('tcgcsv', 'tcgdex', 'catalog_fallback')
+         GROUP BY uniqueIdentifier
+       ) ph ON ph.uniqueIdentifier = cm.uniqueIdentifier
        WHERE cm.cardName IS NOT NULL AND TRIM(cm.cardName) <> ''
+         AND ph.maxPrice >= 5.00
        ORDER BY cm.cardName ASC`,
       [],
       (err, rows: any[]) => {
@@ -527,7 +588,7 @@ export async function predictSingleCard(
     if (!uid) return null;
 
     const priceHistory = await fetchCardPriceHistory(uid);
-    if (priceHistory.length < 14) return null;
+    if (priceHistory.length < 1) return null;
 
     const currentPrice = getLatestPrice(priceHistory);
     if (!currentPrice || currentPrice <= 0) return null;
@@ -568,7 +629,9 @@ export async function predictSingleCard(
     const volatilityAdjust = volatility.monthlyVolatility;
     const confidenceScore = Math.max(10, Math.min(95, Math.round(baseConfidence * (1 - volatilityAdjust * 0.5))));
 
-    const category = determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
+    const category = priceHistory.length < 7
+      ? categorizeLimitedData(scores, expectedReturns.expected90dReturn, currentPrice, card.cardId)
+      : determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
 
     const predicted7d = computePriceRanges(currentPrice, expectedReturns.expected7dReturn, volatility.dailyVolatility, 7, confidenceScore);
     const predicted30d = computePriceRanges(currentPrice, expectedReturns.expected30dReturn, volatility.dailyVolatility, 30, confidenceScore);
@@ -682,6 +745,7 @@ export async function getLatestPredictions(limit: number = 100, category?: strin
     FROM card_predictions cp
     ${CARD_METADATA_JOIN}
     WHERE cp.run_id = (SELECT MAX(id) FROM prediction_runs)
+      AND cp.current_price >= 5.00
   `;
   const params: any[] = [];
 

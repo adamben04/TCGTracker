@@ -95,13 +95,13 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
             <Vault className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Add to Vault</h2>
-            <p className="text-sm text-gray-600">Store this card in your collection</p>
+            <h2 className="text-2xl font-bold text-white">Add to Vault</h2>
+            <p className="text-sm text-ink-secondary">Store this card in your collection</p>
           </div>
         </div>
 
         {/* Card Preview */}
-        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-4 mb-6 flex items-center gap-4">
+        <div className="bg-gradient-to-br from-surface-inset to-surface-raised rounded-xl p-4 mb-6 flex items-center gap-4">
           <img
             src={card.images.small}
             alt={card.name}
@@ -114,10 +114,10 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
             }}
           />
           <div className="flex-1">
-            <h3 className="font-bold text-lg text-gray-900">{card.name}</h3>
-            <p className="text-sm text-gray-600">{card.set.name} • #{card.number}</p>
+            <h3 className="font-bold text-lg text-white">{card.name}</h3>
+            <p className="text-sm text-ink-secondary">{card.set.name} • #{card.number}</p>
             {card.rarity && (
-              <span className="inline-block mt-2 px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+              <span className="inline-block mt-2 px-2 py-1 bg-violet-500/10 text-violet-300 rounded-full text-xs font-semibold">
                 {card.rarity}
               </span>
             )}
@@ -129,19 +129,19 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
           {/* Purchase Price & Quantity */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-2">
                 <DollarSign className="w-4 h-4" />
                 Purchase Price (per card)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted font-medium">$</span>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(e.target.value)}
-                  className="w-full pl-8 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors font-medium"
+                  className="w-full pl-8 pr-4 py-3 border-2 border-border-default rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors font-medium"
                   placeholder="0.00"
                   required
                 />
@@ -149,7 +149,7 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
             </div>
 
             <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-2">
                 <Package className="w-4 h-4" />
                 Quantity
               </label>
@@ -158,7 +158,7 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors font-medium"
+                className="w-full px-4 py-3 border-2 border-border-default rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors font-medium"
                 required
               />
             </div>
@@ -166,13 +166,13 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
 
           {/* Condition */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-ink-secondary mb-2">
               Card Condition
             </label>
             <select
               value={condition}
               onChange={(e) => setCondition(e.target.value as CardCondition)}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors font-medium"
+              className="w-full px-4 py-3 border-2 border-border-default rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors font-medium"
             >
               <option value="raw">Raw (Ungraded)</option>
               <option value="near-mint">Near Mint</option>
@@ -185,7 +185,7 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
 
           {/* Notes */}
           <div>
-            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+            <label className="flex items-center gap-2 text-sm font-semibold text-ink-secondary mb-2">
               <FileText className="w-4 h-4" />
               Notes (optional)
             </label>
@@ -193,31 +193,31 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors resize-none"
+              className="w-full px-4 py-3 border-2 border-border-default rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-colors resize-none"
               placeholder="Add notes about this purchase..."
             />
           </div>
 
           {/* Total Cost Display */}
           {!isNaN(totalCost) && totalCost > 0 && (
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+            <div className="bg-sky-500/10 border-2 border-sky-500/20 rounded-xl p-4">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-semibold text-gray-700">Total Cost</span>
-                <span className="text-2xl font-bold text-blue-600">
+                <span className="text-sm font-semibold text-ink-secondary">Total Cost</span>
+                <span className="text-2xl font-bold text-sky-400">
                   ${totalCost.toFixed(2)}
                 </span>
               </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {quantity}x cards @ ${parseFloat(purchasePrice).toFixed(2)} each
+              <p className="text-xs text-ink-secondary mt-1">
+                {quantity}x cards @ ${purchasePrice ? parseFloat(purchasePrice).toFixed(2) : '0.00'} each
               </p>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
+          <div className="flex gap-3 pt-4 border-t border-border-default">
             <button
               onClick={handleClose}
-              className="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
+              className="flex-1 px-6 py-3 bg-surface-inset hover:bg-surface-raised text-ink-secondary font-semibold rounded-xl transition-colors"
               disabled={isSubmitting}
             >
               Cancel
@@ -233,8 +233,8 @@ export const AddToVaultModal: React.FC<AddToVaultModalProps> = ({
         </div>
 
         {/* Info Note */}
-        <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-xl">
-          <p className="text-xs text-gray-600">
+        <div className="mt-6 p-4 bg-violet-500/10 border border-violet-500/20 rounded-xl">
+          <p className="text-xs text-ink-secondary">
             💡 <strong>Tip:</strong> Your vault is stored locally in your browser. 
             Use the Export feature in the Vault view to backup your collection.
           </p>

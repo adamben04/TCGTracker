@@ -6,6 +6,7 @@ import cardSearchRouter from './routes/cardSearch';
 import setTrackerRouter from './routes/setTracker';
 import enhancedPacksRouter from './routes/enhancedPacks';
 import marketInsightsRouter from './routes/marketInsights';
+import trackedCardsRouter from './routes/trackedCards';
 import { initializeDatabase, getDb } from './db/database';
 import { runMigrations } from './db/migrations';
 import { updatePriceData } from './services/dataFetcher';
@@ -86,12 +87,12 @@ function setupRoutes(
   logger.info(`API Documentation available at http://${env.host}:${port}/api-docs`);
 
   cron.schedule(
-    '0 2 * * *',
+    '0 2,14 * * *',
     async () => {
-      logger.info('Running scheduled daily price data update...');
+      logger.info('Running scheduled price data update...');
       try {
         const result = await updatePriceData();
-        logger.info('Daily price data update completed', result);
+        logger.info('Price data update completed', result);
         const imageResult = await backfillCardMappingImages();
         logger.info('Post-price-update image backfill completed', imageResult);
       } catch (error: any) {
@@ -125,6 +126,7 @@ function setupRoutes(
   app.use('/api/cards', cardSearchRouter);
   app.use('/api/packs', enhancedPacksRouter);
   app.use('/api/market-insights', marketInsightsRouter);
+  app.use('/api/tracked-cards', trackedCardsRouter);
 
   cron.schedule(
     '0 3 * * *',

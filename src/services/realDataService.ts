@@ -1,5 +1,4 @@
 import axios, { AxiosError } from 'axios';
-import { load } from 'cheerio';
 import { PSAData, PricePoint, RealData } from '../types/pokemon';
 import { buildApiUrl } from '../config/env';
 
@@ -29,7 +28,7 @@ class RealDataService {
           }
         }
       } catch (error) {
-        console.log('Could not fetch PSA data from pokemonprice.com', error);
+    
       }
 
       const priceHistory =
@@ -48,7 +47,6 @@ class RealDataService {
 
   private async fetchBackendPriceHistory(cardName: string, setName: string, cardNumber: string, cardId?: string): Promise<PricePoint[]> {
     try {
-      console.log(`Searching for price history: "${cardName}" from "${setName}" (#${cardNumber})`);
 
       // Use the new, more precise matching endpoint
       const response = await axios.get(`${this.backendApi}/prices/match`, {
@@ -59,7 +57,6 @@ class RealDataService {
 
       if (response.data?.priceHistory?.length > 0) {
         const { matchedProduct, priceHistory: history } = response.data;
-        console.log(`✅ Match found: "${matchedProduct.productName}" from "${matchedProduct.groupName}"`);
 
         priceHistory = history.map((item: { date: string; marketPrice?: number; price?: number; volume?: number }) => ({
           date: item.date,
@@ -67,12 +64,10 @@ class RealDataService {
           volume: item.volume || 1,
         })).filter((item: PricePoint) => item.price > 0);
 
-        console.log(`✅ Found ${priceHistory.length} price points from backend`);
       }
 
       // Fallback to Pokemon TCG API rolling averages if our backend has no data
       if (priceHistory.length === 0 && cardId) {
-        console.log(`No specific match found. Falling back to Pokemon TCG API rolling averages for cardId: ${cardId}`);
         try {
           const rollingResponse = await axios.get(`${this.backendApi}/prices/rolling/${cardId}`);
           
@@ -84,27 +79,19 @@ class RealDataService {
             })).filter((item: PricePoint) => item.price > 0);
             
             if (priceHistory.length > 0) {
-              console.log(`✅ Found ${priceHistory.length} price points from Pokemon TCG API`);
             }
           }
         } catch (error) {
-          console.log('❌ No rolling averages found for card:', cardId, error);
         }
       }
 
       // Sort by date ascending (oldest first)
       priceHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      const resultMessage = priceHistory.length > 0
-        ? `✅ Final result: ${priceHistory.length} price points for ${cardName} from ${setName}`
-        : `❌ No price history found for ${cardName} from ${setName}`;
-      console.log(resultMessage);
-      
       return priceHistory;
 
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
-        console.log(`❌ No matching product found in backend for "${cardName}" from "${setName}"`);
       } else {
         console.error('Error fetching backend price history:', error);
       }
@@ -126,24 +113,9 @@ class RealDataService {
     }
   }
 
-  private findCardPageLink($: CheerioAPI | string, cardName: string, setName: string, cardNumber: string): string | null {
-    const html = typeof $ === 'string' ? load($) : $;
-    let bestMatchLink: string | null = null;
-    let highestScore = 0;
-    
-    html('div.card-container a').each((_i, el) => {
-      const link = html(el);
-      const title = link.find('h3').text();
-      const score = this.calculateMatchScore(title, cardName, setName, cardNumber);
-      
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatchLink = link.attr('href') || null;
-      }
-    });
-
-    // We need a reasonably high score to be confident it's the right card
-    return highestScore > 15 ? bestMatchLink : null;
+  private findCardPageLink(_html: string, _cardName: string, _setName: string, _cardNumber: string): string | null {
+    // Scraping disabled - backend price data is the primary source
+    return null;
   }
 
   private calculateMatchScore(title: string, cardName: string, setName: string, cardNumber: string): number {
@@ -191,35 +163,9 @@ class RealDataService {
     }
   }
   
-  private parseCardPage(html: string): PSAData | null {
-    const $ = load(html);
-    const popData: { [grade: string]: number } = {};
-
-    // As per the reddit post, the data is in a clean table.
-    // Let's find the PSA Population table
-    $('h3:contains("PSA Population Report")').next('table').find('tr').each((_i, row) => {
-      const cells = $(row).find('td');
-      if (cells.length >= 2) {
-        const grade = $(cells[0]).text().trim();
-        const population = parseInt($(cells[1]).text().trim().replace(/,/g, ''), 10);
-        if (!isNaN(population)) {
-          popData[grade] = population;
-        }
-      }
-    });
-    
-    const grade10 = popData['PSA 10'] || 0;
-    const grade9 = popData['PSA 9'] || 0;
-    const grade8 = popData['PSA 8'] || 0;
-    const grade7 = popData['PSA 7'] || 0;
-
-    // If we didn't find any data, it's not a valid card page for our needs.
-    if (grade10 === 0 && grade9 === 0) {
-      console.warn('Could not parse PSA data from card page.');
-      return null;
-    }
-
-    return this.buildPSAData(grade10, grade9, grade8, grade7);
+  private parseCardPage(_html: string): PSAData | null {
+    // Scraping disabled - backend price data is the primary source
+    return null;
   }
 
   private buildPSAData(grade10: number, grade9: number, grade8: number, grade7: number): PSAData {
@@ -242,34 +188,9 @@ class RealDataService {
     };
   }
 
-  private async fetchRealPriceHistory(html: string): Promise<PricePoint[]> {
-        
-        const $ = load(html);
-        const priceHistory: PricePoint[] = [];
-
-        // Scrape the price history table for PSA 10
-        $('h3:contains("PSA 10 Price History")').next('table').find('tr').each((_i, row) => {
-            const cells = $(row).find('td');
-            if (cells.length >= 2) {
-                const date = $(cells[0]).text().trim();
-                const priceText = $(cells[1]).text().trim().replace(/[^0-9.-]+/g,"");
-                const price = parseFloat(priceText);
-                
-                if (date && !isNaN(price)) {
-                    priceHistory.push({
-                        date: new Date(date).toISOString().split('T')[0],
-                        price: price,
-                        volume: 1 // pokemonprice.com doesn't provide volume
-                    });
-                }
-            }
-        });
-
-        if (priceHistory.length === 0) {
-            console.warn(`Could not parse price history from page.`);
-        }
-
-        return priceHistory.reverse(); // pokemonprice.com shows most recent first
+  private async fetchRealPriceHistory(_html: string): Promise<PricePoint[]> {
+    // Scraping disabled - backend price data is the primary source
+    return [];
   }
 
   // New method to get market snapshots for dashboard
@@ -332,7 +253,6 @@ class RealDataService {
             )[0];
 
           if (latestPrice) {
-            console.log(`✅ Latest price found: $${latestPrice.price} for ${cardName}`);
             return latestPrice.price;
           }
         }

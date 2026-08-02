@@ -160,7 +160,7 @@ export interface VaultStats {
 }
 
 // Pack Opening / Ripping System (like GameStop Power Packs)
-export type PackTier = 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum';
+export type PackTier = 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'common' | 'uncommon' | 'rare' | 'ultra-rare' | 'secret-rare';
 
 export interface Pack {
   id: string;
@@ -172,13 +172,14 @@ export interface Pack {
   imageUrl?: string;
   description?: string;
   valueRanges: ValueRange[]; // Probability distribution
+  tcg?: 'pokemon' | 'onepiece';
 }
 
 export interface ValueRange {
   min: number;
   max: number;
   probability: number; // Percentage (e.g., 40.6)
-  label: string;
+  label?: string;
 }
 
 export interface PackPull {
