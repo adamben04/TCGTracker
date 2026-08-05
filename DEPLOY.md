@@ -41,7 +41,9 @@ project belongs to). Forking is fine.
 
 ---
 
-## A. Supabase (Storage for DB backup/restore) — 5 minutes
+## Step-by-step deploy (follow in order)
+
+### A. Supabase — 5 minutes
 
 1. Sign up at <https://supabase.com> (free, email only) and create a new
    project. Pick any region; note the **Project URL** (looks like
@@ -51,12 +53,12 @@ project belongs to). Forking is fine.
 3. **Project Settings → API** → copy the **`service_role` secret key**
    (NOT the `anon` key — the service_role key can read/write Storage
    server-side, which is what the Node backend needs).
-4. Save these three values for the Render env in step C:
-   - `SUPABASE_URL` = the project URL
-   - `SUPABASE_SERVICE_ROLE_KEY` = the service_role secret
+4. Save these three values:
+   - `SUPABASE_URL` = `https://<your-project>.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY` = `<service_role secret>`
    - `SUPABASE_BUCKET` = `tcgtracker-data`
 
-### One-time: upload the current local DB to Supabase
+#### One-time: upload the current local DB to Supabase
 
 From your PC (only done once — this seeds the cloud backup that the Render
 container will restore on every cold boot):
@@ -64,10 +66,11 @@ container will restore on every cold boot):
 ```powershell
 cd backend
 # create a backend/.env with:
-# SUPABASE_URL=https://abcdefgh.supabase.co
+# SUPABASE_URL=https://<your-project>.supabase.co
 # SUPABASE_SERVICE_ROLE_KEY=<service_role secret>
 # SUPABASE_BUCKET=tcgtracker-data
 # CLOUD_SYNC_ENABLED=true
+# JWT_SECRET=<any 32+ hex string, e.g. run: openssl rand -hex 32>
 # then run:
 npm run upload-db-to-cloud
 ```
@@ -76,129 +79,81 @@ This gzips `backend/tcg-prices.db` (~140 MB → ~30 MB) and uploads it in
 chunks (each under 50 MB) to `latest/manifest.json` in your bucket.
 
 The backup code is already wired — `backend/src/services/cloudBackupService.ts`
-does the chunking. The Node boot hook I added
-(`backend/src/index.ts -> restoreDatabaseOnBootIfMissing`) pulls this file
-back on every Render cold start, before SQLite opens it. Periodic backups run
-every 15 minutes after boot.
+does the chunking. The Node boot hook (`backend/src/index.ts →
+restoreDatabaseOnBootIfMissing`) pulls this file back on every Render cold
+start, before SQLite opens it. Periodic backups run every 15 minutes after boot.
 
 ---
 
-## B. Render (card scanner — DINOv2 ML) — 10 minutes
-
-The scanner is a Python Flask app. Render's free tier runs Docker images.
-We deploy a **second Render web service** from the same repo, root directory
-`card-scanner-backend`.
-
-1. Render dashboard → **New → Web Service** → connect your GitHub repo:
-   - **Root Directory**: `card-scanner-backend`
-   - **Runtime**: Docker
-   - **Dockerfile Path**: `Dockerfile.hf` (the fast-path-only Dockerfile that
-     skips the 1.7 GB `pokemon-card-recognizer` package)
-   - **Instance Type**: **Free**
-   - **Service Name**: `tcgtracker-scanner` (or anything; this becomes the URL)
-2. **Environment** → set these:
-
-   | Key | Value | Why |
-   |---|---|---|
-   | `PORT` | `7860` | Flask listens here (matches Dockerfile EXPOSE + gunicorn bind) |
-   | `SCANNER_CORS_ORIGIN` | `https://<your-project>.pages.dev` (set after step D; comma-separate multiple) | Restricts CORS to your SPA |
-
-3. Trigger a manual deploy (Render → Manual Deploy → Deploy latest commit).
-4. Watch logs: first build compiles deps + copies the ~110 MB ML assets;
-   expect ~3–5 min, then the container boots, does the one-time DINOv2 ONNX
-   warmup (~1 s), and listens on port 7860.
-5. Note the Render URL: `https://<scanner-service-name>.onrender.com`.
-6. Open `https://…/health` — you should get JSON with `"status": "ok"` and
-   `"fast_ready": true`.
-7. **Set `SCANNER_CORS_ORIGIN`** after you get the Cloudflare Pages URL in
-   step D. Render → Environment → edit `SCANNER_CORS_ORIGIN` → save →
-   Manual Deploy → Restart.
-
-> **Why not HF Spaces?** Docker Spaces now require a paid HF Pro plan.
-> Render's free tier works the same — same Docker, same image, zero cost.
-
-### Verify the scanner in isolation
-
-```powershell
-curl -F "image=@some_card_photo.jpg;type=image/jpeg" `
-  https://<scanner-service-name>.onrender.com/api/scan-card
-```
-
-Expect a JSON with `"card": {"id": "swsh4-25", "name": "Charizard", …}` and
-`"debug": {"fast": true, "ocr_available": false, ...}`. The
-`ocr_available: false` field is the fast-path-only marker — the DINOv2 fast
-matcher handled the scan; OCR fallback was skipped.
-
----
-
-## C. Render (Node API + SQLite) — 10 minutes
+### B. Render — sign up + create both services — 15 minutes
 
 1. Sign up at <https://render.com> (free, email only).
-2. Push the project to a **GitHub** repo (Render connects to GitHub).
+2. Push the project to your GitHub repo if not already there:
    ```powershell
-   # If the project isn't on GitHub yet:
-   gh repo create tcgtracker --private --source=. --remote=origin --push
-   # (or use git remote add origin https://github.com/<you>/tcgtracker.git; git push -u origin main)
+   # If not on GitHub yet:
+   git push origin main
    ```
-3. Render dashboard → **New → Web Service** → connect your repo:
-   - **Root Directory**: `backend` (very important — Render runs the build
-     from here)
+
+#### B1. Node API service
+
+3. Render dashboard → **New → Web Service** → connect your repo
+   (`adamben04/TCGTracker`):
+   - **Name**: `tcgtracker-api` (or anything; this becomes the URL)
+   - **Root Directory**: `backend`
    - **Runtime**: Docker
-   - **Dockerfile Path**: leave as default (it'll find `backend/Dockerfile`)
+   - **Dockerfile Path**: `backend/Dockerfile` (relative to repo root)
    - **Instance Type**: **Free**
-   - Wait for the first deploy. It `npm ci`s, `npm run build`s the TS, and
-     starts `node dist/index.js`.
-4. **Environment** → set these variables (use the values from A):
+4. **Environment** → set ALL of these before deploying:
 
-   | Key | Value | Why |
-   |---|---|---|
-   | `NODE_ENV` | `production` | |
-   | `PORT` | `3001` | (Render also injects its own `PORT`, but Dockerfile bakes this) |
-   | `HOST` | `0.0.0.0` | Render needs the server bound to all interfaces |
-   | `DATABASE_PATH` | `/app/data/tcg-prices.db` | default in `backend/src/config/env.ts`; can omit |
-   | `JWT_SECRET` | `<32+ hex>` | `openssl rand -hex 32` |
-   | `CORS_ORIGIN` | `https://<your-project>.pages.dev` (comma-separated if you also use a custom domain) | Must include the SPA origin(s) |
-   | `AUTH_BYPASS_ENABLED` | `false` | keep auth on in prod |
-   | `CLOUD_SYNC_ENABLED` | `true` | enables Supabase backup/restore |
-   | `SUPABASE_URL` | `https://abcdefgh.supabase.co` | from step A |
-   | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` | from step A |
-   | `SUPABASE_BUCKET` | `tcgtracker-data` | from step A |
-   | `SENTRY_ENVIRONMENT` | `production` | (optional, if you use Sentry) |
-   | `VITE_*` | — | VITE_* are frontend-only; Render does NOT need them |
+   | Key | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `PORT` | `3001` |
+   | `HOST` | `0.0.0.0` |
+   | `JWT_SECRET` | `<use the same value from your backend/.env>` |
+   | `CORS_ORIGIN` | leave blank — set after step D |
+   | `AUTH_BYPASS_ENABLED` | `false` |
+   | `CLOUD_SYNC_ENABLED` | `true` |
+   | `SUPABASE_URL` | `https://<your-project>.supabase.co` |
+   | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` |
+   | `SUPABASE_BUCKET` | `tcgtracker-data` |
 
-5. Trigger a manual deploy (Render → Manual Deploy → Deploy latest commit).
-6. Watch logs: on first cold start you'll see
-   `Cloud sync enabled and local DB missing — restoring from Supabase…` and
-   then `Cloud restore succeeded` (~30–90 s depending on chunk download).
-   Then `TCGTracker Backend server running on http://0.0.0.0:3001`.
-7. Note the Render URL: `https://<service-name>.onrender.com`.
+   Do NOT set `DATABASE_PATH` — the default `/app/data/tcg-prices.db` is
+   correct. Do NOT set any `VITE_*` variables — those are frontend-only.
 
-### Render free-tier caveats you should know
+5. Click **Deploy**. Watch logs: on first cold start you'll see
+   `Cloud sync enabled and local DB missing — restoring from Supabase…`
+   then `Cloud restore succeeded` (~30–90 s). Then
+   `TCGTracker Backend server running on http://0.0.0.0:3001`.
+6. Note the URL: `https://tcgtracker-api.onrender.com`.
 
-- **Sleeps after 15 min idle.** First request after sleep takes ~30–60 s to
-  spin up. The Supabase restore only runs when the container is recreated
-  (a deploy or restart after sleep sometimes reuses the disk — but assume
-  ephemeral). Periodic backup every 15 min and on SIGTERM means user writes
-  from the last 0–15 min before sleep are NOT lost. Worst case: lose up to
-  15 min of writes between the last backup and an abrupt termination.
-- **750 free web-service-hours/month total across all your free services.**
-  With two services (Node API + scanner), both sleeping most of the time,
-  you'll stay well under. If you push the budget, Render pauses the
-  oldest-spent service first — you'll notice slower scanner scans or API
-  calls until you manually restart it.
-- First deploy may take 5+ minutes to build + boot. Subsequent cold starts
-  ~30–60 s.
+#### B2. Scanner service
 
-### Verify
+7. Render dashboard → **New → Web Service** → connect the same repo:
+   - **Name**: `tcgtracker-scanner` (or anything)
+   - **Root Directory**: `card-scanner-backend`
+   - **Runtime**: Docker
+   - **Dockerfile Path**: `card-scanner-backend/Dockerfile.hf` (relative to
+     repo root — the fast-path-only Dockerfile that skips the 1.7 GB
+     `pokemon-card-recognizer` package)
+   - **Instance Type**: **Free**
+8. **Environment** → set ALL of these before deploying:
 
-```powershell
-curl https://<service-name>.onrender.com/api/health
-# {"status":"healthy","timestamp":"…","version":"1.0.0","environment":"production"}
-```
+   | Key | Value |
+   |---|---|
+   | `PORT` | `7860` |
+   | `SCANNER_CORS_ORIGIN` | leave blank — set after step D |
+
+9. Click **Deploy**. Watch logs: first build compiles deps + copies the
+   ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
+   one-time DINOv2 ONNX warmup (~1 s), and listens on port 7860.
+10. Note the URL: `https://tcgtracker-scanner.onrender.com`.
+11. Open `https://tcgtracker-scanner.onrender.com/health` — you should get
+    JSON with `"status": "ok"` and `"fast_ready": true`.
 
 ---
 
-## D. Cloudflare Pages (frontend SPA) — 10 minutes
+### C. Cloudflare Pages (frontend SPA) — 10 minutes
 
 1. Sign up at <https://dash.cloudflare.com/sign-up> (free, email only).
 2. **Workers & Pages → Create application → Pages → Connect to Git**.
@@ -213,39 +168,55 @@ curl https://<service-name>.onrender.com/api/health
 
    | Key | Value |
    |---|---|
-   | `VITE_API_URL` | `https://<node-service-name>.onrender.com` (from C) |
-   | `VITE_CARD_SCANNER_API_URL` | `https://<scanner-service-name>.onrender.com` (from B) |
+   | `VITE_API_URL` | `https://tcgtracker-api.onrender.com` |
+   | `VITE_CARD_SCANNER_API_URL` | `https://tcgtracker-scanner.onrender.com` |
    | `VITE_ENABLE_AUTH` | `true` |
-   | `VITE_SENTRY_ENVIRONMENT` | `production` (optional) |
 
-   Do NOT set these — they break prod routing:
-   - `VITE_BACKEND_URL` (legacy alias)
-   - any `localhost` value
+   Do NOT set `VITE_BACKEND_URL` (legacy alias) or any `localhost` value.
 
 5. Save and Deploy. Watch the build: it runs `npm install && npm run build`
-   and serves `dist/`. Cloudflare picks up `dist/_redirects` (added in this
-   repo) for SPA fallback routing automatically.
-6. After deploy you get a `https://<project>.pages.dev` URL (and a
-   `<project>.gitlab-pages…` you can ignore). **Set this URL** as the
-   `CORS_ORIGIN` on both Render services (Node API in step C **and**
-   scanner in step B). Then redeploy/restart both services so they pick
-   up the new allowed origin.
-7. (Optional) custom domain — Cloudflare Pages → Custom domains → add one
-   (free, auto-managed TLS). Update `CORS_ORIGIN` and `SCANNER_CORS_ORIGIN`
-   to include it.
-
-### Verify
-
-Open the `https://<project>.pages.dev` URL on your phone. Log in (or create
-an account, since you set `AUTH_BYPASS_ENABLED=false`). Try the Pack shop
-(it now works — bug fixed). Try the scanner: tap a card photo, you should
-see the card identified in <1 s during steady state.
+   and serves `dist/`. Cloudflare picks up `dist/_redirects` for SPA fallback
+   routing automatically.
+6. After deploy you get a `https://<your-project>.pages.dev` URL.
 
 ---
 
-## E. End-to-end phone smoke test
+### D. Wire CORS on both Render services — 5 minutes
 
-1. Phone → open `https://<project>.pages.dev`.
+Now that you have the Cloudflare Pages URL, go back to Render:
+
+1. **Node API** → Environment → edit `CORS_ORIGIN` → set it to
+   `https://<your-project>.pages.dev` → Save → Manual Deploy → Restart.
+2. **Scanner** → Environment → edit `SCANNER_CORS_ORIGIN` → set it to
+   `https://<your-project>.pages.dev` → Save → Manual Deploy → Restart.
+
+---
+
+### E. Verify everything works
+
+```powershell
+# 1. Node API health
+curl https://tcgtracker-api.onrender.com/api/health
+# → {"status":"healthy","timestamp":"…","version":"1.0.0","environment":"production"}
+
+# 2. Scanner health
+curl https://tcgtracker-scanner.onrender.com/health
+# → {"status":"ok","fast_ready":true,...}
+
+# 3. Scanner scan (use a real card photo)
+curl -F "image=@some_card_photo.jpg;type=image/jpeg" `
+  https://tcgtracker-scanner.onrender.com/api/scan-card
+# → {"success":true,"card":{"id":"swsh4-25","name":"Charizard",...},"debug":{"fast":true,...}}
+```
+
+Open `https://<your-project>.pages.dev` on your phone. Log in (or create an
+account). Try the Pack shop, scanner, and vault.
+
+---
+
+## F. End-to-end phone smoke test
+
+1. Phone → open `https://<your-project>.pages.dev`.
 2. Login or register.
 3. **Packs**: should load without "tcg is not defined". Tap a pack → see
    open animation. If you see "Something went wrong", check the browser
@@ -263,7 +234,7 @@ see the card identified in <1 s during steady state.
 
 ---
 
-## F. What to do if something breaks
+## G. What to do if something breaks
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
@@ -274,10 +245,11 @@ see the card identified in <1 s during steady state.
 | All vault data looks fresh / accounts gone after Render restart | Supabase restore-on-boot didn't fire | Check logs: `Cloud restore skipped — local DB already present` means a populated DB file survived (good). If `Cloud restore failed`, verify `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` are set in Render env and that the bucket has `latest/manifest.json` |
 | `card.id` is null on scans | DINOv2 matched but the card row in `meta` has no id for that set (some pre-release / promo sets) | Run `python card-scanner-backend/fast_match.py --extend` locally, re-deploy the scanner service on Render (push updated assets to the repo branch, Render auto-deploys) |
 | Render deploy fails: "Invalid environment variables: JWT_SECRET must be at least 32 characters" | You forgot to set `JWT_SECRET` | `openssl rand -hex 32`, set it on Render, redeploy |
+| Render deploy fails: "Dockerfile not found" | Dockerfile Path is wrong | For Node API: `backend/Dockerfile`. For scanner: `card-scanner-backend/Dockerfile.hf`. Both relative to repo root. |
 
 ---
 
-## G. Local dev (unchanged)
+## H. Local dev (unchanged)
 
 ```powershell
 # Terminal 1 — Node API on :3001
@@ -296,11 +268,23 @@ vars (`CLOUD_SYNC_ENABLED`, `SCANNER_CORS_ORIGIN`, `VITE_API_URL`,
 
 ---
 
-## Quick reference: env vars across services
+## Quick reference: all env vars
 
-| Service | Variable | Where set |
-|---|---|---|
-| Cloudflare Pages | `VITE_API_URL`, `VITE_CARD_SCANNER_API_URL`, `VITE_ENABLE_AUTH`, `VITE_SENTRY_ENVIRONMENT` | Pages → Settings → Environment variables (before first build) |
-| Render (Node API) | `NODE_ENV`, `PORT`, `HOST`, `JWT_SECRET`, `CORS_ORIGIN`, `CLOUD_SYNC_ENABLED`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`, `AUTH_BYPASS_ENABLED` | Render → Environment |
-| Render (scanner) | `PORT`, `SCANNER_CORS_ORIGIN` | Render → Environment |
-| Supabase | none — just the bucket created in the dashboard | n/a |
+| Service | Variable | Value | Where set |
+|---|---|---|---|
+| Cloudflare Pages | `VITE_API_URL` | `https://tcgtracker-api.onrender.com` | Pages → Env vars (before first build) |
+| Cloudflare Pages | `VITE_CARD_SCANNER_API_URL` | `https://tcgtracker-scanner.onrender.com` | Pages → Env vars (before first build) |
+| Cloudflare Pages | `VITE_ENABLE_AUTH` | `true` | Pages → Env vars (before first build) |
+| Render (Node API) | `NODE_ENV` | `production` | Render → Environment |
+| Render (Node API) | `PORT` | `3001` | Render → Environment |
+| Render (Node API) | `HOST` | `0.0.0.0` | Render → Environment |
+| Render (Node API) | `JWT_SECRET` | `<32+ hex>` | Render → Environment |
+| Render (Node API) | `CORS_ORIGIN` | `https://<your-project>.pages.dev` | Render → Environment (set after step D) |
+| Render (Node API) | `AUTH_BYPASS_ENABLED` | `false` | Render → Environment |
+| Render (Node API) | `CLOUD_SYNC_ENABLED` | `true` | Render → Environment |
+| Render (Node API) | `SUPABASE_URL` | `https://<your-project>.supabase.co` | Render → Environment |
+| Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` | Render → Environment |
+| Render (Node API) | `SUPABASE_BUCKET` | `tcgtracker-data` | Render → Environment |
+| Render (scanner) | `PORT` | `7860` | Render → Environment |
+| Render (scanner) | `SCANNER_CORS_ORIGIN` | `https://<your-project>.pages.dev` | Render → Environment (set after step D) |
+| Supabase | — | — | Just create the `tcgtracker-data` bucket (Private) |
