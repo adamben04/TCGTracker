@@ -9,6 +9,7 @@ import { VaultPortfolioBySet } from './VaultPortfolioBySet';
 import { VaultHeatmap } from './VaultHeatmap';
 import { VaultPerformanceReport } from './VaultPerformanceReport';
 import { SectionLabel } from '../../../components/common/SectionLabel';
+import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { useToast } from '../../../components/common/Toast';
 import { CountUp } from '../../../components/common/CountUp';
@@ -95,8 +96,8 @@ export const VaultView: React.FC<VaultViewProps> = ({ onOpenSet }) => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]" role="status" aria-live="polite">
-        <div className="h-12 w-12 animate-spin rounded-full border-2 border-border-subtle border-t-accent"></div>
+      <div className="flex min-h-[400px] items-center justify-center">
+        <LoadingSpinner />
       </div>
     );
   }

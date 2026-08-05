@@ -10,8 +10,22 @@ ONNX/heuristic corners/edges/surface). Ollama LLM grading is demoted / optional.
 import base64
 import os
 import re
+import tempfile
 import uuid
 from io import BytesIO
+
+# Some libraries (ocr_ops/easyocr) write temporary files to the system temp dir,
+# which can fail with Permission denied on locked-down machines. Redirect all
+# temp usage into a local, always-writable folder next to this app.
+_LOCAL_TMP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temp_uploads", "tmp")
+os.makedirs(_LOCAL_TMP, exist_ok=True)
+os.environ["TMPDIR"] = _LOCAL_TMP
+os.environ["TEMP"] = _LOCAL_TMP
+os.environ["TMP"] = _LOCAL_TMP
+tempfile.tempdir = _LOCAL_TMP
+
+import time
+from collections import defaultdict, deque
 
 import numpy as np
 from flask import Flask, request, jsonify
@@ -40,31 +54,117 @@ except ImportError:
 
 try:
     from card_recognizer.api.card_recognizer import CardRecognizer, OperatingMode
+    _RECOGNIZER_AVAILABLE = True
 except ImportError:
     try:
         from pokemon_card_recognizer.api.card_recognizer import CardRecognizer, OperatingMode
+        _RECOGNIZER_AVAILABLE = True
     except ImportError:
-        print("ERROR: pokemon-card-recognizer not installed.")
-        print("Install with:  pip install pokemon-card-recognizer")
-        raise SystemExit(1)
+        # Fast-path-only deployments (e.g. the cloud Hugging Face Space image)
+        # deliberately skip the 1.7 GB pokemon-card-recognizer package and the
+        # EasyOCR weights. The fast DINOv2 matcher handles ~95% of scans; the
+        # OCR fallback below degrades to "no card found" instead of crashing.
+        _RECOGNIZER_AVAILABLE = False
+        CardRecognizer = None  # type: ignore[assignment,misc]
+        OperatingMode = None  # type: ignore[assignment,misc]
+        print("WARN: pokemon-card-recognizer not installed — OCR fallback disabled, fast-path only.")
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+# Reject oversized uploads early. Scans are phone photos; 20 MB is generous
+# while bounding memory on the free HF Space instance.
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+
+# In-memory rate limit for scan/grade endpoints. Simple sliding window keyed by
+# client IP — enough to stop a single phone/script from hammering the free
+# instance, without the persistence complexity of a Redis-backed limiter.
+_RATE_LIMIT = {
+    "window_seconds": 60,
+    "max_requests": 12,
+    "hits": defaultdict(deque),  # ip -> deque of timestamps
+}
+_RATE_LIMIT_LOCK = __import__("threading").Lock()
+
+
+def _rate_limited(ip: str) -> bool:
+    """Return True if the request should be rejected (over the limit)."""
+    now = time.monotonic()
+    window = _RATE_LIMIT["window_seconds"]
+    limit = _RATE_LIMIT["max_requests"]
+    with _RATE_LIMIT_LOCK:
+        hits = _RATE_LIMIT["hits"][ip]
+        while hits and now - hits[0] > window:
+            hits.popleft()
+        if len(hits) >= limit:
+            return True
+        hits.append(now)
+        return False
+
+# CORS: allow comma-separated list of origins via SCANNER_CORS_ORIGIN env, or
+# the Cloudflare Pages origin in production. Default mirrors the local dev SPA.
+_cors_env = os.environ.get("SCANNER_CORS_ORIGIN", "").strip()
+if _cors_env:
+    CORS(app, origins=[o.strip() for o in _cors_env.split(",") if o.strip()], supports_credentials=True)
+else:
+    CORS(app, supports_credentials=True)
+
+# --- Windows fix: ocr_ops writes to an open NamedTemporaryFile, which
+# cv2.imwrite cannot overwrite on Windows ("Permission denied"). Replace the
+# method with one that writes to a closed temp path and cleans up after.
+try:
+    from ocr_ops.framework.op.abstract_ocr_op import EasyOCROp
+
+    def _run_easy_ocr_windows_fix(self, img, detail):
+        import cv2
+        tmp_path = os.path.join(_LOCAL_TMP, f"ocr_{uuid.uuid4().hex}.png")
+        try:
+            cv2.imwrite(tmp_path, img)
+            return self.easy_ocr_reader.readtext(tmp_path, detail=detail)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    EasyOCROp._run_easy_ocr = _run_easy_ocr_windows_fix
+except ImportError:
+    pass
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "temp_uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Lazy-loaded recognizer
-_recognizer: CardRecognizer | None = None
+# Lazy-loaded recognizer. NB: annotate as a string so the module still
+# imports when the `pokemon-card-recognizer` package (and hence the
+# `CardRecognizer` symbol below) is unavailable on the fast-path-only
+# cloud image — PEP 604 `CardRecognizer | None` would otherwise raise
+# `TypeError: unsupported operand type(s) for |: 'NoneType' and 'NoneType'`
+# at module load.
+_recognizer: "CardRecognizer | None" = None
 _recognizer_error: str | None = None
 _reference_ready: bool | None = None
+
+# Fast image-embedding matcher (DINOv2 + cosine search). Loaded eagerly at
+# startup when the index exists so the first scan is already fast.
+try:
+    from fast_match import FastMatcher
+
+    _fast_matcher = FastMatcher()
+    _fast_ready = _fast_matcher.loaded
+    if _fast_ready:
+        print(f"Fast matcher ready: {_fast_matcher.size} cards indexed (DINOv2 embeddings)")
+    else:
+        print("Fast matcher: index not found (run build_embeddings.py); using OCR path only")
+except Exception as exc:
+    print(f"Fast matcher disabled: {exc}")
+    _fast_matcher = None
+    _fast_ready = False
 
 
 def _check_reference_db() -> dict:
     """Check if the reference database is built and return status."""
     global _reference_ready
     try:
-        from pokemon_card_recognizer.reference.core.build import ReferenceBuild
+        try:
+            from card_recognizer.reference.core.build import ReferenceBuild
+        except ImportError:
+            from pokemon_card_recognizer.reference.core.build import ReferenceBuild
         ref_path = ReferenceBuild.get_path()
         if not os.path.exists(ref_path):
             _reference_ready = False
@@ -89,8 +189,14 @@ _CARD_NUMBER_RE = re.compile(
 )
 
 
-def get_recognizer() -> CardRecognizer:
+def get_recognizer() -> "CardRecognizer | None":
     global _recognizer, _recognizer_error
+
+    if not _RECOGNIZER_AVAILABLE:
+        # Fast-path-only build (no pokemon-card-recognizer installed). The OCR
+        # fallback has nothing to call — return None so callers go to "no
+        # confident match" instead of crashing.
+        return None
 
     if _recognizer is not None:
         return _recognizer
@@ -274,6 +380,41 @@ def _safe_card_image(card) -> dict | None:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
+def _try_fast_match(image_bgr: np.ndarray) -> dict | None:
+    """
+    Attempt a fast embedding match on an already-decoded BGR image.
+    Returns a card_info dict (with 'confidence' + 'source') on a confident
+    hit, or None when the match is ambiguous (caller falls back to OCR).
+    """
+    global _fast_matcher, _fast_ready
+    if not _fast_ready or _fast_matcher is None:
+        return None
+    try:
+        import time as _t
+
+        t0 = _t.time()
+        results, timing = _fast_matcher.match_photo(image_bgr)
+        timing["total_ms"] = round((_t.time() - t0) * 1000.0, 1)
+        if not results or not _fast_matcher.confident(results):
+            return {"match": None, "timing": timing}
+        top = results[0]
+        return {
+            "match": {
+                "name": top.get("name"),
+                "set": top.get("set"),
+                "number": top.get("number", ""),
+                "confidence": round(float(top.get("score", 0.0)), 4),
+                "id": top.get("card_id"),
+                "source": "embedding_match",
+                "image": top.get("image"),
+            },
+            "timing": timing,
+        }
+    except Exception as exc:
+        print(f"  [fast match] error: {exc}")
+        return None
+
+
 @app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint with grading provider status."""
@@ -423,6 +564,8 @@ def _build_debug_info(recognizer: CardRecognizer, top_n: int = 10) -> dict:
 
 @app.route("/api/scan-card", methods=["POST"])
 def scan_card():
+    if _rate_limited(request.remote_addr or "unknown"):
+        return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     image_path: str | None = None
     try:
         img: Image.Image | None = None
@@ -444,12 +587,72 @@ def scan_card():
         else:
             return jsonify({"success": False, "error": "No image provided"}), 400
 
-        # ── Pre-process & save ────────────────────────────────────────────────
+        # ── Fast path: embedding match (DINOv2 + cosine, ~150ms) ────────────
+        # Runs on the raw decode — no heavy upscaling/sharpen needed. That is
+        # only applied on the OCR fallback below.
+        import numpy as _np
+        img_bgr = _np.array(img.convert("RGB"))
+        if len(img_bgr.shape) == 3 and img_bgr.shape[2] == 3:
+            from cv2 import cvtColor, COLOR_RGB2BGR
+            img_bgr = cvtColor(img_bgr, COLOR_RGB2BGR)
+        fast_result = _try_fast_match(img_bgr)
+
+        if fast_result and fast_result.get("match"):
+            card_info = fast_result["match"]
+            print(f"  [fast match] {card_info['name']} ({card_info['set']} "
+                  f"#{card_info['number']}) conf={card_info['confidence']} "
+                  f"in {fast_result['timing'].get('total_ms')}ms "
+                  f"source={fast_result['timing'].get('source')}")
+            debug = {
+                "fast": True,
+                "timing": fast_result["timing"],
+                "detected_number": None,
+                "number_match": None,
+                "ocr_words": [],
+                "candidates": [{
+                    "rank": 1,
+                    "score": card_info["confidence"],
+                    "name": card_info["name"],
+                    "set": card_info["set"],
+                    "number": card_info["number"],
+                    "id": card_info["id"],
+                }],
+            }
+            return jsonify({"success": True, "card": card_info, "debug": debug})
+
+        # ── Fallback: OCR word-match (slow path, ~5-10s) ────────────────────
+        print("  [fast match] no confident hit — falling back to OCR")
+        fast_timing = fast_result.get("timing") if fast_result else None
+
+        # Fast-path-only build (no pokemon-card-recognizer / EasyOCR installed):
+        # there is no OCR fallback to run. Return "no card" with the fast
+        # timings so the client can show a useful message.
+        if not _RECOGNIZER_AVAILABLE:
+            debug = {
+                "fast": True,
+                "fast_timing": fast_timing,
+                "ocr_available": False,
+                "message": "Fast matcher not confident and OCR fallback is disabled in this build.",
+            }
+            return jsonify({
+                "success": False,
+                "message": "Card not recognised. Try a clearer photo with the card filling the frame.",
+                "debug": debug,
+            })
+
+        # ── Pre-process & save (heavy, for OCR) ──────────────────────────────
         img = preprocess_image(img)
         image_path = save_temp_image(img)
 
         # ── Run recogniser ────────────────────────────────────────────────────
         recognizer = get_recognizer()
+        if recognizer is None:
+            debug = {"fast": True, "fast_timing": fast_timing, "ocr_available": False}
+            return jsonify({
+                "success": False,
+                "message": "Card not recognised. Try a clearer photo with the card filling the frame.",
+                "debug": debug,
+            })
         pred_result = recognizer.exec(image_path)
 
         if image_path and os.path.exists(image_path):
@@ -475,6 +678,9 @@ def scan_card():
         debug = _build_debug_info(recognizer)
         debug["detected_number"] = detected_number
         debug["number_match"] = number_match
+        if fast_timing:
+            debug["fast"] = True
+            debug["fast_timing"] = fast_timing
 
         # ── Choose best result ─────────────────────────────────────────────────
         # If we got a direct card-number hit, prefer it over word-match.
@@ -548,6 +754,8 @@ _grading_history: dict[str, list[dict]] = {}
 @app.route("/api/grade-card", methods=["POST"])
 def grade_card():
     """TAG-style AI condition grading (centering/corners/edges/surface) — front + optional back."""
+    if _rate_limited(request.remote_addr or "unknown"):
+        return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     image_path: str | None = None
     back_image_path: str | None = None
     try:
@@ -685,8 +893,7 @@ def grade_card():
 
 @app.route("/api/grade-card-llm", methods=["POST"])
 def grade_card_llm():
-    """
-    Enhanced AI grading using local Ollama LLM (Gemma 3 4B).
+    """Enhanced AI grading using local Ollama LLM (Gemma 3 4B).
 
     Uses 8-subgrade analysis with perspective correction:
     - centering (front/back)
@@ -696,6 +903,8 @@ def grade_card_llm():
 
     Completely free - runs locally on your hardware.
     """
+    if _rate_limited(request.remote_addr or "unknown"):
+        return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     if not OLLAMA_AVAILABLE:
         return jsonify({
             "success": False,

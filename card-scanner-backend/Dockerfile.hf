@@ -1,0 +1,44 @@
+# Hugging Face Spaces — TCGTracker card scanner (fast-path only).
+#
+# This image drops the 1.7 GB pokemon-card-recognizer package and EasyOCR
+# weights entirely; only the DINOv2 + cosine fast matcher runs. Image size
+# ends up around ~300 MB rather than ~2 GB, and the cold start is fast.
+#
+# Heavy binary assets (dinov2_vits14_224.onnx + .onnx.data, fast_index.npz,
+# fast_index_meta.json, grading models/*.onnx) MUST be committed to the Space
+# repo with Git LFS — see .gitattributes and DEPLOY.md. They live in the build
+# context alongside this Dockerfile and get COPY'd in.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Runtime deps for OpenCV (libgl / libglib) + curl for the healthcheck.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps first for better layer caching.
+COPY requirements-fast.txt .
+RUN pip install --no-cache-dir -r requirements-fast.txt
+
+# Now copy the whole scanner dir (includes the heavy ONNX + index assets).
+COPY . .
+
+# Hugging Face Spaces routes traffic to $PORT (default 7860). The Flask app
+# already honours the PORT env var (app.py:1023); we just default it here.
+ENV PORT=7860
+ENV FLASK_DEBUG=false
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 7860
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -fs http://localhost:7860/health || exit 1
+
+# 2 workers + 2 threads-per = good balance on a shared 2-CPU HF basic box.
+# --timeout 90 keeps gunicorn from killing the occasional slow detect+embed.
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "--threads", "2", "--timeout", "90", "--access-logfile", "-", "app:app"]

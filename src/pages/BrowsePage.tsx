@@ -141,14 +141,14 @@ export function BrowsePage() {
       <div className="page-accent-strip" />
 
       {/* Header */}
-      <div className="mb-8 border-l-4 border-accent pl-4 shadow-[inset_0_0_20px_var(--ring-accent)]">
+      <div className="mb-8 pl-4 shadow-[inset_0_0_20px_var(--ring-accent)]">
         <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
           MARKETPLACE
         </span>
         <h1 className="mt-1 font-display text-[clamp(1.5rem,3vw,2.2rem)] font-bold leading-tight tracking-tight">
           Browse{' '}
-          <span className="text-gradient">{gameLabel}</span>{' '}
+          <span className="text-ink-primary">{gameLabel}</span>{' '}
           <span className="text-ink-primary">Cards</span>
         </h1>
         <p className="mt-1 text-sm font-semibold text-ink-secondary">

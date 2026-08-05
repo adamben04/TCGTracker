@@ -178,6 +178,9 @@ export interface Pack {
   description?: string;
   valueRanges: ValueRange[]; // Probability distribution
   boostedValueRanges?: ValueRange[]; // Higher variance distribution (lower floor, higher ceiling)
+  /** Which TCG this pack belongs to. Optional for backwards compat with
+   *  Pokemon-only entries — defaults to 'pokemon' in service code. */
+  tcg?: 'pokemon' | 'onepiece';
 }
 
 export interface ValueRange {

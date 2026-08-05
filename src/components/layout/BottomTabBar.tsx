@@ -8,6 +8,8 @@ import {
   LayoutGrid,
   LineChart,
   MoreHorizontal,
+  Package,
+  Receipt,
   Swords,
   TrendingUp,
 } from 'lucide-react';
@@ -20,12 +22,16 @@ const PRIMARY_TABS: { to: string; label: string; icon: React.ElementType; end?: 
 
 const SECONDARY_TABS: { to: string; label: string; icon: React.ElementType }[] = [
   { to: '/vault', label: 'Vault', icon: BookOpen },
+  { to: '/sealed', label: 'Sealed', icon: Package },
 ];
 
 const MORE_ITEMS: { to: string; label: string; icon: React.ElementType }[] = [
   { to: '/sets', label: 'Sets', icon: LayoutGrid },
   { to: '/wishlist', label: 'Wishlist', icon: Heart },
   { to: '/packs', label: 'Packs', icon: LayoutGrid },
+  { to: '/trade', label: 'Trade', icon: Swords },
+  { to: '/rip-grade', label: 'Rip & Grade', icon: Award },
+  { to: '/ledger', label: 'Ledger', icon: Receipt },
   { to: '/grading', label: 'Grade', icon: Award },
   { to: '/prices', label: 'Prices', icon: LineChart },
   { to: '/market-insights', label: 'Insights', icon: TrendingUp },

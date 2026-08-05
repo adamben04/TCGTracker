@@ -176,8 +176,8 @@ export const PriceTrackingDashboard: React.FC = () => {
     <div className="section-stack">
       <div className="animate-slide-up">
         <SectionLabel className="text-accent/90">Price tracker</SectionLabel>
-        <h2 className="text-gradient mt-2 font-display text-3xl font-bold tracking-tight">
-          Watchlist & alerts
+        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">
+          Watchlist &amp; alerts
         </h2>
         <p className="mt-2 text-sm text-ink-muted">
           Monitor favorites, spot movers, and set price triggers
@@ -598,7 +598,7 @@ export const PriceTrackingDashboard: React.FC = () => {
               .map((alert) => (
                 <div
                   key={`${alert.source}-${alert.id}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-accent/30 border-l-4 border-l-accent bg-surface-inset p-4"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-accent/30 bg-surface-inset p-4"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">

@@ -1,0 +1,12 @@
+# Git LFS — large binary assets for the card-scanner.
+# Hugging Face Spaces supports LFS in the Space repo (up to 10 GB free per
+# repo). Anything larger than a few MB should be tracked via LFS to keep
+# `git clone` fast and to avoid "file too large" push rejections.
+#
+# Track the heavy card-scanner artifacts:
+card-scanner-backend/dinov2_vits14_224.onnx       filter=lfs diff=lfs merge=lfs -text
+card-scanner-backend/dinov2_vits14_224.onnx.data   filter=lfs diff=lfs merge=lfs -text
+card-scanner-backend/fast_index.npz                filter=lfs diff=lfs merge=lfs -text
+card-scanner-backend/fast_index_meta.json          filter=lfs diff=lfs merge=lfs -text
+card-scanner-backend/models/*.onnx                 filter=lfs diff=lfs merge=lfs -text
+card-scanner-backend/models/*.onnx.data            filter=lfs diff=lfs merge=lfs -text

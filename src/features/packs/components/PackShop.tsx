@@ -6,10 +6,11 @@ import { PackOpeningModal } from './PackOpeningModal';
 import { Package, Sparkles, History, Zap, ChevronDown } from 'lucide-react';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
+import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { formatCurrency } from '../../../utils/cardDisplay';
 
 export const PackShop: React.FC = () => {
-  const { game, isOnePiece } = useGame();
+  const { game, setGame, isOnePiece } = useGame();
   const [packs, setPacks] = useState<Pack[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
@@ -18,12 +19,12 @@ export const PackShop: React.FC = () => {
 
   useEffect(() => {
     loadPacks();
-  }, [tcg]);
+  }, [game]);
 
   const loadPacks = async () => {
     setIsLoading(true);
     try {
-      setPacks(tieredPackService.getAvailablePacks(tcg));
+      setPacks(tieredPackService.getAvailablePacks(game));
     } catch (error) {
       console.error('Error loading packs:', error);
     } finally {
@@ -50,13 +51,13 @@ export const PackShop: React.FC = () => {
       case 'gold':
         return 'from-yellow-400 to-amber-600';
       case 'platinum':
-        return 'from-violet-400 to-fuchsia-700';
+        return 'from-amber-200 to-amber-400';
       case 'common':
-        return 'from-blue-500 to-blue-700';
+        return 'from-sky-500 to-sky-700';
       case 'uncommon':
-        return 'from-green-500 to-emerald-700';
+        return 'from-emerald-500 to-emerald-700';
       case 'rare':
-        return 'from-purple-500 to-violet-700';
+        return 'from-amber-500 to-orange-700';
       case 'ultra-rare':
         return 'from-orange-500 to-red-700';
       case 'secret-rare':
@@ -89,7 +90,7 @@ export const PackShop: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-9 w-9 animate-spin rounded-full border-2 border-border-default border-t-accent" />
+        <LoadingSpinner />
       </div>
     );
   }
@@ -111,17 +112,17 @@ export const PackShop: React.FC = () => {
         <span className="text-xs text-ink-muted font-medium">TCG:</span>
         <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
           <button
-            onClick={() => setTcg('pokemon')}
+            onClick={() => setGame('pokemon')}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+              game === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
             }`}
           >
             Pokemon
           </button>
           <button
-            onClick={() => setTcg('onepiece')}
+            onClick={() => setGame('onepiece')}
             className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
+              game === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
             }`}
           >
             One Piece

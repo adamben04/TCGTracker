@@ -12,7 +12,10 @@ import os
 import time
 
 try:
-    from pokemon_card_recognizer.reference.core.build import ReferenceBuild
+    try:
+        from pokemon_card_recognizer.reference.core.build import ReferenceBuild
+    except ImportError:
+        from card_recognizer.reference.core.build import ReferenceBuild
 except ImportError:
     print("ERROR: pokemon-card-recognizer not installed properly!")
     print("Please follow the installation instructions first.")

@@ -930,6 +930,70 @@ export const migrations: Migration[] = [
       logger.info('Skipping full_result/back_image_url rollback (SQLite limitation)');
     },
   },
+  {
+    id: 22,
+    name: 'create_sealed_products_and_transactions_tables',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run(`
+        CREATE TABLE IF NOT EXISTS sealed_products (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          game TEXT NOT NULL DEFAULT 'pokemon',
+          product_type TEXT NOT NULL DEFAULT 'booster_box',
+          set_name TEXT,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          purchase_price REAL NOT NULL DEFAULT 0,
+          current_value REAL,
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+      await run('CREATE INDEX IF NOT EXISTS idx_sealed_user ON sealed_products(user_id)');
+
+      await run(`
+        CREATE TABLE IF NOT EXISTS transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('buy', 'sell', 'trade_in', 'trade_out')),
+          card_id TEXT,
+          card_name TEXT NOT NULL,
+          game TEXT NOT NULL DEFAULT 'pokemon',
+          quantity INTEGER NOT NULL DEFAULT 1,
+          price_each REAL NOT NULL DEFAULT 0,
+          fees REAL NOT NULL DEFAULT 0,
+          transaction_date TEXT NOT NULL,
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+      await run('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)');
+      await run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date)');
+      logger.info('Created sealed_products and transactions tables');
+    },
+    down: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      await run('DROP TABLE IF EXISTS transactions');
+      await run('DROP TABLE IF EXISTS sealed_products');
+    },
+  },
 ];
 
 // Run pending migrations

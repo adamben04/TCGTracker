@@ -63,7 +63,7 @@ export const StatsCounter: React.FC = () => {
       icon: <Package className="w-6 h-6 text-white" />,
       value: 30000,
       label: 'Cards Available',
-      gradient: 'from-violet-500 to-violet-600'
+      gradient: 'from-amber-400 to-amber-600'
     },
     {
       icon: <TrendingUp className="w-6 h-6 text-white" />,

@@ -1,5 +1,6 @@
-import express from 'express';
+import express, { Router } from 'express';
 import cron from 'node-cron';
+import fs from 'fs';
 import swaggerUi from 'swagger-ui-express';
 import priceHistoryRouter from './routes/priceHistory';
 import cardSearchRouter from './routes/cardSearch';
@@ -9,6 +10,7 @@ import setTrackerRouter from './routes/setTracker';
 import enhancedPacksRouter from './routes/enhancedPacks';
 import marketInsightsRouter from './routes/marketInsights';
 import gradingRouter from './routes/grading';
+import analysisRouter from './routes/analysis';
 import { initializeDatabase, getDb } from './db/database';
 import { runMigrations } from './db/migrations';
 import { updatePriceData, getRunDate, hasCompletedPriceUpdateFor } from './services/dataFetcher';
@@ -32,6 +34,9 @@ import { createAuthRouter } from './routes/auth';
 import { createAlertsRouter } from './routes/alerts';
 import { createPortfolioRouter } from './routes/portfolio';
 import { createBinderRouter } from './routes/binders';
+import { createCollectionToolsRouter } from './routes/collectionTools';
+import { SealedProductService } from './services/sealedProductService';
+import { TransactionService } from './services/transactionService';
 import { setCodeService } from './services/setCodeService';
 import { initSentry } from './config/sentry';
 
@@ -66,6 +71,90 @@ app.use('/api/', apiLimiter);
 
 let server: ReturnType<typeof app.listen> | null = null;
 
+// Whether we restored the DB from cloud on this boot. If true, the very first
+// scheduled backup is skipped (we just downloaded that exact file — no writes
+// have happened yet).
+let restoredFromCloudOnBoot = false;
+
+const BACKUP_INTERVAL_MS = 15 * 60 * 1000; // every 15 min
+let backupTimer: ReturnType<typeof setInterval> | null = null;
+let lastBackupAt = 0;
+// Throttle: don't back up more often than once per 5 min even on shutdown.
+const BACKUP_MIN_GAP_MS = 5 * 60 * 1000;
+
+/**
+ * Run on Render's free web service (no persistent disk): if cloud sync is
+ * configured AND the local DB file is missing on boot, restore it from
+ * Supabase Storage *before* initializeDatabase() opens the file. This makes
+ * user data survive the container's 15-min sleep / redeploy cycle.
+ *
+ * Safe to call in dev/local too — only acts when the file is genuinely
+ * missing and cloud creds are set.
+ */
+async function restoreDatabaseOnBootIfMissing(): Promise<void> {
+  if (!env.cloud.enabled) return;
+  if (!env.cloud.supabaseUrl || !env.cloud.serviceRoleKey) return;
+  const dbPath = env.databasePath;
+  if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 1024 * 1024) {
+    logger.info('Cloud restore skipped — local DB already present', {
+      dbPath,
+      sizeMb: (fs.statSync(dbPath).size / 1024 / 1024).toFixed(1),
+    });
+    return;
+  }
+  logger.info('Cloud sync enabled and local DB missing — restoring from Supabase...', { dbPath });
+  try {
+    const result = await restoreDatabaseFromCloud();
+    if (result.restored) {
+      restoredFromCloudOnBoot = true;
+      logger.info('Cloud restore succeeded', { message: result.message });
+    } else if (result.enabled) {
+      logger.warn('Cloud restore failed (no backup found yet — continuing with fresh DB)', {
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    logger.error('Cloud restore failed — continuing with fresh DB', {
+      error: (error as Error).message,
+    });
+  }
+}
+
+/**
+ * Push a backup to Supabase Storage. No-op if cloud sync is off, or if we just
+ * restored on this boot and no writes have happened since.
+ */
+async function backupDatabaseNow(reason: 'scheduled' | 'shutdown'): Promise<void> {
+  if (!env.cloud.enabled) return;
+  if (!env.cloud.supabaseUrl || !env.cloud.serviceRoleKey) return;
+  if (restoredFromCloudOnBoot && reason === 'scheduled') {
+    // First scheduled tick after a boot-restore: clear the flag and skip,
+    // since the file in memory is byte-identical to what's in Supabase.
+    restoredFromCloudOnBoot = false;
+    logger.info('Skipping first post-restore scheduled backup (no new writes).');
+    return;
+  }
+  const now = Date.now();
+  if (reason === 'shutdown' && now - lastBackupAt < BACKUP_MIN_GAP_MS) {
+    // Don't double-backup if a scheduled backup just ran.
+    return;
+  }
+  const runDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  try {
+    const result = await backupDatabaseToCloud(runDate);
+    lastBackupAt = Date.now();
+    logger.info(`Cloud backup (${reason}) complete`, { uploaded: result.uploaded, message: result.message });
+  } catch (error) {
+    logger.error(`Cloud backup (${reason}) failed`, { error: (error as Error).message });
+  }
+}
+
+
 async function initializeSetCodeService(retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -89,7 +178,8 @@ function setupRoutes(
   authService: AuthService,
   alertService: AlertService,
   portfolioService: PortfolioService,
-  binderService: BinderService
+  binderService: BinderService,
+  collectionToolsRouter: Router
 ) {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
   logger.info(`API Documentation available at http://${env.host}:${port}/api-docs`);
@@ -186,6 +276,8 @@ function setupRoutes(
   app.use('/api/binders', createBinderRouter(binderService));
   app.use('/api/market-insights', marketInsightsRouter);
   app.use('/api/grading', gradingRouter);
+  app.use('/api/analysis', analysisRouter);
+  app.use('/api/collection-tools', collectionToolsRouter);
 
   cron.schedule(
     '0 3 * * *',
@@ -457,10 +549,24 @@ function setupRoutes(
     logger.info(`API documentation available at http://${env.host}:${port}/api-docs`);
     logger.info(`Environment: ${env.nodeEnv}`);
   });
+
+  // Periodic cloud backup so the SQLite (sitting on an ephemeral disk on
+  // Render free) is pushed to Supabase Storage every 15 min. Render also
+  // spins down after 15 min idle, so this also keeps recent writes safe.
+  if (env.cloud.enabled) {
+    backupTimer = setInterval(() => {
+      void backupDatabaseNow('scheduled');
+    }, BACKUP_INTERVAL_MS);
+  }
 }
 
 async function bootstrap() {
   try {
+    // Restore the SQLite DB from Supabase BEFORE we open it, when running on
+    // an ephemeral filesystem (Render free / container restart) and cloud
+    // sync is configured. No-op if the local file already exists.
+    await restoreDatabaseOnBootIfMissing();
+
     logger.info('Initializing database...');
     await initializeDatabase();
     const db = getDb();
@@ -476,7 +582,16 @@ async function bootstrap() {
       alertService.init(),
     ]);
 
-    setupRoutes(authService, alertService, portfolioService, binderService);
+    setupRoutes(
+      authService,
+      alertService,
+      portfolioService,
+      binderService,
+      createCollectionToolsRouter(
+        new SealedProductService(db),
+        new TransactionService(db)
+      )
+    );
 
     void initializeSetCodeService().catch((error) => {
       logger.error('Background set code service initialization failed', {
@@ -515,17 +630,32 @@ async function bootstrap() {
 
 function shutdown(signal: string) {
   logger.info(`${signal} received — shutting down gracefully`);
-  if (server) {
-    server.close(() => {
-      logger.info('HTTP server closed');
+  if (backupTimer) {
+    clearInterval(backupTimer);
+    backupTimer = null;
+  }
+  // Best-effort final cloud backup before exit. Wrapped so failure never
+  // blocks a clean exit; Render's SIGTERM gives ~10 seconds.
+  const doShutdown = () => {
+    if (server) {
+      server.close(() => {
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
+      setTimeout(() => {
+        logger.error('Forced shutdown after timeout');
+        process.exit(1);
+      }, 10000);
+    } else {
       process.exit(0);
-    });
-    setTimeout(() => {
-      logger.error('Forced shutdown after timeout');
-      process.exit(1);
-    }, 10000);
+    }
+  };
+  if (env.cloud.enabled) {
+    void backupDatabaseNow('shutdown')
+      .catch(() => {})
+      .finally(() => doShutdown());
   } else {
-    process.exit(0);
+    doShutdown();
   }
 }
 

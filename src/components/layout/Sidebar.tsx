@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   LineChart,
   Package,
+  Receipt,
   Swords,
   TrendingUp,
 } from 'lucide-react';
@@ -29,6 +30,8 @@ const NAV_GROUPS: {
       { to: '/browse', label: 'Browse', icon: LayoutGrid },
       { to: '/binders', label: 'Binders', icon: Album },
       { to: '/vault', label: 'Vault', icon: BookOpen },
+      { to: '/sealed', label: 'Sealed', icon: Package },
+      { to: '/ledger', label: 'Ledger', icon: Receipt },
       { to: '/wishlist', label: 'Wishlist', icon: Heart },
       { to: '/sets', label: 'Sets', icon: Layers },
     ],
@@ -44,6 +47,8 @@ const NAV_GROUPS: {
     label: 'Tools',
     items: [
       { to: '/packs', label: 'Packs', icon: Package },
+      { to: '/trade', label: 'Trade Analyzer', icon: Swords },
+      { to: '/rip-grade', label: 'Rip & Grade', icon: Award },
       { to: '/scanner', label: 'Scan', icon: Camera },
       { to: '/grading', label: 'Grade', icon: Award },
     ],

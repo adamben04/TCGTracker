@@ -1,9 +1,7 @@
 import { Pack, PackPull, PokemonCard, PackOpeningHistory, ValueRange } from '../types/pokemon';
 import { pokemonApi, proxyImageUrl } from './pokemonApi';
-import { onePieceApi } from './onepieceApi';
-import { env } from '../config/env';
 import { onepieceApi } from './onepieceApi';
-import { OnePieceCard } from '../types/onepiece';
+import { env } from '../config/env';
 
 const PACK_HISTORY_KEY = 'tcg_tiered_pack_history';
 const PACK_HISTORY_KEY_OP = 'tcg_tiered_pack_history_onepiece';
@@ -87,7 +85,10 @@ class TieredPackService {
   // Track pulled card IDs across the session to prevent duplicates
   private pulledCardIds: Set<string> = new Set();
 
-  // No caching - always fetch fresh from DB
+  // Per-game card-pool caches so we don't refetch the 10k-card pool on every
+  // pack open. Invalidated by clearCache() / clearOnePieceCache().
+  private cardPoolCache: PokemonCard[] | null = null;
+  private onePieceCardPoolCache: PokemonCard[] | null = null;
 
   // Define tiered packs with GameStop-style odds
   private tieredPacks: Pack[] = [
@@ -251,36 +252,43 @@ class TieredPackService {
     try {
       let cardPool =
         game === 'onepiece' ? await this.fetchOnePieceCardPool() : await this.fetchCardPool();
-      console.log('cardPool: ', cardPool);
       if (cardPool.length === 0) {
         throw new Error('Unable to fetch cards. Please check your connection.');
       }
 
       // Filter out cards already pulled this session
-      const previousCount = cardPool.length;
       cardPool = cardPool.filter((card) => !this.pulledCardIds.has(this.getCardIdentifier(card)));
       if (cardPool.length === 0) {
         this.pulledCardIds.clear();
         cardPool =
           game === 'onepiece' ? await this.fetchOnePieceCardPool() : await this.fetchCardPool();
       }
-      console.log(
-        `📊 Dedup: ${previousCount} -> ${cardPool.length} cards (${this.pulledCardIds.size} already pulled)`
-      );
 
       const ranges = boosted && pack.boostedValueRanges ? pack.boostedValueRanges : pack.valueRanges;
       const selectedCard = this.selectCardFromRange(cardPool, ranges);
-      console.log('selectedCard: ', selectedCard);
       if (!selectedCard) {
         throw new Error('No suitable card found in the pool for this value range.');
       }
 
       this.pulledCardIds.add(this.getCardIdentifier(selectedCard));
 
-      const totalValue = selectedCards.reduce((sum, card) => sum + (
-        card.marketPrice ||
-        (pack.tcg === 'onepiece' ? onepieceApi.extractCardPrice(card) : pokemonApi.extractCardPrice(card))
-      ), 0);
+      // Pull a single card per pack open (cardsPerPack is 1 across all current
+      // pack configs). Compute its market price using the correct extractor for
+      // the active game — `pack.tcg` is unreliable on the Pack type, so trust
+      // the `game` arg the caller passed in.
+      const isOnePiece = game === 'onepiece';
+      const cardPrice =
+        selectedCard.marketPrice ??
+        (isOnePiece ? onepieceApi.extractCardPrice(selectedCard) : pokemonApi.extractCardPrice(selectedCard)) ??
+        0;
+      const selectedCards = [selectedCard];
+      const totalValue = selectedCards.reduce((sum, card) => {
+        const price =
+          card.marketPrice ??
+          (isOnePiece ? onepieceApi.extractCardPrice(card) : pokemonApi.extractCardPrice(card)) ??
+          0;
+        return sum + price;
+      }, 0);
       const profit = totalValue - pack.price;
 
       const packPull: PackPull = {
@@ -300,6 +308,9 @@ class TieredPackService {
   }
 
   private async fetchOnePieceCardPool(): Promise<PokemonCard[]> {
+    if (this.onePieceCardPoolCache) {
+      return this.onePieceCardPoolCache;
+    }
     const sets = await onePieceApi.getSets();
     const sample = sets.slice(0, 8);
     const batches = await Promise.all(
@@ -307,7 +318,7 @@ class TieredPackService {
     );
     const all = batches.flat();
     const withPrices = all.filter((c) => (c.marketPrice ?? 0) > 0 && (c.marketPrice ?? 0) < 100000);
-    return this.shuffleArray(
+    this.onePieceCardPoolCache = this.shuffleArray(
       withPrices.map((c) => ({
         id: c.id,
         name: c.name,
@@ -318,6 +329,7 @@ class TieredPackService {
         marketPrice: c.marketPrice,
       }))
     );
+    return this.onePieceCardPoolCache;
   }
 
   // Get a unique identifier for a card (used for deduplication)
@@ -373,7 +385,7 @@ class TieredPackService {
     const prices = cardsWithPrices.map((card: PokemonCard) => card.marketPrice || pokemonApi.extractCardPrice(card));
     const maxPrice = Math.max(...prices);
     const minPrice = Math.min(...prices);
-    console.log(`📊 Card pool stats: ${cardsWithPrices.length} cards, price range: $${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`);
+    void minPrice; void maxPrice;
 
     // Rewrite image URLs to use the Vite proxy
     const rewritten = cardsWithPrices.map((card: PokemonCard) => ({
@@ -385,7 +397,8 @@ class TieredPackService {
       } : card.images,
     }));
 
-    return this.shuffleArray([...rewritten]);
+    this.cardPoolCache = this.shuffleArray([...rewritten]);
+    return this.cardPoolCache;
   }
 
   // Shuffle array for randomness
@@ -512,26 +525,6 @@ class TieredPackService {
 
   clearCache(): void {
     this.cardPoolCache = null;
-  }
-
-  // Fetch One Piece card pool from API
-  async fetchOnePieceCardPool(): Promise<OnePieceCard[]> {
-    if (this.onePieceCardPoolCache) {
-      return this.onePieceCardPoolCache;
-    }
-
-    const cards = await onepieceApi.getAllCards();
-    const cardsWithPrices = cards.filter((card: OnePieceCard) => {
-      const price = card.marketPrice || onepieceApi.extractCardPrice(card);
-      return price > 0 && price < 10000;
-    });
-
-    if (cardsWithPrices.length === 0) {
-      throw new Error('No One Piece cards with valid prices found');
-    }
-
-    this.onePieceCardPoolCache = this.shuffleArray([...cardsWithPrices]);
-    return this.onePieceCardPoolCache;
   }
 
   clearOnePieceCache(): void {

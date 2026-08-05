@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
     },
   },
   server: {
+    allowedHosts: true,
     proxy: {
       '/api/psa': {
         target: 'https://www.psacard.com',
@@ -75,6 +76,14 @@ export default defineConfig(({ mode }) => {
       '/api/binders': backendProxy,
       '/api/market-insights': backendProxy,
       '/api/grading': backendProxy,
+      '/api/collection-tools': backendProxy,
+      '/api/analysis': backendProxy,
+      '/api/scanner': {
+        target: 'http://127.0.0.1:5001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/scanner/, ''),
+        timeout: 30000,
+      },
       '/api/update': backendProxy,
       '/api/cloud-backup': backendProxy,
       '/api/sync-catalog': backendProxy,

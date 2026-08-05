@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Camera, Upload, X, AlertCircle, CheckCircle, RefreshCw, Scan,
-  ChevronRight
+  ChevronRight, Minus, Plus, Flashlight
 } from 'lucide-react';
-import { scanCardFromFile, scanCardFromBase64, checkBackendHealth, ScanResult } from '../../../services/cardScannerApi';
+import { scanCardFromFile, checkBackendHealth, ScanResult } from '../../../services/cardScannerApi';
 import { ScanResultActions } from './ScanResultActions';
 import { markOnboardingStep } from '../../../components/common/OnboardingChecklist';
 import { SectionLabel } from '../../../components/common/SectionLabel';
@@ -96,8 +96,18 @@ export function CardScanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zoomRef = useRef(1.5);
+
+  const setZoomLevel = (z: number) => {
+    const clamped = Math.min(3, Math.max(1, z));
+    setZoom(clamped);
+    zoomRef.current = clamped;
+  };
 
   const [retryProgress, setRetryProgress] = useState(0);
+  const [zoom, setZoom] = useState(1.5);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
 
   useEffect(() => {
     checkBackendHealth().then(setBackendStatus);
@@ -134,16 +144,40 @@ export function CardScanner() {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setIsCameraActive(true);
         setError(null);
+        const track = stream.getVideoTracks()[0];
+        try {
+          const caps = track.getCapabilities?.();
+          setTorchSupported(Boolean(caps?.torch));
+        } catch {
+          setTorchSupported(false);
+        }
       }
     } catch {
       setError('Unable to access camera. Please allow camera permission and try again.');
+    }
+  };
+
+  const toggleTorch = async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track || !torchSupported) return;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: !torchOn }],
+      } as MediaTrackConstraints);
+      setTorchOn((v) => !v);
+    } catch {
+      setError('Flashlight not supported on this device/camera.');
     }
   };
 
@@ -207,14 +241,45 @@ export function CardScanner() {
     setScanResult(null);
 
     try {
+      const video = videoRef.current;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
       const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      // Capture the zoomed-in region so the card fills the frame for the recognizer
+      canvas.width = vw;
+      canvas.height = vh;
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('Canvas error');
-      ctx.drawImage(videoRef.current, 0, 0);
-      const base64 = canvas.toDataURL('image/jpeg', 0.92);
-      const result = await scanCardFromBase64(base64);
+      const zoom = Math.max(1, zoomRef.current);
+      const cw = vw / zoom;
+      const ch = vh / zoom;
+      ctx.drawImage(video, (vw - cw) / 2, (vh - ch) / 2, cw, ch, 0, 0, vw, vh);
+
+      // Downscale to ~900px long edge — plenty for card recognition and keeps
+      // the upload small (fast on cellular + Cloudflare tunnel).
+      const MAX_EDGE = 900;
+      let outW = canvas.width;
+      let outH = canvas.height;
+      if (Math.max(outW, outH) > MAX_EDGE) {
+        const scale = MAX_EDGE / Math.max(outW, outH);
+        outW = Math.round(outW * scale);
+        outH = Math.round(outH * scale);
+        const small = document.createElement('canvas');
+        small.width = outW;
+        small.height = outH;
+        const sctx = small.getContext('2d');
+        if (!sctx) throw new Error('Canvas error');
+        sctx.drawImage(canvas, 0, 0, outW, outH);
+        canvas.width = outW;
+        canvas.height = outH;
+        ctx.drawImage(small, 0, 0);
+      }
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.8)
+      );
+      if (!blob) throw new Error('Image encoding failed');
+      const result = await scanCardFromFile(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
       setScanResult(result);
       if (result.success) markOnboardingStep('scan');
       if (!result.success) setError(result.message ?? result.error ?? 'No card detected');
@@ -365,13 +430,14 @@ export function CardScanner() {
             </button>
           </div>
 
-          <div className="relative bg-black/60 aspect-video">
+          <div className="relative overflow-hidden bg-black/60 aspect-video">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-contain"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-150"
+              style={{ transform: `scale(${zoom})` }}
             />
             {!isCameraActive && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-ink-muted">
@@ -380,17 +446,55 @@ export function CardScanner() {
               </div>
             )}
             {isCameraActive && !isScanning && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="relative h-[68%] w-[42%] max-w-[220px] rounded-xl border-2 border-accent/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
-                  <span className="absolute -top-7 left-0 right-0 text-center text-[10px] font-semibold uppercase tracking-wider text-accent">
-                    Align card here
-                  </span>
-                  <span className="absolute -left-1 -top-1 h-4 w-4 border-l-2 border-t-2 border-accent" />
-                  <span className="absolute -right-1 -top-1 h-4 w-4 border-r-2 border-t-2 border-accent" />
-                  <span className="absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-accent" />
-                  <span className="absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-accent" />
+              <>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="relative aspect-[63/88] h-[72%] rounded-lg border-2 border-accent/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
+                    <span className="absolute -top-7 left-0 right-0 text-center text-[10px] font-semibold uppercase tracking-wider text-accent">
+                      Align card here
+                    </span>
+                    <span className="absolute -left-1 -top-1 h-4 w-4 border-l-2 border-t-2 border-accent" />
+                    <span className="absolute -right-1 -top-1 h-4 w-4 border-r-2 border-t-2 border-accent" />
+                    <span className="absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-accent" />
+                    <span className="absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-accent" />
+                  </div>
                 </div>
-              </div>
+                <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-black/70 px-3 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(zoom - 0.25)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    aria-label="Zoom out"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-10 text-center text-xs font-semibold text-white tabular-nums">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setZoomLevel(zoom + 0.25)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                    aria-label="Zoom in"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                  {torchSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleTorch}
+                      className={`ml-1 flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors ${
+                        torchOn
+                          ? 'bg-amber-400 text-black'
+                          : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                      aria-label="Toggle flashlight"
+                    >
+                      <Flashlight className="h-3.5 w-3.5" />
+                      {torchOn ? 'On' : 'Flash'}
+                    </button>
+                  )}
+                </div>
+              </>
             )}
             {isScanning && (
               <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-3">

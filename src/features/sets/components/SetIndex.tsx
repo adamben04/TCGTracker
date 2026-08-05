@@ -118,7 +118,7 @@ function OnePieceSetCard({
 }
 
 export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
-  const { isPokemon, isOnePiece } = useGame();
+  const { game, setGame, isPokemon, isOnePiece } = useGame();
   const [sets, setSets] = useState<AnySet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -151,9 +151,9 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
   }, [isPokemon, isOnePiece]);
 
   const filtered = useMemo(() => {
-    if (tcg === 'onepiece') {
+    if (game === 'onepiece') {
       const q = search.trim().toLowerCase();
-      let list = onePieceSets;
+      let list = sets;
       if (q) {
         list = list.filter(
           (s) =>
@@ -179,7 +179,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       list = list.filter((s) => pinned.has(s.id));
     }
     return list;
-  }, [sets, search, pinnedOnly, isPokemon]);
+  }, [game, sets, search, pinnedOnly]);
 
   const grouped = useMemo(() => {
     if (!isPokemon) return [{ era: 'All Sets', label: 'All Sets', sets: filtered }];
@@ -232,8 +232,8 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xs text-ink-muted font-medium">TCG:</span>
         <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
-          <button onClick={() => setTcg('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
-          <button onClick={() => setTcg('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
+          <button onClick={() => setGame('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
+          <button onClick={() => setGame('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
         </div>
       </div>
 
@@ -264,7 +264,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
         )}
       </div>
 
-      {tcg === 'onepiece' ? (
+      {game === 'onepiece' ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {(filtered as OnePieceSet[]).map((set) => (
             <OnePieceSetCard

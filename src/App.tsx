@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { HeroSection } from './components/common/HeroSection';
@@ -11,6 +11,9 @@ import { CommandPalette } from './components/common/CommandPalette';
 import { OnboardingChecklist } from './components/common/OnboardingChecklist';
 import { CardModalProvider } from './contexts/CardModalContext';
 import { GameProvider } from './contexts/GameContext';
+import { useAuth } from './hooks/useAuth';
+import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { BrowsePage } from './pages/BrowsePage';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { VIEW_PATHS, browseSearchPath } from './utils/routes';
@@ -49,6 +52,24 @@ const WishlistView = lazy(() =>
 const BindersIndex = lazy(() =>
   import('./features/binders/components/BindersIndex').then((m) => ({ default: m.BindersIndex }))
 );
+const SealedProductsView = lazy(() =>
+  import('./features/sealed/components/SealedProductsView').then((m) => ({
+    default: m.SealedProductsView,
+  }))
+);
+const TransactionsLedger = lazy(() =>
+  import('./features/ledger/components/TransactionsLedger').then((m) => ({
+    default: m.TransactionsLedger,
+  }))
+);
+const TradeAnalyzer = lazy(() =>
+  import('./features/trade/components/TradeAnalyzer').then((m) => ({ default: m.TradeAnalyzer }))
+);
+const RipGradeCalculator = lazy(() =>
+  import('./features/analysis/components/RipGradeCalculator').then((m) => ({
+    default: m.RipGradeCalculator,
+  }))
+);
 
 function RouteFallback() {
   return (
@@ -56,6 +77,44 @@ function RouteFallback() {
       <LoadingSpinner />
     </div>
   );
+}
+
+// Protects routes that hit authenticated backend endpoints. The rest of the app
+// is local-first and stays open to everyone.
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Redirect to /login when a backend call 401s mid-session (e.g. expired token).
+function UnauthorizedRedirect() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      if (location.pathname === '/login' || location.pathname === '/register') return;
+      navigate('/login', { state: { from: location.pathname } });
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+  }, [navigate, location.pathname]);
+
+  return null;
 }
 
 function HomePage() {
@@ -116,6 +175,8 @@ function AppRoutes() {
             <Routes location={location}>
               <Route path="/" element={<HomePage />} />
               <Route path="/browse" element={<BrowsePage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
               <Route
                 path="/prices"
                 element={
@@ -145,7 +206,9 @@ function AppRoutes() {
                 path="/binders"
                 element={
                   <div className={PAGE_CONTAINER}>
-                    <BindersIndex />
+                    <RequireAuth>
+                      <BindersIndex />
+                    </RequireAuth>
                   </div>
                 }
               />
@@ -172,6 +235,42 @@ function AppRoutes() {
                 element={
                   <div className={PAGE_CONTAINER}>
                     <GradingPage />
+                  </div>
+                }
+              />
+              <Route
+                path="/sealed"
+                element={
+                  <div className={PAGE_CONTAINER}>
+                    <RequireAuth>
+                      <SealedProductsView />
+                    </RequireAuth>
+                  </div>
+                }
+              />
+              <Route
+                path="/ledger"
+                element={
+                  <div className={PAGE_CONTAINER}>
+                    <RequireAuth>
+                      <TransactionsLedger />
+                    </RequireAuth>
+                  </div>
+                }
+              />
+              <Route
+                path="/trade"
+                element={
+                  <div className={PAGE_CONTAINER}>
+                    <TradeAnalyzer />
+                  </div>
+                }
+              />
+              <Route
+                path="/rip-grade"
+                element={
+                  <div className={PAGE_CONTAINER}>
+                    <RipGradeCalculator />
                   </div>
                 }
               />
@@ -212,6 +311,7 @@ function App() {
 
             <BottomTabBar />
             <CommandPalette />
+            <UnauthorizedRedirect />
           </div>
         </CardModalProvider>
       </GameProvider>

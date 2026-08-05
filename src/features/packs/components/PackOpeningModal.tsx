@@ -72,10 +72,6 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
     skipRef.current = true;
   };
 
-  const handleImageError = useCallback((cardId: string) => {
-    setFailedImages(prev => new Set(prev).add(cardId));
-  }, []);
-
   const handleOpenPack = async () => {
     if (!pack) return;
 
@@ -178,7 +174,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
       case 'gold':
         return 'from-yellow-400 to-yellow-600';
       case 'platinum':
-        return 'from-purple-400 to-purple-600';
+        return 'from-amber-200 to-amber-400';
       default:
         return 'from-blue-400 to-blue-600';
     }
@@ -186,11 +182,11 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
 
   const getRarityColor = (rarity?: string) => {
     const r = (rarity || '').toLowerCase();
-    if (r.includes('secret') || r.includes('rainbow')) return 'from-yellow-400 via-pink-400 to-purple-400';
-    if (r.includes('ultra')) return 'from-purple-400 to-pink-400';
-    if (r.includes('holo')) return 'from-blue-400 to-purple-400';
+    if (r.includes('secret') || r.includes('rainbow')) return 'from-yellow-400 via-amber-300 to-orange-400';
+    if (r.includes('ultra')) return 'from-amber-400 to-orange-500';
+    if (r.includes('holo')) return 'from-sky-400 to-amber-400';
     if (r.includes('rare')) return 'from-yellow-400 to-orange-400';
-    if (r.includes('uncommon')) return 'from-green-400 to-blue-400';
+    if (r.includes('uncommon')) return 'from-emerald-400 to-sky-400';
     return 'from-gray-400 to-gray-500';
   };
 
@@ -219,7 +215,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
         <button
           type="button"
           onClick={handleAddAllToVault}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:from-purple-700 hover:to-blue-700"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:from-amber-600 hover:to-orange-700"
         >
           <Vault className="h-5 w-5 shrink-0" aria-hidden="true" />
           Add to Vault
@@ -271,9 +267,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
           </div>
 
           <div className="text-center">
-            <h2
-              className={`bg-gradient-to-r bg-clip-text text-3xl font-black text-transparent sm:text-4xl ${getTierColor(pack.tier)}`}
-            >
+            <h2 className="text-3xl font-black text-ink-primary sm:text-4xl">
               {pack.name}
             </h2>
             <p className="mt-1 text-sm text-ink-muted sm:text-base">{pack.description}</p>
@@ -290,7 +284,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
             </div>
             <div className="text-center">
               <p className="text-[10px] uppercase tracking-wide text-ink-muted sm:text-xs">Avg</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-purple-400 sm:text-3xl">${pack.averageValue}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-accent sm:text-3xl">${pack.averageValue}</p>
             </div>
           </div>
 
@@ -341,15 +335,15 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
       {stage === 'opening' && (
         <div className="flex h-full flex-col items-center justify-center gap-6 pb-2">
           <div className="relative">
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 opacity-50 blur-2xl motion-safe:animate-pulse" />
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 opacity-50 blur-2xl motion-safe:animate-pulse" />
             <div
-              className={`relative rounded-2xl bg-gradient-to-br p-10 shadow-2xl sm:p-12 ${getTierColor(pack.tier)} motion-safe:animate-bounce`}
+              className={`relative rounded-2xl bg-gradient-to-br p-10 shadow-2xl sm:p-12 ${getTierColor(pack.tier)} motion-safe:animate-pulse`}
             >
               <Sparkles className="h-20 w-20 text-white motion-safe:animate-spin sm:h-24 sm:w-24" aria-hidden="true" />
             </div>
           </div>
           <div className="text-center">
-            <p className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-2xl font-black text-transparent motion-safe:animate-pulse sm:text-3xl">
+            <p className="text-2xl font-black text-accent motion-safe:animate-pulse sm:text-3xl">
               OPENING PACK...
             </p>
             <p className="mt-2 text-ink-muted">Rolling the odds...</p>
@@ -375,7 +369,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
             <FastForward className="h-3.5 w-3.5" aria-hidden="true" />
             Skip
           </button>
-          <h3 className="mb-4 shrink-0 bg-gradient-to-r from-yellow-400 via-pink-400 to-purple-600 bg-clip-text text-center text-2xl font-bold text-transparent motion-safe:animate-pulse sm:text-3xl">
+          <h3 className="mb-4 shrink-0 text-center text-2xl font-bold text-accent motion-safe:animate-pulse sm:text-3xl">
             YOU PULLED
           </h3>
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
@@ -468,7 +462,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({ pack, isOpen
       {stage === 'results' && packPull && (
         <div className="flex h-full flex-col gap-4 pb-1 sm:gap-5">
           <div className="shrink-0 text-center">
-            <h3 className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-2xl font-black text-transparent sm:text-3xl">
+            <h3 className="text-2xl font-black text-ink-primary sm:text-3xl">
               Pack Opened!
             </h3>
             <p className="mt-0.5 text-sm text-ink-muted">Here&apos;s what you pulled</p>

@@ -302,7 +302,7 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
   return (
     <div className="flex w-full flex-col gap-5">
       <div className="flex items-center gap-3">
-        <h3 className="text-gradient text-lg font-display font-bold">Top movers</h3>
+        <h3 className="text-lg font-display font-bold">Top movers</h3>
         <div className="flex gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--border-subtle)' }}>
           {PERIODS.map(({ key, label }) => (
             <button

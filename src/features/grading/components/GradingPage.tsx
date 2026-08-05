@@ -94,7 +94,7 @@ export const GradingPage: React.FC = () => {
       <div className="mb-6">
         <SectionLabel className="text-accent/90">Tools</SectionLabel>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-gradient text-h2 font-display font-bold">AI Card Grading</h1>
+          <h1 className="text-h2 font-display font-bold">AI Card Grading</h1>
           {backendOk === true && (
             <span className="inline-flex items-center gap-1 rounded-full border border-gain/30 bg-gain-muted px-2 py-0.5 text-[10px] font-medium text-gain">
               Online
