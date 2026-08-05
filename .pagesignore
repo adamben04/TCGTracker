@@ -1,0 +1,11 @@
+node_modules/
+backend/
+card-scanner-backend/
+.git/
+.vscode/
+.idea/
+*.db
+*.sqlite
+*.sqlite3
+coverage/
+dist/
