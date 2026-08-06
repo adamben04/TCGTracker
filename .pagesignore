@@ -8,4 +8,4 @@ card-scanner-backend/
 *.sqlite
 *.sqlite3
 coverage/
-dist/
+data/prices/
