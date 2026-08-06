@@ -6,6 +6,7 @@ export type RarityTier = 'common' | 'uncommon' | 'rare' | 'holo' | 'ultra' | 'se
  */
 export function proxyImageUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
+  if (!import.meta.env.DEV) return url;
   return url.replace('https://images.pokemontcg.io', '/images/pokemontcg');
 }
 

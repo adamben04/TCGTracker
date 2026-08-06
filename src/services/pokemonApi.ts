@@ -16,6 +16,7 @@ const POKEMON_TCG_IMG_PROXY = '/images/pokemontcg';
 
 export function proxyImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
+  if (!import.meta.env.DEV) return url;
   return url.replace(POKEMON_TCG_IMG_HOST, POKEMON_TCG_IMG_PROXY);
 }
 
