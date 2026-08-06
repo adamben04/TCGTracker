@@ -312,7 +312,7 @@ export const PackShop: React.FC = () => {
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <img
-                    src={pull.pack.imageUrl || '/images/pokemontcg/base1/logo.png'}
+                    src={pull.pack.imageUrl || 'https://images.pokemontcg.io/base1/logo.png'}
                     alt={pull.pack.name}
                     className="h-10 w-10 shrink-0 object-contain"
                   />

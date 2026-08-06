@@ -100,7 +100,7 @@ class TieredPackService {
       averageValue: 25,
       cardsPerPack: 1,
       description: 'Perfect for beginners',
-      imageUrl: '/images/pokemontcg/base1/logo.png',
+      imageUrl: 'https://images.pokemontcg.io/base1/logo.png',
       valueRanges: [
         { min: 12, max: 19, probability: 40.6, label: '$12-19' },
         { min: 19, max: 25, probability: 30.6, label: '$19-25' },
@@ -127,7 +127,7 @@ class TieredPackService {
       averageValue: 50,
       cardsPerPack: 1,
       description: 'Step up your collection',
-      imageUrl: '/images/pokemontcg/base1/logo.png',
+      imageUrl: 'https://images.pokemontcg.io/base1/logo.png',
       valueRanges: [
         { min: 25, max: 38, probability: 40, label: '$25-38' },
         { min: 38, max: 50, probability: 30, label: '$38-50' },
@@ -154,7 +154,7 @@ class TieredPackService {
       averageValue: 100,
       cardsPerPack: 1,
       description: 'Premium cards await',
-      imageUrl: '/images/pokemontcg/base1/logo.png',
+      imageUrl: 'https://images.pokemontcg.io/base1/logo.png',
       valueRanges: [
         { min: 50, max: 75, probability: 38, label: '$50-75' },
         { min: 75, max: 100, probability: 32, label: '$75-100' },
@@ -181,7 +181,7 @@ class TieredPackService {
       averageValue: 500,
       cardsPerPack: 1,
       description: 'High-value pulls',
-      imageUrl: '/images/pokemontcg/base1/logo.png',
+      imageUrl: 'https://images.pokemontcg.io/base1/logo.png',
       valueRanges: [
         { min: 250, max: 375, probability: 35, label: '$250-375' },
         { min: 375, max: 500, probability: 35, label: '$375-500' },
@@ -208,7 +208,7 @@ class TieredPackService {
       averageValue: 1000,
       cardsPerPack: 1,
       description: 'Ultimate gambling experience',
-      imageUrl: '/images/pokemontcg/base1/logo.png',
+      imageUrl: 'https://images.pokemontcg.io/base1/logo.png',
       valueRanges: [
         { min: 400, max: 600, probability: 35, label: '$400-600' },
         { min: 600, max: 800, probability: 35, label: '$600-800' },
