@@ -252,7 +252,10 @@ router.get('/health', async (_req, res: Response) => {
     const okStatus =
       upstream.statusCode >= 200 && upstream.statusCode < 300 && data?.status === 'ok';
     if (!okStatus) {
-      return fail(res, data?.message || 'Scanner unhealthy', 502);
+      return ok(res, {
+        status: 'unavailable',
+        message: data?.message || 'Scanner unhealthy',
+      });
     }
     ok(res, {
       status: 'ok',
@@ -264,7 +267,10 @@ router.get('/health', async (_req, res: Response) => {
       error: error?.message,
       scannerUrl: SCANNER_URL,
     });
-    fail(res, error?.message || 'Scanner unreachable', 503);
+    ok(res, {
+      status: 'unavailable',
+      message: error?.message || 'Scanner unreachable',
+    });
   }
 });
 

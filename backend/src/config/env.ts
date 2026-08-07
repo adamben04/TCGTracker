@@ -9,7 +9,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('3001'),
   HOST: z.string().default('localhost'),
-  DATABASE_PATH: z.string().default('./tcg-prices.db'),
+  DATABASE_PATH: z.string().optional(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   BCRYPT_ROUNDS: z.string().default('10'),
@@ -57,7 +57,9 @@ export const env = {
   nodeEnv: parsedEnv.data.NODE_ENV,
   port: parseInt(parsedEnv.data.PORT, 10),
   host: parsedEnv.data.HOST,
-  databasePath: parsedEnv.data.DATABASE_PATH,
+  databasePath:
+    parsedEnv.data.DATABASE_PATH ||
+    (process.env.RENDER === 'true' ? '/app/data/tcg-prices.db' : './tcg-prices.db'),
   jwt: {
     secret: jwtSecret,
     expiresIn: parsedEnv.data.JWT_EXPIRES_IN,

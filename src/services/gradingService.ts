@@ -17,8 +17,9 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const HISTORY_KEY = 'tcg_grading_history';
 
-const SCANNER_BASE =
-  import.meta.env.VITE_CARD_SCANNER_API_URL || (import.meta.env.DEV ? 'http://localhost:5001' : '');
+const SCANNER_BASE = import.meta.env.DEV
+  ? import.meta.env.VITE_CARD_SCANNER_API_URL || 'http://localhost:5001'
+  : '';
 
 const client = axios.create({
   withCredentials: true,

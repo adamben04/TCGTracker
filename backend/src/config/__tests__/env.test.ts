@@ -48,4 +48,13 @@ describe('env validation', () => {
 
     await expect(import('../env')).rejects.toThrow();
   });
+
+  it('uses the data directory by default on Render', async () => {
+    process.env.JWT_SECRET = 'a'.repeat(32);
+    process.env.RENDER = 'true';
+    delete process.env.DATABASE_PATH;
+
+    const { env } = await import('../env');
+    expect(env.databasePath).toBe('/app/data/tcg-prices.db');
+  });
 });

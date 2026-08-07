@@ -11,12 +11,10 @@ function getScannerBaseUrl(): string {
   const configured = import.meta.env.VITE_CARD_SCANNER_API_URL;
   if (import.meta.env.DEV) {
     // Dev: route through Vite's /api/scanner proxy → localhost:5001.
-    return '/api/scanner';
+    return configured?.replace(/\/+$/, '') || '/api/scanner';
   }
-  if (configured) {
-    return configured.replace(/\/+$/, '');
-  }
-  // Production does not guess a scanner host or try the user's localhost.
+  // Production always uses the Node proxy; direct hosts are easily blocked and
+  // bypass the proxy's authenticated client identity.
   return '';
 }
 

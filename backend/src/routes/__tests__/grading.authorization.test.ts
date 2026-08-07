@@ -275,4 +275,12 @@ describe('grading authorization', () => {
       })
     );
   });
+
+  it('reports unavailable scanner health without a browser-visible HTTP failure', async () => {
+    mockUndiciRequest.mockRejectedValue(new Error('scanner offline'));
+
+    const response = await request(app).get('/api/grading/health').expect(200);
+
+    expect(response.body.data.status).toBe('unavailable');
+  });
 });
