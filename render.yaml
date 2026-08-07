@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: tcgtracker-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /app/data/tcg-prices.db
+      - key: CORS_ORIGIN
+        value: https://tcgtracker-9oc.pages.dev
+      - key: AUTH_BYPASS_ENABLED
+        value: 'false'
+      - key: CLOUD_SYNC_ENABLED
+        value: 'true'
+      - key: SUPABASE_BUCKET
+        value: tcgtracker-data
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+  - type: web
+    name: tcgtracker-scanner
+    runtime: docker
+    plan: free
+    rootDir: card-scanner-backend
+    dockerfilePath: ./Dockerfile.hf
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 7860
+      - key: SCANNER_CORS_ORIGIN
+        value: https://tcgtracker-9oc.pages.dev

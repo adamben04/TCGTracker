@@ -11,6 +11,9 @@ permissions:
 jobs:
   verify-production-builds:
     runs-on: ubuntu-latest
+    env:
+      RENDER_API_DEPLOY_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+      RENDER_SCANNER_DEPLOY_HOOK: ${{ secrets.RENDER_SCANNER_DEPLOY_HOOK }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -53,3 +56,11 @@ jobs:
         run: |
           echo "Cloudflare Pages and both Render services deploy from Git after this push."
           echo "Production frontend: https://tcgtracker-9oc.pages.dev/"
+
+      - name: Trigger Render API deploy hook
+        if: ${{ env.RENDER_API_DEPLOY_HOOK != '' }}
+        run: curl --fail --silent --show-error --request POST "$RENDER_API_DEPLOY_HOOK"
+
+      - name: Trigger Render scanner deploy hook
+        if: ${{ env.RENDER_SCANNER_DEPLOY_HOOK != '' }}
+        run: curl --fail --silent --show-error --request POST "$RENDER_SCANNER_DEPLOY_HOOK"

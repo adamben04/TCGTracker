@@ -93,7 +93,12 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
 ### B. Render — sign up + create both services — 15 minutes
 
 1. Sign up at <https://render.com> (free, email only).
-2. Push the project to your GitHub repo if not already there:
+2. Preferred: **New → Blueprint** and select this repository. The checked-in
+   `render.yaml` creates both services with the correct Dockerfiles, ports,
+   health checks, database path, and CORS origins. Fill every `sync: false`
+   secret before the first deploy.
+3. If you prefer manual services, continue with B1/B2 below.
+4. Push the project to your GitHub repo if not already there:
    ```powershell
    # If not on GitHub yet:
    git push origin main
@@ -101,14 +106,14 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
 
 #### B1. Node API service
 
-3. Render dashboard → **New → Web Service** → connect your repo
+5. Render dashboard → **New → Web Service** → connect your repo
    (`adamben04/TCGTracker`):
    - **Name**: `tcgtracker-api` (or anything; this becomes the URL)
    - **Root Directory**: `backend`
    - **Runtime**: Docker
    - **Dockerfile Path**: `backend/Dockerfile` (relative to repo root)
    - **Instance Type**: **Free**
-4. **Environment** → set ALL of these before deploying:
+6. **Environment** → set ALL of these before deploying:
 
    | Key | Value |
    |---|---|
@@ -129,11 +134,11 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
    not the persistent Render data directory. Do NOT set any `VITE_*` variables
    on the API — those are frontend-only.
 
-5. Click **Deploy**. Watch logs: on first cold start you'll see
+7. Click **Deploy**. Watch logs: on first cold start you'll see
    `Cloud sync enabled and local DB missing — restoring from Supabase…`
    then `Cloud restore succeeded` (~30–90 s). Then
    `TCGTracker Backend server running on http://0.0.0.0:3001`.
-6. Note the URL: `https://tcgtracker-api.onrender.com`.
+8. Note the URL: `https://tcgtracker-api.onrender.com`.
 
 After registering the administrator account, set `ADMIN_BOOTSTRAP_EMAIL` to its
 exact email and restart the API. Startup grants the immutable database role.
@@ -142,7 +147,7 @@ For local maintenance, the equivalent command is
 
 #### B2. Scanner service
 
-7. Render dashboard → **New → Web Service** → connect the same repo:
+9. Render dashboard → **New → Web Service** → connect the same repo:
    - **Name**: `tcgtracker-scanner` (or anything)
    - **Root Directory**: `card-scanner-backend`
    - **Runtime**: Docker
@@ -150,18 +155,18 @@ For local maintenance, the equivalent command is
      repo root — the fast-path-only Dockerfile that skips the 1.7 GB
      `pokemon-card-recognizer` package)
    - **Instance Type**: **Free**
-8. **Environment** → set ALL of these before deploying:
+10. **Environment** → set ALL of these before deploying:
 
    | Key | Value |
    |---|---|
    | `PORT` | `7860` |
    | `SCANNER_CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` |
 
-9. Click **Deploy**. Watch logs: first build compiles deps + copies the
+11. Click **Deploy**. Watch logs: first build compiles deps + copies the
    ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
    one-time DINOv2 ONNX warmup (~1 s), and listens on port 7860.
-10. Note the URL: `https://tcgtracker-scanner.onrender.com`.
-11. Open `https://tcgtracker-scanner.onrender.com/health` — you should get
+12. Note the URL: `https://tcgtracker-scanner.onrender.com`.
+13. Open `https://tcgtracker-scanner.onrender.com/health` — you should get
     JSON with `"status": "ok"` and `"fast_ready": true`.
 
 ---
