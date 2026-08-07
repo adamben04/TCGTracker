@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, RefreshCw, Sparkles } from 'lucide-react';
 import { SectionLabel } from '../../../components/common/SectionLabel';
@@ -26,16 +26,38 @@ export const GradingPage: React.FC = () => {
   const [result, setResult] = useState<GradingResult | null>(null);
   const [history, setHistory] = useState<GradingResult[]>([]);
   const [captureKey, setCaptureKey] = useState(0);
+  const healthRequestRef = useRef(0);
 
   const refreshHistory = useCallback(async () => {
     const h = await getGradingHistory();
     setHistory(h);
   }, []);
 
+  const wakeGradingService = useCallback(async () => {
+    const requestId = ++healthRequestRef.current;
+    setBackendOk(null);
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (healthRequestRef.current !== requestId) return;
+      const healthy = await checkGradingBackendHealth();
+      if (healthRequestRef.current !== requestId) return;
+      if (healthy) {
+        setBackendOk(true);
+        return;
+      }
+      if (attempt < 5) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+    }
+    if (healthRequestRef.current === requestId) setBackendOk(false);
+  }, []);
+
   useEffect(() => {
-    checkGradingBackendHealth().then(setBackendOk);
+    void wakeGradingService();
     void refreshHistory();
-  }, [refreshHistory]);
+    return () => {
+      healthRequestRef.current += 1;
+    };
+  }, [refreshHistory, wakeGradingService]);
 
   const handleCapture = async (image: File | string, backImage?: File | string) => {
     setIsProcessing(true);
@@ -101,38 +123,55 @@ export const GradingPage: React.FC = () => {
       <div className="mb-6">
         <SectionLabel className="text-accent/90">Tools</SectionLabel>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-h2 font-display font-bold">AI Card Grading</h1>
+          <h1 className="text-h2 font-display font-bold">Card condition estimate</h1>
           {backendOk === true && (
             <span className="inline-flex items-center gap-1 rounded-full border border-gain/30 bg-gain-muted px-2 py-0.5 text-[10px] font-medium text-gain">
               Online
             </span>
           )}
+          {backendOk === null && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Waking service
+            </span>
+          )}
           {backendOk === false && (
             <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-              Scanner offline
+              Analysis unavailable
             </span>
           )}
         </div>
         <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-          PSA-style condition estimate — Centering, Corners, Edges, and Surface on a 10-point scale.
-          Specialist computer vision (not a chatbot). Not a substitute for professional grading.
+          Computer-vision estimate for centering, corners, edges, and surface on a 10-point scale.
+          Photo quality limits what can be measured; this is not a professional grade.
+        </p>
+      </div>
+
+      <div className="mb-4 grid gap-3 rounded-xl border border-border-default bg-surface-inset p-4 text-xs leading-5 text-ink-muted sm:grid-cols-2">
+        <p>
+          <span className="font-medium text-ink-primary">Measures:</span> visible centering, corner,
+          edge, and surface condition candidates from front/back photos.
+        </p>
+        <p>
+          <span className="font-medium text-ink-primary">Cannot verify:</span> authenticity,
+          trimming, thickness, pressing, restoration, or defects hidden by glare.
         </p>
       </div>
 
       {backendOk === false && (
-        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-ink-primary">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-              <p className="font-medium">Grading service not reachable on port 5001.</p>
-              <p className="mt-1 text-amber-200/80">
-                Start the Python backend:{' '}
-                <code className="font-mono text-xs">cd card-scanner-backend && python app.py</code>
+              <p className="font-medium">The grading service is temporarily unavailable.</p>
+              <p className="mt-1 text-ink-muted">
+                Existing grading history remains available. New analysis will unlock automatically
+                when the deployed service is healthy.
               </p>
               <button
                 type="button"
                 className="btn-secondary mt-3"
-                onClick={() => checkGradingBackendHealth().then(setBackendOk)}
+                onClick={() => void wakeGradingService()}
               >
                 <RefreshCw className="h-4 w-4" />
                 Retry
@@ -149,7 +188,7 @@ export const GradingPage: React.FC = () => {
               key={captureKey}
               onCapture={handleCapture}
               isProcessing={isProcessing}
-              disabled={isProcessing}
+              disabled={isProcessing || backendOk !== true}
             />
           )}
 

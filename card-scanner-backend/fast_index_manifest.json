@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "builtAt": "2026-08-07T09:36:42.886090+00:00",
+  "catalog": "https://github.com/PokemonTCG/pokemon-tcg-data/archive/refs/heads/master.zip",
+  "model": {
+    "source": "https://huggingface.co/sefaburak/dinov2-small-onnx/resolve/main/dinov2_vits14.onnx",
+    "sha256": "4df36ef0716a8f17d984fc7546a3a5d670fda6911eb298592250cb9e26756063"
+  },
+  "catalogCards": 20444,
+  "indexedCards": 20391,
+  "failedCards": 53,
+  "embeddingDimension": 384,
+  "storageType": "float16"
+}

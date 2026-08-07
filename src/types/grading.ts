@@ -39,7 +39,7 @@ export interface DefectRegion {
   side?: 'front' | 'back';
   label: string;
   severity: 'minor' | 'moderate' | 'severe';
-  cropImage: string;
+  cropImage?: string;
   location?: { x: number; y: number; width: number; height: number };
 }
 

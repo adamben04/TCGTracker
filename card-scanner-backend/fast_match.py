@@ -3,7 +3,7 @@ Fast image-embedding card matcher.
 
 Replaces the 5-10s EasyOCR word-match path with:
   1. Card detection + perspective warp (OpenCV)   ~5-15 ms
-  2. MobileNetV3-Small embedding (torch, CPU)     ~10-25 ms
+  2. DINOv2 ViT-S/14 embedding (ONNX, CPU)
   3. Exact cosine search over precomputed index   ~5-15 ms
 
 Reference embeddings are built once by build_embeddings.py from the
@@ -57,15 +57,31 @@ class _Embedder:
         import onnxruntime as ort
 
         so = ort.SessionOptions()
-        so.intra_op_num_threads = 6
+        so.intra_op_num_threads = max(
+            1, int(os.environ.get("SCANNER_ONNX_THREADS", min(2, os.cpu_count() or 1)))
+        )
         so.inter_op_num_threads = 1
         so.log_severity_level = 3
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        self._sess = ort.InferenceSession(_ONNX_MODEL, so, providers=["CPUExecutionProvider"])
+        requested_provider = os.environ.get("SCANNER_ONNX_PROVIDER", "CPUExecutionProvider")
+        available_providers = ort.get_available_providers()
+        provider = (
+            requested_provider
+            if requested_provider in available_providers
+            else "CPUExecutionProvider"
+        )
+        if provider == "DmlExecutionProvider":
+            so.enable_mem_pattern = False
+            so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        self._sess = ort.InferenceSession(_ONNX_MODEL, so, providers=[provider])
         self._in_name = self._sess.get_inputs()[0].name
         # warm-up with the production input shape
         warm = np.zeros((1, 3, _IMG_SIZE, _IMG_SIZE), dtype=np.float32)
-        self._sess.run(None, {self._in_name: warm})
+        output = self._sess.run(None, {self._in_name: warm})[0].reshape(-1)
+        if output.size != _EMBED_DIM:
+            raise RuntimeError(
+                f"DINOv2 output has {output.size} values; expected {_EMBED_DIM}"
+            )
 
     def embed(self, rgb: np.ndarray) -> np.ndarray:
         """rgb: float32 HxWx3 [0..1] (any aspect). Returns L2-normalized 384-d vector."""
@@ -453,7 +469,7 @@ def extend_index(api_key: str = "DEMO", workers: int = 8, verbose: bool = True) 
     all_meta = matcher.meta + meta_rows
     with open(_META_PATH, "w", encoding="utf-8") as f:
         json.dump(all_meta, f)
-    np.savez_compressed(_INDEX_PATH, embeddings=all_vectors)
+    np.savez_compressed(_INDEX_PATH, embeddings=all_vectors.astype(np.float16))
 
     summary = {
         "added": int(len(vectors)),
@@ -488,6 +504,7 @@ def build_index(verbose: bool = True, workers: int = 8) -> dict:
     """Build fast_index.npz + fast_index_meta.json from reference card images."""
     os.makedirs(_IMG_DIR, exist_ok=True)
     embedder = _Embedder()
+    embedder.embed(np.zeros((100, 100, 3), dtype=np.float32) + 0.5)
 
     t0 = time.time()
     rows = _card_rows(_load_reference_cards())
@@ -536,7 +553,7 @@ def build_index(verbose: bool = True, workers: int = 8) -> dict:
     matrix = np.stack(vectors).astype(np.float32)
     with open(_META_PATH, "w", encoding="utf-8") as f:
         json.dump(meta_rows, f)
-    np.savez_compressed(_INDEX_PATH, embeddings=matrix)
+    np.savez_compressed(_INDEX_PATH, embeddings=matrix.astype(np.float16))
 
     summary = {
         "indexed": int(matrix.shape[0]),
@@ -569,7 +586,7 @@ if __name__ == "__main__":
             print(f"Index ready: {m.size} cards @ {_INDEX_PATH}")
         else:
             print("Index NOT built. Run without --check to build it.")
-        sys.exit(0)
+        sys.exit(0 if m.loaded else 1)
 
     if args.extend:
         print(extend_index(api_key=args.api_key, workers=args.workers))

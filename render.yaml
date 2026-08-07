@@ -1,3 +1,9 @@
+envVarGroups:
+  - name: tcgtracker-scanner-proxy
+    envVars:
+      - key: CARD_SCANNER_PROXY_SECRET
+        generateValue: true
+
 services:
   - type: web
     name: tcgtracker-api
@@ -7,6 +13,7 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
+      - fromGroup: tcgtracker-scanner-proxy
       - key: NODE_ENV
         value: production
       - key: PORT
@@ -17,6 +24,8 @@ services:
         value: /app/data/tcg-prices.db
       - key: CORS_ORIGIN
         value: https://tcgtracker-9oc.pages.dev
+      - key: CARD_SCANNER_URL
+        value: https://tcgtracker-scanner.onrender.com
       - key: AUTH_BYPASS_ENABLED
         value: 'false'
       - key: CLOUD_SYNC_ENABLED
@@ -40,6 +49,7 @@ services:
     dockerfilePath: ./Dockerfile.hf
     healthCheckPath: /health
     envVars:
+      - fromGroup: tcgtracker-scanner-proxy
       - key: PORT
         value: 7860
       - key: SCANNER_CORS_ORIGIN

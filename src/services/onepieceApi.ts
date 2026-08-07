@@ -71,7 +71,8 @@ function mapCard(raw: OPTCGCardResponse): OnePieceCard {
 async function fetchBackend<T>(
   endpoint: string,
   params?: Record<string, string>,
-  retries = 2
+  retries = 0,
+  timeoutMs = 8_000
 ): Promise<T> {
   const url = new URL(buildApiUrl(endpoint));
   if (params) {
@@ -84,7 +85,7 @@ async function fetchBackend<T>(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url.toString(), {
@@ -119,13 +120,20 @@ async function fetchBackend<T>(
 async function fetchOptcgFallback<T>(path: string): Promise<T> {
   const base = getOptcgBaseUrl();
   const normalized = path.startsWith('/') ? path : `/${path}`;
-  const response = await fetch(`${base}${normalized}`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) {
-    throw new Error(`OPTCG API ${response.status}: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`${base}${normalized}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`OPTCG API ${response.status}: ${response.statusText}`);
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return response.json();
 }
 
 class OnePieceApiService {
@@ -147,7 +155,7 @@ class OnePieceApiService {
         cacheService.set(cacheKey, sets, 60 * 60 * 1000);
         return sets;
       } catch {
-        return [];
+        throw new Error('One Piece set catalog is temporarily unavailable.');
       }
     }
   }
@@ -178,7 +186,7 @@ class OnePieceApiService {
         return cards;
       } catch (fallbackErr) {
         console.error(`One Piece set cards fallback failed for ${setId}:`, fallbackErr);
-        return [];
+        throw new Error(`One Piece set ${setId} is temporarily unavailable.`);
       }
     }
   }
@@ -194,7 +202,7 @@ class OnePieceApiService {
       const response = await fetchBackend<{ data?: OnePieceCard[] }>('/api/cards/onepiece', {
         query: query.trim(),
         setId: setId || '',
-        limit: '2000',
+        limit: '100',
       });
       const cards = (response.data || []).filter((c) => c?.id);
       cacheService.set(cacheKey, cards, 10 * 60 * 1000);
@@ -209,8 +217,62 @@ class OnePieceApiService {
         return filtered;
       } catch (fallbackErr) {
         console.error('One Piece search fallback failed:', fallbackErr);
-        return [];
+        throw new Error('One Piece card search is temporarily unavailable.');
       }
+    }
+  }
+
+  async getPackPool(limit = 2_000): Promise<OnePieceCard[]> {
+    const cacheKey = `op_pack_pool_v1_${limit}`;
+    const cached = cacheService.get<OnePieceCard[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const response = await fetchBackend<{ data?: OnePieceCard[] }>(
+        '/api/cards/onepiece/pool',
+        { limit: String(limit) },
+        0,
+        10_000
+      );
+      const cards = (response.data ?? []).filter((card) => (card.marketPrice ?? 0) > 0);
+      if (cards.length === 0) throw new Error('One Piece pack pool is empty.');
+      cacheService.set(cacheKey, cards, 30 * 60 * 1000);
+      return cards;
+    } catch (backendError) {
+      console.warn(
+        'Backend One Piece pack pool unavailable, trying legacy set routes:',
+        backendError
+      );
+      const legacySetIds = ['OP-01', 'OP-05', 'OP-09', 'OP-10', 'OP-11', 'OP-12'];
+      const legacyResults = await Promise.allSettled(
+        legacySetIds.map((setId) =>
+          fetchBackend<{ data?: OnePieceCard[] }>(
+            `/api/cards/onepiece/set/${encodeURIComponent(setId)}`,
+            undefined,
+            0,
+            8_000
+          )
+        )
+      );
+      const legacyCards = legacyResults.flatMap((result) =>
+        result.status === 'fulfilled' ? (result.value.data ?? []) : []
+      );
+      const uniqueLegacyCards = Array.from(
+        new Map(
+          legacyCards.filter((card) => (card.marketPrice ?? 0) > 0).map((card) => [card.id, card])
+        ).values()
+      ).slice(0, limit);
+      if (uniqueLegacyCards.length > 0) {
+        cacheService.set(cacheKey, uniqueLegacyCards, 30 * 60 * 1000);
+        return uniqueLegacyCards;
+      }
+
+      console.warn('Legacy One Piece set routes unavailable, using OPTCG catalog.');
+      const catalog = await fetchFullOptcgCatalog(fetchOptcgFallback);
+      const cards = catalog.filter((card) => (card.marketPrice ?? 0) > 0).slice(0, limit);
+      if (cards.length === 0) throw new Error('One Piece pack pool is temporarily unavailable.');
+      cacheService.set(cacheKey, cards, 30 * 60 * 1000);
+      return cards;
     }
   }
 

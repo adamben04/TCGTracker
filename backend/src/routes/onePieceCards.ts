@@ -109,6 +109,32 @@ router.get('/onepiece/stats', async (_req, res) => {
   }
 });
 
+router.get('/onepiece/pool', async (req, res) => {
+  try {
+    const requestedLimit = parseInt(String(req.query.limit ?? '2000'), 10);
+    const limit = Math.min(
+      Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 2000, 100),
+      3000
+    );
+    const cards = (await getAllOptcgCards())
+      .map((raw) => mapRawToApiCard(raw))
+      .filter((card) => (card.marketPrice ?? 0) > 0)
+      .slice(0, limit);
+
+    res.json({
+      data: cards,
+      count: cards.length,
+      source: 'optcg_full_catalog',
+    });
+  } catch (error) {
+    logger.error('One Piece pack pool failed:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: (error as Error).message,
+    });
+  }
+});
+
 router.get('/onepiece/card/:catalogId', async (req, res) => {
   try {
     const catalogId = decodeURIComponent(req.params.catalogId);

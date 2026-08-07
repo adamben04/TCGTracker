@@ -318,12 +318,12 @@ def _encode_overlay(bgr: np.ndarray, corners: np.ndarray | None) -> str | None:
             for i, (x, y) in enumerate(corners.astype(int)):
                 cv2.circle(vis, (x, y), 8, (0, 140, 255), -1)
                 cv2.putText(vis, str(i), (x + 6, y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        max_dim = 1800
+        max_dim = 1000
         h, w = vis.shape[:2]
         if max(h, w) > max_dim:
             s = max_dim / max(h, w)
             vis = cv2.resize(vis, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
-        ok, buf = cv2.imencode(".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        ok, buf = cv2.imencode(".jpg", vis, [int(cv2.IMWRITE_JPEG_QUALITY), 84])
         if not ok:
             return None
         import base64

@@ -1,10 +1,10 @@
-# Hugging Face Spaces — TCGTracker card scanner (fast-path only).
+# Cloud deployment — TCGTracker card scanner (fast-path only).
 #
 # This image drops the 1.7 GB pokemon-card-recognizer package and EasyOCR
 # weights entirely; only the DINOv2 + cosine fast matcher runs. Image size
 # ends up around ~300 MB rather than ~2 GB, and the cold start is fast.
 #
-# Heavy binary assets (dinov2_vits14_224.onnx + .onnx.data, fast_index.npz,
+# Heavy binary assets (dinov2_vits14_224.onnx, fast_index.npz,
 # fast_index_meta.json, grading models/*.onnx) MUST be committed to the Space
 # repo with Git LFS — see .gitattributes and DEPLOY.md. They live in the build
 # context alongside this Dockerfile and get COPY'd in.
@@ -27,6 +27,15 @@ RUN pip install --no-cache-dir -r requirements-fast.txt
 # Now copy the whole scanner dir (includes the heavy ONNX + index assets).
 COPY . .
 
+# Fetch the verified Apache-2.0 DINOv2 export rather than spending Git LFS
+# bandwidth on every clone/build.
+RUN curl -L --fail --retry 3 -o dinov2_vits14_224.onnx https://huggingface.co/sefaburak/dinov2-small-onnx/resolve/main/dinov2_vits14.onnx \
+    && echo "4df36ef0716a8f17d984fc7546a3a5d670fda6911eb298592250cb9e26756063  dinov2_vits14_224.onnx" | sha256sum -c -
+
+# Fail the image build instead of deploying a scanner with missing LFS assets.
+RUN python -c "from pathlib import Path; required={'dinov2_vits14_224.onnx':80_000_000,'fast_index.npz':1_000_000,'fast_index_meta.json':100_000,'models/corners.onnx':1_000_000,'models/edges.onnx':1_000_000,'models/surface.onnx':1_000_000,'models/segmentation.onnx':100_000}; missing=[name for name,size in required.items() if not Path(name).exists() or Path(name).stat().st_size < size]; assert not missing, f'missing scanner assets: {missing}'"
+RUN python fast_match.py --check
+
 # Hugging Face Spaces routes traffic to $PORT (default 7860). The Flask app
 # already honours the PORT env var (app.py:1023); we just default it here.
 ENV PORT=7860
@@ -39,6 +48,6 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -fs http://localhost:7860/health || exit 1
 
-# 2 workers + 2 threads-per = good balance on a shared 2-CPU HF basic box.
-# --timeout 90 keeps gunicorn from killing the occasional slow detect+embed.
-CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "2", "--threads", "2", "--timeout", "90", "--access-logfile", "-", "app:app"]
+# One process shares the 86 MB model/index on Render's 512 MB free instance.
+# Keep the worker budget below the Node proxy and browser deadlines.
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "2", "--timeout", "70", "--access-logfile", "-", "app:app"]

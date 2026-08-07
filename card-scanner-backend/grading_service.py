@@ -249,6 +249,30 @@ class CategoryResult:
         return d
 
 
+def combine_front_back_categories(
+    front: dict[str, CategoryResult],
+    back: dict[str, CategoryResult],
+) -> tuple[list[float], dict[str, dict[str, Any]]]:
+    """Use the lower side score for each category and retain its evidence."""
+    combined_scores: list[float] = []
+    combined_categories: dict[str, dict[str, Any]] = {}
+    for category_name in front:
+        front_score = front[category_name].score
+        back_score = back[category_name].score
+        worse = back[category_name] if back_score < front_score else front[category_name]
+        lower_score = min(front_score, back_score)
+        combined_scores.append(lower_score)
+        combined = worse.to_dict()
+        combined["score"] = lower_score
+        if front_score != back_score:
+            combined["details"] = (
+                f"{combined.get('details', '')} "
+                f"(front {front_score}/10, back {back_score}/10 — lower side sets this category)."
+            ).strip()
+        combined_categories[category_name] = combined
+    return combined_scores, combined_categories
+
+
 @dataclass
 class GradingResult:
     id: str
@@ -286,8 +310,8 @@ def pil_to_cv(img: Image.Image) -> np.ndarray:
     return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
-def encode_crop(region: np.ndarray, max_dim: int = 1800, quality: int = 95) -> str:
-    """Encode a cropped region as a base64 JPEG data URL (high quality, sharp)."""
+def encode_crop(region: np.ndarray, max_dim: int = 720, quality: int = 84) -> str:
+    """Encode bounded visual evidence without inflating API and browser storage."""
     if region.size == 0:
         return ""
     h, w = region.shape[:2]
@@ -303,8 +327,8 @@ def encode_crop(region: np.ndarray, max_dim: int = 1800, quality: int = 95) -> s
     return f"data:image/jpeg;base64,{b64}"
 
 
-def encode_full_image(img: np.ndarray, max_dim: int = 1800, quality: int = 92) -> str:
-    """Encode a full card image as a high-quality base64 JPEG data URL."""
+def encode_full_image(img: np.ndarray, max_dim: int = 1000, quality: int = 84) -> str:
+    """Encode a bounded full-card preview."""
     if img.size == 0:
         return ""
     h, w = img.shape[:2]
@@ -454,7 +478,7 @@ def generate_centering_proof(
     cv2.putText(proof, tb_text, (tx + 1, ty + 1), font, font_scale, (0, 0, 0), font_thickness + 1, cv2.LINE_AA)
     cv2.putText(proof, tb_text, (tx, ty), font, font_scale, (0, 220, 255), font_thickness, cv2.LINE_AA)
 
-    return encode_crop(proof, max_dim=2400, quality=95)
+    return encode_crop(proof, max_dim=900, quality=86)
 
 
 def generate_defect_highlight(card: np.ndarray, location: dict, category: str,
@@ -530,7 +554,7 @@ def generate_defect_highlight(card: np.ndarray, location: dict, category: str,
     cv2.rectangle(crop, (text_x - 2, text_y - th - 2), (text_x + tw + 2, text_y + 2), (0, 0, 0), -1)
     cv2.putText(crop, label, (text_x, text_y), font, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
-    return encode_crop(crop, max_dim=1400, quality=95)
+    return encode_crop(crop, max_dim=720, quality=86)
 
 
 def severity_from_score(score: float, threshold_good: float = 9.0, threshold_ok: float = 7.0) -> str:
@@ -2304,28 +2328,10 @@ def grade_card_image(
         result["backQuality"] = back_quality.to_dict()
         result["backExtraction"] = back_result.get("extraction") or back_ext.to_debug_dict()
 
-        blended_scores = []
-        combined_cats: dict[str, dict[str, Any]] = {}
-        for cat_name in front_cats:
-            front_score = front_cats[cat_name].score
-            back_score = back_cats[cat_name].score
-            worse = back_cats[cat_name] if back_score < front_score else front_cats[cat_name]
-            worse_val = min(front_score, back_score)
-            better_val = max(front_score, back_score)
-            blended = round(worse_val * 0.7 + better_val * 0.3, 1)
-            blended_scores.append(blended)
-            combined = worse.to_dict()
-            combined["score"] = blended
-            if front_score != back_score:
-                combined["details"] = (
-                    f"{combined.get('details', '')} "
-                    f"(front {front_score}/10, back {back_score}/10 — weighted blend)."
-                ).strip()
-            combined_cats[cat_name] = combined
-
-        avg_blended = float(np.mean(blended_scores))
-        worst_blended = min(blended_scores)
-        overall = round(avg_blended * 0.35 + worst_blended * 0.65, 1)
+        combined_scores, combined_cats = combine_front_back_categories(front_cats, back_cats)
+        average_score = float(np.mean(combined_scores))
+        worst_score = min(combined_scores)
+        overall = round(average_score * 0.35 + worst_score * 0.65, 1)
         overall = min(overall, front_result["grade"], back_result["grade"])
         overall = max(1.0, min(10.0, round(overall * 2) / 2))
         result["grade"] = overall

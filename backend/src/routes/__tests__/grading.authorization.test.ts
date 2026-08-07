@@ -11,6 +11,14 @@ const mockEnv = {
     secret: 'test-secret-that-is-at-least-thirty-two-characters',
     expiresIn: '7d',
   },
+  scanner: {
+    url: 'http://scanner.test',
+    proxySecret: 'shared-scanner-test-secret',
+  },
+  rateLimit: {
+    windowMs: 60_000,
+    maxRequests: 100,
+  },
 };
 
 jest.mock('../../config/env', () => ({ env: mockEnv }));
@@ -152,7 +160,7 @@ describe('grading authorization', () => {
           },
         }),
       },
-    } as Awaited<ReturnType<typeof undiciRequest>>);
+    } as unknown as Awaited<ReturnType<typeof undiciRequest>>);
 
     await request(app)
       .post('/api/grading/analyze')
@@ -163,5 +171,108 @@ describe('grading authorization', () => {
       'anonymous-result',
     ]);
     expect(persisted).toBeUndefined();
+  });
+
+  it('persists authenticated grading metadata without embedded image evidence', async () => {
+    const category = {
+      score: 8,
+      details: 'Visible wear',
+      deviations: { leftRight: 1, topBottom: 2 },
+      defects: ['edge wear'],
+      crops: [{ label: 'edge', image: 'data:image/jpeg;base64,crop' }],
+    };
+    const frontCategory = { ...category, score: 9 };
+    mockUndiciRequest.mockResolvedValue({
+      statusCode: 200,
+      body: {
+        json: async () => ({
+          success: true,
+          grading: {
+            id: 'metadata-result',
+            cardId: 'base1-4',
+            cardName: 'Charizard',
+            game: 'pokemon',
+            centering: category,
+            corners: category,
+            edges: category,
+            surface: category,
+            front: {
+              centering: frontCategory,
+              corners: frontCategory,
+              edges: frontCategory,
+              surface: frontCategory,
+            },
+            totalScore: 800,
+            grade: 8,
+            gradeLabel: 'NM-MT',
+            imageUrl: 'data:image/jpeg;base64,front',
+            backImageUrl: 'data:image/jpeg;base64,back',
+            extraction: {
+              found: true,
+              confidence: 0.9,
+              overlay: 'data:image/jpeg;base64,overlay',
+            },
+          },
+        }),
+      },
+    } as unknown as Awaited<ReturnType<typeof undiciRequest>>);
+
+    const response = await request(app)
+      .post('/api/grading/analyze')
+      .auth(tokenFor(1), { type: 'bearer' })
+      .send({ image: 'base64-image', backImage: 'base64-back' })
+      .expect(200);
+
+    expect(response.body.data.grading.extraction.overlay).toContain('data:image/jpeg');
+    const persisted = await get<{
+      image_url: string | null;
+      back_image_url: string | null;
+      full_result: string | null;
+    }>('SELECT image_url, back_image_url, full_result FROM grading_results WHERE id = ?', [
+      'metadata-result',
+    ]);
+    expect(persisted?.image_url).toBeNull();
+    expect(persisted?.back_image_url).toBeNull();
+    expect(persisted?.full_result).not.toContain('base64');
+    expect(persisted?.full_result).not.toContain('crops');
+    expect(persisted?.full_result).not.toContain('overlay');
+
+    const history = await request(app)
+      .get('/api/grading/history')
+      .auth(tokenFor(1), { type: 'bearer' })
+      .expect(200);
+    expect(history.body.data.history[0].centering.score).toBe(8);
+    expect(history.body.data.history[0].front.centering.score).toBe(9);
+  });
+
+  it('proxies card identification through the configured scanner service', async () => {
+    const payload = JSON.stringify({
+      success: true,
+      card: { id: 'base1-4', name: 'Charizard', confidence: 0.9 },
+    });
+    mockUndiciRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: {
+        arrayBuffer: async () => Buffer.from(payload),
+      },
+    } as unknown as Awaited<ReturnType<typeof undiciRequest>>);
+
+    const response = await request(app)
+      .post('/api/grading/scan-card')
+      .send({ image: 'base64-image' })
+      .expect(200);
+
+    expect(response.body.card.id).toBe('base1-4');
+    expect(mockUndiciRequest).toHaveBeenCalledWith(
+      'http://scanner.test/api/scan-card',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'X-Forwarded-For': expect.any(String),
+          'X-TCGTracker-Proxy-Key': 'shared-scanner-test-secret',
+        }),
+      })
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { buildOnePieceCatalogId } from '../onePieceCatalogId';
 
 const BASE_URL = 'https://optcgapi.com/api';
+const OPTCG_TIMEOUT_MS = 5_000;
 
 export interface OPTCGSetResponse {
   set_name: string;
@@ -49,21 +50,34 @@ interface OPTCGDonResponse {
 }
 
 const CATALOG_CACHE_TTL_MS = 60 * 60 * 1000;
-let cachedCatalog: { fetchedAt: number; cards: OPTCGCardResponse[] } | null = null;
+const PARTIAL_CATALOG_CACHE_TTL_MS = 90 * 1000;
+let cachedCatalog: {
+  fetchedAt: number;
+  cards: OPTCGCardResponse[];
+  complete: boolean;
+} | null = null;
+let catalogRequest: Promise<OPTCGCardResponse[]> | null = null;
 
 export async function fetchOptcgJson<T>(path: string): Promise<T> {
   const url = path.startsWith('http')
     ? path
     : `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OPTCG_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(`OPTCG API ${response.status}: ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`OPTCG API ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json() as Promise<T>;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return response.json() as Promise<T>;
 }
 
 const normalizeDonCard = (raw: OPTCGDonResponse): OPTCGCardResponse => ({
@@ -104,28 +118,58 @@ export async function getAllOptcgCards(forceRefresh = false): Promise<OPTCGCardR
   if (
     !forceRefresh &&
     cachedCatalog &&
-    Date.now() - cachedCatalog.fetchedAt < CATALOG_CACHE_TTL_MS
+    Date.now() - cachedCatalog.fetchedAt <
+      (cachedCatalog.complete ? CATALOG_CACHE_TTL_MS : PARTIAL_CATALOG_CACHE_TTL_MS)
   ) {
     return cachedCatalog.cards;
   }
 
-  const [setCards, stCards, promoCards, donCards] = await Promise.all([
-    fetchOptcgJson<OPTCGCardResponse[]>('/allSetCards/'),
-    fetchOptcgJson<OPTCGCardResponse[]>('/allSTCards/'),
-    fetchOptcgJson<OPTCGCardResponse[]>('/promos/filtered/?card_name='),
-    fetchOptcgJson<OPTCGDonResponse[]>('/allDonCards/').then((rows) => rows.map(normalizeDonCard)),
-  ]);
+  if (!catalogRequest) {
+    catalogRequest = (async () => {
+      const [setResult, starterResult, promoResult, donResult] = await Promise.allSettled([
+        fetchOptcgJson<OPTCGCardResponse[]>('/allSetCards/'),
+        fetchOptcgJson<OPTCGCardResponse[]>('/allSTCards/'),
+        fetchOptcgJson<OPTCGCardResponse[]>('/promos/filtered/?card_name='),
+        fetchOptcgJson<OPTCGDonResponse[]>('/allDonCards/'),
+      ]);
+      const setCards = setResult.status === 'fulfilled' ? setResult.value : [];
+      const starterCards = starterResult.status === 'fulfilled' ? starterResult.value : [];
+      const promoCards = promoResult.status === 'fulfilled' ? promoResult.value : [];
+      const donCards =
+        donResult.status === 'fulfilled' ? donResult.value.map(normalizeDonCard) : [];
+      const complete = [setResult, starterResult, promoResult, donResult].every(
+        (result) => result.status === 'fulfilled'
+      );
+      const currentCards = [...setCards, ...starterCards, ...promoCards, ...donCards];
+      const merged = dedupeCards(
+        complete ? currentCards : [...(cachedCatalog?.cards ?? []), ...currentCards]
+      );
+      if (merged.length === 0) {
+        throw new Error('All OPTCG catalog sources failed or returned no cards.');
+      }
+      cachedCatalog = { fetchedAt: Date.now(), cards: merged, complete };
+      return merged;
+    })();
+  }
 
-  const merged = dedupeCards([...setCards, ...stCards, ...promoCards, ...donCards]);
-  cachedCatalog = { fetchedAt: Date.now(), cards: merged };
-  return merged;
+  const pending = catalogRequest;
+  try {
+    return await pending;
+  } finally {
+    if (catalogRequest === pending) catalogRequest = null;
+  }
 }
 
 export async function getOptcgSets(): Promise<OPTCGSetResponse[]> {
-  const [boosters, decks] = await Promise.all([
+  const [boosterResult, deckResult] = await Promise.allSettled([
     fetchOptcgJson<OPTCGSetResponse[]>('/allSets/'),
     fetchOptcgJson<OPTCGDeckResponse[]>('/allDecks/'),
   ]);
+  const boosters = boosterResult.status === 'fulfilled' ? boosterResult.value : [];
+  const decks = deckResult.status === 'fulfilled' ? deckResult.value : [];
+  if (boosters.length === 0 && decks.length === 0) {
+    throw new Error('One Piece set sources are temporarily unavailable.');
+  }
 
   const starterSets: OPTCGSetResponse[] = decks.map((d) => ({
     set_id: d.structure_deck_id,

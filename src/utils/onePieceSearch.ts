@@ -7,6 +7,15 @@ export interface OnePieceSearchableCard {
   subTypes?: string;
 }
 
+export function isOnePieceSetId(setId: string): boolean {
+  const normalized = setId.trim().toUpperCase();
+  return (
+    normalized === 'PROMO' ||
+    normalized === 'DON' ||
+    /^(OP|ST|EB|PRB|P|DON)[-_]?\d/.test(normalized)
+  );
+}
+
 export function cardMatchesOnePieceQuery(card: OnePieceSearchableCard, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return false;

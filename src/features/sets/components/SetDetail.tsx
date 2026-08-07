@@ -32,6 +32,7 @@ import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { ErrorMessage } from '../../../components/common/ErrorMessage';
 import { SetLogo } from './SetLogo';
 import { formatReleaseYear } from '../../../utils/setEra';
+import { isOnePieceSetId } from '../../../utils/onePieceSearch';
 
 interface SetDetailProps {
   setId: string;
@@ -91,6 +92,7 @@ function OnePieceSetBinderGrid({
 export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   const { isPokemon, isOnePiece } = useGame();
   const { openCard } = useCardModal();
+  const isOP = isOnePiece || isOnePieceSetId(setId);
   const [setMeta, setSetMeta] = useState<PokemonSet | null>(null);
   const [cards, setCards] = useState<SetTrackerCard[]>([]);
   const [opCards, setOpCards] = useState<OnePieceCard[]>([]);
@@ -102,19 +104,15 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   const [filter, setFilter] = useState<FilterMode>('all');
   const [sortBy, setSortBy] = useState<SetCardSort>('number');
   const [wishlistIds, setWishlistIds] = useState<Set<string>>(() =>
-    isPokemon ? setWishlistService.getWishlistForSet(setId) : new Set()
+    isPokemon && !isOP ? setWishlistService.getWishlistForSet(setId) : new Set()
   );
   const [vaultCard, setVaultCard] = useState<SetTrackerCard | null>(null);
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
-  const [, setOnePieceCards] = useState<OnePieceCard[]>([]);
-
-  const isOP = isOnePieceSet(setId);
-
   const reload = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
-    if (isOnePiece) {
+    if (isOP) {
       try {
         const data = await onePieceApi.getSetCards(setId);
         setOpCards(data);
@@ -128,29 +126,6 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
 
     const wish = setWishlistService.getWishlistForSet(setId);
     setWishlistIds(wish);
-
-    if (isOP) {
-      try {
-        const opCards = await onePieceApi.getSetCards(setId);
-        setOnePieceCards(opCards);
-        if (opCards.length > 0) {
-          const first = opCards[0];
-          setSetMeta({
-            id: first.setId,
-            name: first.setName,
-            series: 'One Piece',
-            releaseDate: '',
-            total: opCards.length,
-            images: { symbol: undefined, logo: undefined },
-          } as unknown as PokemonSet);
-        }
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setIsLoading(false);
-      }
-      return;
-    }
 
     try {
       const [cardsRes, summaryRes, history] = await Promise.all([
@@ -167,7 +142,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [setId, historyRange, isOnePiece, isOP]);
+  }, [setId, historyRange, isOP]);
 
   useEffect(() => {
     reload();
@@ -219,7 +194,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   }
 
   // One Piece set detail view
-  if (isOnePiece) {
+  if (isOP) {
     return (
       <div className="space-y-6">
         <button

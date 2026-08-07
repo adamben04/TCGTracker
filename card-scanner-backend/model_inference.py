@@ -16,6 +16,12 @@ import cv2
 import numpy as np
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
+MIN_MODEL_BYTES = {
+    "corners": 1_000_000,
+    "edges": 1_000_000,
+    "surface": 1_000_000,
+    "segmentation": 100_000,
+}
 
 _SESSIONS: dict[str, Any] = {}
 _ORT_AVAILABLE: bool | None = None
@@ -37,16 +43,15 @@ def _ort():
 
 def models_available() -> dict[str, bool]:
     return {
-        "corners": (MODELS_DIR / "corners.onnx").exists(),
-        "edges": (MODELS_DIR / "edges.onnx").exists(),
-        "surface": (MODELS_DIR / "surface.onnx").exists(),
-        "segmentation": (MODELS_DIR / "segmentation.onnx").exists(),
+        name: (MODELS_DIR / f"{name}.onnx").is_file()
+        and (MODELS_DIR / f"{name}.onnx").stat().st_size >= minimum
+        for name, minimum in MIN_MODEL_BYTES.items()
     }
 
 
 def _get_session(name: str):
     path = MODELS_DIR / f"{name}.onnx"
-    if not path.exists():
+    if not path.is_file() or path.stat().st_size < MIN_MODEL_BYTES.get(name, 1_000_000):
         return None
     with _SESSION_LOCK:
         if name in _SESSIONS:
@@ -54,8 +59,13 @@ def _get_session(name: str):
         ort = _ort()
         if ort is None:
             return None
-        sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-        _SESSIONS[name] = sess
+        try:
+            sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+            _SESSIONS[name] = sess
+        except Exception as error:
+            print(f"[model_inference] could not load {name} model: {error}")
+            _SESSIONS[name] = None
+            return None
     return sess
 
 
@@ -79,9 +89,10 @@ def _predict_score(session, bgr: np.ndarray) -> tuple[float, float]:
     out = np.asarray(out).reshape(-1)
 
     if out.size == 1:
-        # Regression head: raw score
+        # Regression heads do not expose a calibrated probability. Use a
+        # neutral evidence-quality weight rather than inventing confidence.
         score = float(np.clip(out[0], 1.0, 10.0))
-        conf = 0.75
+        conf = 0.5
     elif out.size == 20:
         # Half-point classes 1.0, 1.5, ... 10.0
         probs = _softmax(out.astype(np.float32))
@@ -244,9 +255,9 @@ def predict_axis(axis: str, card_bgr: np.ndarray) -> dict[str, Any]:
     """
     Predict a PSA-style subgrade for corners | edges | surface.
     """
-    sess = _get_session(axis)
-    if sess is not None:
-        try:
+    try:
+        sess = _get_session(axis)
+        if sess is not None:
             setattr(sess, "_tcg_axis", axis)
             # For corners/edges average localized crops; surface uses full card
             if axis == "corners":
@@ -291,8 +302,8 @@ def predict_axis(axis: str, card_bgr: np.ndarray) -> dict[str, Any]:
                 }
             s, cf = _predict_score(sess, card_bgr)
             return {"score": s, "confidence": cf, "defects": [], "source": "onnx"}
-        except Exception as e:
-            print(f"[model_inference] ONNX {axis} failed: {e}")
+    except Exception as e:
+        print(f"[model_inference] ONNX {axis} failed: {e}")
 
     if axis == "corners":
         score, conf, defects = _heuristic_corners(card_bgr)

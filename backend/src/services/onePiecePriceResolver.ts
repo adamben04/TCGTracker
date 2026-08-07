@@ -20,6 +20,7 @@ export interface OnePiecePriceableCard {
 }
 
 const STALE_SCRAPE_DAYS = 7;
+const BATCH_ENRICHMENT_BUDGET_MS = 1_500;
 
 function isOptcgPriceStale(dateScraped?: string | null): boolean {
   if (!dateScraped) return false;
@@ -116,5 +117,15 @@ export async function enrichOnePieceApiCard<T extends OnePiecePriceableCard>(
 export async function enrichOnePieceApiCards<T extends OnePiecePriceableCard>(
   cards: T[]
 ): Promise<Array<T & { priceSource?: OnePiecePriceSource; tcgplayerProductId?: number }>> {
-  return Promise.all(cards.map((card) => enrichOnePieceApiCard(card)));
+  if (cards.length === 0) return [];
+  const enrichment = Promise.all(cards.map((card) => enrichOnePieceApiCard(card)));
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<Array<T & { priceSource?: OnePiecePriceSource }>>((resolve) => {
+    timeout = setTimeout(() => resolve(cards), BATCH_ENRICHMENT_BUDGET_MS);
+  });
+  try {
+    return await Promise.race([enrichment, budget]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }

@@ -20,6 +20,14 @@ export const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
+export const scannerLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Too many scanner requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Very strict rate limiter for password change
 export const passwordChangeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour

@@ -74,6 +74,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
   const [mode, setMode] = useState<Mode>('idle');
   const [step, setStep] = useState<Step>('front');
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [frontPreview, setFrontPreview] = useState<string | null>(null);
   const [frontImage, setFrontImage] = useState<File | string | null>(null);
@@ -84,19 +85,38 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlsRef = useRef(new Set<string>());
 
   const stopCamera = useCallback(() => {
+    cameraRequestRef.current += 1;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraActive(false);
+    setIsCameraReady(false);
   }, []);
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  const revokePreview = useCallback((url: string | null) => {
+    if (!url?.startsWith('blob:')) return;
+    URL.revokeObjectURL(url);
+    previewUrlsRef.current.delete(url);
+  }, []);
+
+  useEffect(
+    () => () => {
+      stopCamera();
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current.clear();
+    },
+    [stopCamera]
+  );
 
   const startCamera = async () => {
+    const requestId = ++cameraRequestRef.current;
     try {
+      setIsCameraReady(false);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
@@ -104,14 +124,18 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
           height: { ideal: 2160 },
         },
       });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsCameraActive(true);
-        setError(null);
+      if (cameraRequestRef.current !== requestId || !videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
       }
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      setIsCameraActive(true);
+      setError(null);
     } catch {
-      setError('Unable to access camera. Please allow camera permission and try again.');
+      if (cameraRequestRef.current === requestId) {
+        setError('Unable to access camera. Please allow camera permission and try again.');
+      }
     }
   };
 
@@ -131,14 +155,23 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
         return;
       }
       const preview = typeof fileOrData === 'string' ? fileOrData : URL.createObjectURL(fileOrData);
+      if (preview.startsWith('blob:')) previewUrlsRef.current.add(preview);
       if (step === 'front') {
+        revokePreview(frontPreview);
         setFrontPreview(preview);
         setFrontImage(fileOrData);
       } else {
+        revokePreview(backPreview);
         setBackPreview(preview);
         setBackImage(fileOrData);
       }
       setMode('idle');
+    } catch (qualityError) {
+      setError(
+        qualityError instanceof Error
+          ? qualityError.message
+          : 'Unable to inspect this photo. Try another image.'
+      );
     } finally {
       setChecking(false);
     }
@@ -153,7 +186,11 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
   };
 
   const captureFrame = () => {
-    if (!videoRef.current || isProcessing || checking) return;
+    if (!videoRef.current || !isCameraReady || isProcessing || checking) return;
+    if (videoRef.current.videoWidth <= 0 || videoRef.current.videoHeight <= 0) {
+      setError('Camera is still starting. Wait for the preview, then capture again.');
+      return;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
@@ -163,7 +200,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
       return;
     }
     ctx.drawImage(videoRef.current, 0, 0);
-    const base64 = canvas.toDataURL('image/jpeg', 0.97);
+    const base64 = canvas.toDataURL('image/jpeg', 0.88);
     stopCamera();
     void acceptImage(base64);
   };
@@ -207,7 +244,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
             </div>
             <h3 className="mb-1 font-semibold text-ink-primary">Camera grade</h3>
             <p className="text-sm text-ink-muted">
-              Photograph your card under even lighting for best centering accuracy.
+              Photograph your card under even lighting for the clearest measurements.
             </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-medium text-accent">
               <span>Open camera</span>
@@ -256,7 +293,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
           />
           <div className="flex flex-1 flex-col justify-center gap-2">
             <p className="text-xs text-ink-muted">
-              Adding the back improves accuracy — PSA grades the whole card by the worst side.
+              Add the back to measure both sides. The lower side score sets each category.
             </p>
             <button type="button" onClick={handleNext} className="btn-primary">
               <Camera className="h-4 w-4" />
@@ -265,6 +302,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
             <button
               type="button"
               onClick={() => {
+                revokePreview(frontPreview);
                 setFrontPreview(null);
                 setFrontImage(null);
               }}
@@ -369,6 +407,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  revokePreview(backPreview);
                   setBackPreview(null);
                   setBackImage(null);
                 }}
@@ -401,6 +440,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
               autoPlay
               playsInline
               muted
+              onLoadedMetadata={() => setIsCameraReady(true)}
               className="h-full w-full object-cover"
             />
             {/* Card aspect overlay (~63:88) */}
@@ -423,7 +463,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
             <button
               type="button"
               onClick={captureFrame}
-              disabled={!isCameraActive || isProcessing || checking}
+              disabled={!isCameraActive || !isCameraReady || isProcessing || checking}
               className="btn-primary"
             >
               <Camera className="h-4 w-4" />

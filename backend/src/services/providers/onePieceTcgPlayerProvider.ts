@@ -3,6 +3,7 @@ import { logger } from '../../utils/logger';
 const TCGCSV_BASE = 'https://tcgcsv.com/tcgplayer';
 const ONE_PIECE_CATEGORY = 68;
 const CACHE_TTL_MS = 60 * 60 * 1000;
+const TCGCSV_TIMEOUT_MS = 4_000;
 
 interface TcgcsvGroup {
   groupId: number;
@@ -39,20 +40,29 @@ interface GroupCacheEntry {
 
 let setGroupMap: Map<string, number> | null = null;
 let setGroupMapFetchedAt = 0;
+let setGroupMapRequest: Promise<Map<string, number>> | null = null;
 const groupCache = new Map<number, GroupCacheEntry>();
+const groupRequests = new Map<number, Promise<Map<string, TcgPlayerListing[]>>>();
 
 async function fetchTcgcsv<T>(path: string): Promise<T> {
-  const response = await fetch(`${TCGCSV_BASE}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'TCGTracker/1.0 (+https://github.com/tcgtracker)',
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`TCGCSV ${response.status}: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TCGCSV_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${TCGCSV_BASE}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'TCGTracker/1.0 (+https://github.com/tcgtracker)',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`TCGCSV ${response.status}: ${response.statusText}`);
+    }
+    const payload = (await response.json()) as { results?: T };
+    return (payload.results ?? payload) as T;
+  } finally {
+    clearTimeout(timeout);
   }
-  const payload = (await response.json()) as { results?: T };
-  return (payload.results ?? payload) as T;
 }
 
 function getProductNumber(product: TcgcsvProduct): string {
@@ -82,27 +92,38 @@ async function loadSetGroupMap(forceRefresh = false): Promise<Map<string, number
     return setGroupMap;
   }
 
-  const groups = await fetchTcgcsv<TcgcsvGroup[]>(`/${ONE_PIECE_CATEGORY}/groups`);
-  const map = new Map<string, number>();
+  if (!setGroupMapRequest) {
+    setGroupMapRequest = (async () => {
+      const groups = await fetchTcgcsv<TcgcsvGroup[]>(`/${ONE_PIECE_CATEGORY}/groups`);
+      const map = new Map<string, number>();
 
-  for (const group of groups) {
-    const abbr = group.abbreviation?.trim();
-    if (!abbr) continue;
+      for (const group of groups) {
+        const abbr = group.abbreviation?.trim();
+        if (!abbr) continue;
 
-    const opMatch = abbr.match(/^OP(\d+)$/i);
-    if (opMatch) {
-      map.set(`OP-${parseInt(opMatch[1], 10).toString().padStart(2, '0')}`, group.groupId);
-      continue;
-    }
+        const opMatch = abbr.match(/^OP(\d+)$/i);
+        if (opMatch) {
+          map.set(`OP-${parseInt(opMatch[1], 10).toString().padStart(2, '0')}`, group.groupId);
+          continue;
+        }
 
-    if (/^ST-\d+$/i.test(abbr)) {
-      map.set(abbr.toUpperCase(), group.groupId);
-    }
+        if (/^ST-\d+$/i.test(abbr)) {
+          map.set(abbr.toUpperCase(), group.groupId);
+        }
+      }
+
+      setGroupMap = map;
+      setGroupMapFetchedAt = Date.now();
+      return map;
+    })();
   }
 
-  setGroupMap = map;
-  setGroupMapFetchedAt = Date.now();
-  return map;
+  const pending = setGroupMapRequest;
+  try {
+    return await pending;
+  } finally {
+    if (setGroupMapRequest === pending) setGroupMapRequest = null;
+  }
 }
 
 async function loadGroupListings(
@@ -114,39 +135,53 @@ async function loadGroupListings(
     return cached.byNumber;
   }
 
-  const [products, prices] = await Promise.all([
-    fetchTcgcsv<TcgcsvProduct[]>(`/${ONE_PIECE_CATEGORY}/${groupId}/products`),
-    fetchTcgcsv<TcgcsvPrice[]>(`/${ONE_PIECE_CATEGORY}/${groupId}/prices`),
-  ]);
+  let pending = groupRequests.get(groupId);
+  if (!pending) {
+    pending = (async () => {
+      const [products, prices] = await Promise.all([
+        fetchTcgcsv<TcgcsvProduct[]>(`/${ONE_PIECE_CATEGORY}/${groupId}/products`),
+        fetchTcgcsv<TcgcsvPrice[]>(`/${ONE_PIECE_CATEGORY}/${groupId}/prices`),
+      ]);
 
-  const pricesByProduct = new Map<number, TcgcsvPrice[]>();
-  for (const price of prices) {
-    const bucket = pricesByProduct.get(price.productId) ?? [];
-    bucket.push(price);
-    pricesByProduct.set(price.productId, bucket);
+      const pricesByProduct = new Map<number, TcgcsvPrice[]>();
+      for (const price of prices) {
+        const bucket = pricesByProduct.get(price.productId) ?? [];
+        bucket.push(price);
+        pricesByProduct.set(price.productId, bucket);
+      }
+
+      const byNumber = new Map<string, TcgPlayerListing[]>();
+      for (const product of products) {
+        const cardNumber = getProductNumber(product);
+        if (!cardNumber) continue;
+
+        const { marketPrice, lowPrice } = pickBestPrice(
+          pricesByProduct.get(product.productId) ?? []
+        );
+        const listing: TcgPlayerListing = {
+          productId: product.productId,
+          name: product.name,
+          cardNumber,
+          marketPrice,
+          lowPrice,
+        };
+
+        const bucket = byNumber.get(cardNumber) ?? [];
+        bucket.push(listing);
+        byNumber.set(cardNumber, bucket);
+      }
+
+      groupCache.set(groupId, { fetchedAt: Date.now(), byNumber });
+      return byNumber;
+    })();
+    groupRequests.set(groupId, pending);
   }
 
-  const byNumber = new Map<string, TcgPlayerListing[]>();
-  for (const product of products) {
-    const cardNumber = getProductNumber(product);
-    if (!cardNumber) continue;
-
-    const { marketPrice, lowPrice } = pickBestPrice(pricesByProduct.get(product.productId) ?? []);
-    const listing: TcgPlayerListing = {
-      productId: product.productId,
-      name: product.name,
-      cardNumber,
-      marketPrice,
-      lowPrice,
-    };
-
-    const bucket = byNumber.get(cardNumber) ?? [];
-    bucket.push(listing);
-    byNumber.set(cardNumber, bucket);
+  try {
+    return await pending;
+  } finally {
+    if (groupRequests.get(groupId) === pending) groupRequests.delete(groupId);
   }
-
-  groupCache.set(groupId, { fetchedAt: Date.now(), byNumber });
-  return byNumber;
 }
 
 function extractVariantLabel(name: string): string | null {
@@ -237,5 +272,7 @@ export async function findTcgPlayerListing(input: {
 export function clearOnePieceTcgPlayerCache(): void {
   setGroupMap = null;
   setGroupMapFetchedAt = 0;
+  setGroupMapRequest = null;
   groupCache.clear();
+  groupRequests.clear();
 }

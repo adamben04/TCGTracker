@@ -88,31 +88,54 @@ function mapRaw(raw: OPTCGCardResponse): OnePieceCard {
   };
 }
 
-let cachedCatalog: { fetchedAt: number; cards: OnePieceCard[] } | null = null;
 const CACHE_TTL = 60 * 60 * 1000;
+const PARTIAL_CACHE_TTL = 90 * 1000;
+let cachedCatalog: { fetchedAt: number; cards: OnePieceCard[]; complete: boolean } | null = null;
 
 export async function fetchFullOptcgCatalog(
   fetchJson: <T>(path: string) => Promise<T>
 ): Promise<OnePieceCard[]> {
-  if (cachedCatalog && Date.now() - cachedCatalog.fetchedAt < CACHE_TTL) {
+  if (
+    cachedCatalog &&
+    Date.now() - cachedCatalog.fetchedAt < (cachedCatalog.complete ? CACHE_TTL : PARTIAL_CACHE_TTL)
+  ) {
     return cachedCatalog.cards;
   }
 
-  const [setCards, stCards, promoCards, donCards] = await Promise.all([
+  const [setResult, starterResult, promoResult, donResult] = await Promise.allSettled([
     fetchJson<OPTCGCardResponse[]>('/allSetCards/'),
     fetchJson<OPTCGCardResponse[]>('/allSTCards/'),
     fetchJson<OPTCGCardResponse[]>('/promos/filtered/?card_name='),
     fetchJson<OPTCGDonResponse[]>('/allDonCards/'),
   ]);
+  const setCards = setResult.status === 'fulfilled' ? setResult.value : [];
+  const stCards = starterResult.status === 'fulfilled' ? starterResult.value : [];
+  const promoCards = promoResult.status === 'fulfilled' ? promoResult.value : [];
+  const donCards = donResult.status === 'fulfilled' ? donResult.value : [];
+  const complete = [setResult, starterResult, promoResult, donResult].every(
+    (result) => result.status === 'fulfilled'
+  );
 
   const seen = new Map<string, OnePieceCard>();
+  if (!complete) {
+    for (const card of cachedCatalog?.cards ?? []) {
+      seen.set(card.id, card);
+    }
+  }
   for (const raw of [...setCards, ...stCards, ...promoCards, ...donCards.map(normalizeDon)]) {
     seen.set(buildCatalogId(raw), mapRaw(raw));
   }
 
   const cards = Array.from(seen.values());
-  cachedCatalog = { fetchedAt: Date.now(), cards };
+  if (cards.length === 0) {
+    throw new Error('All OPTCG catalog sources failed.');
+  }
+  cachedCatalog = { fetchedAt: Date.now(), cards, complete };
   return cards;
+}
+
+export function clearOptcgCatalogCache(): void {
+  cachedCatalog = null;
 }
 
 export function searchOptcgCatalog(

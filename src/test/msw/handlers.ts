@@ -49,6 +49,21 @@ export const coreApiHandlers = [
   http.get('/api/cards/search', () => HttpResponse.json({ data: [] })),
   http.get('/api/portfolio', () => HttpResponse.json({ success: true, data: { collection: [] } })),
   http.post('/api/portfolio/sync', () => HttpResponse.json({ success: true, data: { synced: 0 } })),
+  http.get('/api/grading/health', () =>
+    HttpResponse.json({ success: true, data: { status: 'ok' } })
+  ),
+  http.post('/api/grading/scan-card', () =>
+    HttpResponse.json({
+      success: true,
+      card: {
+        id: 'base1-4',
+        name: 'Charizard',
+        set: 'Base',
+        number: '4',
+        confidence: 0.91,
+      },
+    })
+  ),
 ];
 
 export const handlers = [...authHandlers, ...coreApiHandlers];

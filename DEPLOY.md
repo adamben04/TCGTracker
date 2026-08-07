@@ -8,16 +8,17 @@ Current production frontend: <https://tcgtracker-9oc.pages.dev/>
 
 The architecture:
 
-| Service | Host | Free tier | Purpose |
-|---|---|---|---|
-| **Frontend SPA** | Cloudflare Pages | 100k requests/day, no cold start | Static React/Vite build (`dist/`) |
-| **Node API + SQLite** | Render free web service | 512 MB RAM, sleeps after 15 min idle | All business logic + data |
-| **Card scanner (DINOv2 ML)** | Render free web service | 512 MB RAM, sleeps after 15 min idle | `/api/scan-card` heaviest work |
-| **DB backup/restore** | Supabase Storage | 1 GB storage | SQLite gzip-chunked backup so user data survives Render redeploys |
+| Service                      | Host                    | Free tier                            | Purpose                                                           |
+| ---------------------------- | ----------------------- | ------------------------------------ | ----------------------------------------------------------------- |
+| **Frontend SPA**             | Cloudflare Pages        | 100k requests/day, no cold start     | Static React/Vite build (`dist/`)                                 |
+| **Node API + SQLite**        | Render free web service | 512 MB RAM, sleeps after 15 min idle | All business logic + data                                         |
+| **Card scanner (DINOv2 ML)** | Render free web service | 512 MB RAM, sleeps after 15 min idle | `/api/scan-card` heaviest work                                    |
+| **DB backup/restore**        | Supabase Storage        | 1 GB storage                         | SQLite gzip-chunked backup so user data survives Render redeploys |
 
-The frontend talks to two separate Render services in production:
-- `${VITE_API_URL}` → Render (Node API)
-- `${VITE_CARD_SCANNER_API_URL}` → Render (Flask scanner)
+The frontend talks to the Render Node API. The Node API proxies scanner and
+grading traffic to Flask with a shared secret, avoiding browser blockers and
+keeping client rate limits trustworthy. Do not expose the scanner URL in the
+Cloudflare bundle unless you intentionally need a temporary direct fallback.
 
 In dev both are still proxied through Vite (see `vite.config.ts`).
 
@@ -33,10 +34,20 @@ In dev both are still proxied through Vite (see `vite.config.ts`).
 
 ## Prerequisites
 
-You need a working local clone with the heavy scanner assets present
-(`card-scanner-backend/dinov2_vits14_224.onnx`, `*.onnx.data`,
-`fast_index.npz`, `fast_index_meta.json`, `models/*.onnx`). Confirm these
-files exist locally before deploying the scanner service.
+You need a working local clone with the Git LFS scanner index and grading models
+present (`fast_index.npz`, `fast_index_meta.json`, `models/*.onnx`):
+
+```powershell
+git lfs install
+git lfs pull
+python card-scanner-backend/fast_match.py --check
+```
+
+The Docker build downloads and checksum-verifies the Apache-2.0 DINOv2 export
+documented in `card-scanner-backend/THIRD_PARTY_MODELS.md`. To reproducibly
+refresh the card catalog index without the legacy 1.7 GB recognizer package,
+run `python card-scanner-backend/build_embeddings.py`; it downloads the same
+verified model automatically, and reference images are deleted after success.
 
 Also confirm you can push to a GitHub repo for this project (the user the
 project belongs to). Forking is fine.
@@ -95,8 +106,9 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
 1. Sign up at <https://render.com> (free, email only).
 2. Preferred: **New → Blueprint** and select this repository. The checked-in
    `render.yaml` creates both services with the correct Dockerfiles, ports,
-   health checks, database path, and CORS origins. Fill every `sync: false`
-   secret before the first deploy.
+   health checks, database path, CORS origins, and one generated scanner-proxy
+   secret shared by both services. Fill every `sync: false` secret before the
+   first deploy.
 3. If you prefer manual services, continue with B1/B2 below.
 4. Push the project to your GitHub repo if not already there:
    ```powershell
@@ -115,20 +127,22 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
    - **Instance Type**: **Free**
 6. **Environment** → set ALL of these before deploying:
 
-   | Key | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `PORT` | `3001` |
-   | `HOST` | `0.0.0.0` |
-   | `JWT_SECRET` | `<use the same value from your backend/.env>` |
-   | `ADMIN_BOOTSTRAP_EMAIL` | `<email of the account that should administer backups>` |
-   | `CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` |
-   | `AUTH_BYPASS_ENABLED` | `false` |
-   | `CLOUD_SYNC_ENABLED` | `true` |
-   | `SUPABASE_URL` | `https://<your-project>.supabase.co` |
-   | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` |
-   | `SUPABASE_BUCKET` | `tcgtracker-data` |
-   | `DATABASE_PATH` | `/app/data/tcg-prices.db` |
+   | Key                         | Value                                                   |
+   | --------------------------- | ------------------------------------------------------- |
+   | `NODE_ENV`                  | `production`                                            |
+   | `PORT`                      | `3001`                                                  |
+   | `HOST`                      | `0.0.0.0`                                               |
+   | `JWT_SECRET`                | `<use the same value from your backend/.env>`           |
+   | `ADMIN_BOOTSTRAP_EMAIL`     | `<email of the account that should administer backups>` |
+   | `CORS_ORIGIN`               | `https://tcgtracker-9oc.pages.dev`                      |
+   | `CARD_SCANNER_URL`          | `https://tcgtracker-scanner.onrender.com`               |
+   | `CARD_SCANNER_PROXY_SECRET` | `<same random 32+ character value used by the scanner>` |
+   | `AUTH_BYPASS_ENABLED`       | `false`                                                 |
+   | `CLOUD_SYNC_ENABLED`        | `true`                                                  |
+   | `SUPABASE_URL`              | `https://<your-project>.supabase.co`                    |
+   | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>`                                 |
+   | `SUPABASE_BUCKET`           | `tcgtracker-data`                                       |
+   | `DATABASE_PATH`             | `/app/data/tcg-prices.db`                               |
 
    Set `DATABASE_PATH` explicitly: the application default is relative and is
    not the persistent Render data directory. Do NOT set any `VITE_*` variables
@@ -157,14 +171,15 @@ For local maintenance, the equivalent command is
    - **Instance Type**: **Free**
 10. **Environment** → set ALL of these before deploying:
 
-   | Key | Value |
-   |---|---|
-   | `PORT` | `7860` |
-   | `SCANNER_CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` |
+| Key                         | Value                                                    |
+| --------------------------- | -------------------------------------------------------- |
+| `PORT`                      | `7860`                                                   |
+| `SCANNER_CORS_ORIGIN`       | `https://tcgtracker-9oc.pages.dev`                       |
+| `CARD_SCANNER_PROXY_SECRET` | `<same random 32+ character value used by the Node API>` |
 
 11. Click **Deploy**. Watch logs: first build compiles deps + copies the
-   ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
-   one-time DINOv2 ONNX warmup (~1 s), and listens on port 7860.
+    ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
+    one-time DINOv2 ONNX warmup (~1 s), and listens on port 7860.
 12. Note the URL: `https://tcgtracker-scanner.onrender.com`.
 13. Open `https://tcgtracker-scanner.onrender.com/health` — you should get
     JSON with `"status": "ok"` and `"fast_ready": true`.
@@ -184,13 +199,14 @@ For local maintenance, the equivalent command is
 4. **Environment variables** (set BEFORE the first build so they bake into
    the static bundle):
 
-   | Key | Value |
-   |---|---|
-   | `VITE_API_URL` | `https://tcgtracker-api.onrender.com` |
-   | `VITE_CARD_SCANNER_API_URL` | `https://tcgtracker-scanner.onrender.com` |
-   | `VITE_ENABLE_AUTH` | `true` |
+   | Key                | Value                                 |
+   | ------------------ | ------------------------------------- |
+   | `VITE_API_URL`     | `https://tcgtracker-api.onrender.com` |
+   | `VITE_ENABLE_AUTH` | `true`                                |
 
-   Do NOT set `VITE_BACKEND_URL` (legacy alias) or any `localhost` value.
+   Remove `VITE_CARD_SCANNER_API_URL`; same-origin Node proxying is the
+   production path. Do NOT set `VITE_BACKEND_URL` (legacy alias) or any
+   `localhost` value.
 
 5. Save and Deploy. Watch the build: it runs `npm install && npm run build`
    and serves `dist/`. Cloudflare picks up `dist/_redirects` for SPA fallback
@@ -265,18 +281,18 @@ account). Try the Pack shop, scanner, and vault.
 
 ## G. What to do if something breaks
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Frontend: "Failed to fetch" / CORS error in console | `CORS_ORIGIN` on Render missing the pages.dev origin, or `SCANNER_CORS_ORIGIN` on scanner missing it | Add it (comma-separated if several) to both Render services, redeploy/restart |
-| Scanner returns `ocr_available: false` + "Card not recognised" on a real photo | The DINOv2 fast matcher wasn't confident (gap < 0.02) and OCR is disabled in this build. | Re-take the photo with the card filling the frame, better lighting. ~5% of scans (art-similar cards like base-set Charizard w/ huge borders) may need a clearer shot |
-| Scanner cold start takes 30–60 s | Render free tier sleeps after 15 min | Cron-job.org pinging `/health` every 10 min keeps it warm. Same for the Node API. |
-| Render API takes 30–60s on first request after idle | Render free tier sleeps after 15 min | Same fix — cron pinger to `/api/health`. (We didn't add one by default; carve your own with cron-job.org) |
-| All vault data looks fresh / accounts gone after Render restart | Supabase restore-on-boot did not complete | Check logs for integrity/checksum failures. Verify `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`, and `DATABASE_PATH=/app/data/tcg-prices.db`. The bucket must contain a valid `latest/manifest.json` pointer. |
-| Login succeeds but the next request is signed out | Cross-site cookie or CORS mismatch | Confirm the exact Pages origin on `CORS_ORIGIN`, HTTPS, `credentials: include`, and a `SameSite=None; Secure` cookie in browser devtools. |
-| Scanner refuses browser requests in production | Scanner origin is unset or wrong | Production scanner CORS fails closed. Set `SCANNER_CORS_ORIGIN=https://tcgtracker-9oc.pages.dev` and restart. |
-| `card.id` is null on scans | DINOv2 matched but the card row in `meta` has no id for that set (some pre-release / promo sets) | Run `python card-scanner-backend/fast_match.py --extend` locally, re-deploy the scanner service on Render (push updated assets to the repo branch, Render auto-deploys) |
-| Render deploy fails: "Invalid environment variables: JWT_SECRET must be at least 32 characters" | You forgot to set `JWT_SECRET` | `openssl rand -hex 32`, set it on Render, redeploy |
-| Render deploy fails: "Dockerfile not found" | Dockerfile Path is wrong | For Node API: `backend/Dockerfile`. For scanner: `card-scanner-backend/Dockerfile.hf`. Both relative to repo root. |
+| Symptom                                                                                         | Likely cause                                                                                         | Fix                                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend: "Failed to fetch" / CORS error in console                                             | `CORS_ORIGIN` on Render missing the pages.dev origin, or `SCANNER_CORS_ORIGIN` on scanner missing it | Add it (comma-separated if several) to both Render services, redeploy/restart                                                                                                                                                   |
+| Scanner returns `ocr_available: false` + "Card not recognised" on a real photo                  | The DINOv2 fast matcher wasn't confident (gap < 0.02) and OCR is disabled in this build.             | Re-take the photo with the card filling the frame, better lighting. ~5% of scans (art-similar cards like base-set Charizard w/ huge borders) may need a clearer shot                                                            |
+| Scanner cold start takes 30–60 s                                                                | Render free tier sleeps after 15 min                                                                 | Cron-job.org pinging `/health` every 10 min keeps it warm. Same for the Node API.                                                                                                                                               |
+| Render API takes 30–60s on first request after idle                                             | Render free tier sleeps after 15 min                                                                 | Same fix — cron pinger to `/api/health`. (We didn't add one by default; carve your own with cron-job.org)                                                                                                                       |
+| All vault data looks fresh / accounts gone after Render restart                                 | Supabase restore-on-boot did not complete                                                            | Check logs for integrity/checksum failures. Verify `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`, and `DATABASE_PATH=/app/data/tcg-prices.db`. The bucket must contain a valid `latest/manifest.json` pointer. |
+| Login succeeds but the next request is signed out                                               | Cross-site cookie or CORS mismatch                                                                   | Confirm the exact Pages origin on `CORS_ORIGIN`, HTTPS, `credentials: include`, and a `SameSite=None; Secure` cookie in browser devtools.                                                                                       |
+| Scanner refuses browser requests in production                                                  | Scanner origin is unset or wrong                                                                     | Production scanner CORS fails closed. Set `SCANNER_CORS_ORIGIN=https://tcgtracker-9oc.pages.dev` and restart.                                                                                                                   |
+| `card.id` is null on scans                                                                      | DINOv2 matched but the card row in `meta` has no id for that set (some pre-release / promo sets)     | Run `python card-scanner-backend/fast_match.py --extend` locally, re-deploy the scanner service on Render (push updated assets to the repo branch, Render auto-deploys)                                                         |
+| Render deploy fails: "Invalid environment variables: JWT_SECRET must be at least 32 characters" | You forgot to set `JWT_SECRET`                                                                       | `openssl rand -hex 32`, set it on Render, redeploy                                                                                                                                                                              |
+| Render deploy fails: "Dockerfile not found"                                                     | Dockerfile Path is wrong                                                                             | For Node API: `backend/Dockerfile`. For scanner: `card-scanner-backend/Dockerfile.hf`. Both relative to repo root.                                                                                                              |
 
 ---
 
@@ -319,23 +335,25 @@ python -m unittest discover -s tests -v
 
 ## Quick reference: all env vars
 
-| Service | Variable | Value | Where set |
-|---|---|---|---|
-| Cloudflare Pages | `VITE_API_URL` | `https://tcgtracker-api.onrender.com` | Pages → Env vars (before first build) |
-| Cloudflare Pages | `VITE_CARD_SCANNER_API_URL` | `https://tcgtracker-scanner.onrender.com` | Pages → Env vars (before first build) |
-| Cloudflare Pages | `VITE_ENABLE_AUTH` | `true` | Pages → Env vars (before first build) |
-| Render (Node API) | `NODE_ENV` | `production` | Render → Environment |
-| Render (Node API) | `PORT` | `3001` | Render → Environment |
-| Render (Node API) | `HOST` | `0.0.0.0` | Render → Environment |
-| Render (Node API) | `JWT_SECRET` | `<32+ hex>` | Render → Environment |
-| Render (Node API) | `ADMIN_BOOTSTRAP_EMAIL` | `<administrator account email>` | Render → Environment |
-| Render (Node API) | `CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` | Render → Environment |
-| Render (Node API) | `DATABASE_PATH` | `/app/data/tcg-prices.db` | Render → Environment |
-| Render (Node API) | `AUTH_BYPASS_ENABLED` | `false` | Render → Environment |
-| Render (Node API) | `CLOUD_SYNC_ENABLED` | `true` | Render → Environment |
-| Render (Node API) | `SUPABASE_URL` | `https://<your-project>.supabase.co` | Render → Environment |
-| Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` | Render → Environment |
-| Render (Node API) | `SUPABASE_BUCKET` | `tcgtracker-data` | Render → Environment |
-| Render (scanner) | `PORT` | `7860` | Render → Environment |
-| Render (scanner) | `SCANNER_CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` | Render → Environment |
-| Supabase | — | — | Just create the `tcgtracker-data` bucket (Private) |
+| Service           | Variable                    | Value                                     | Where set                                          |
+| ----------------- | --------------------------- | ----------------------------------------- | -------------------------------------------------- |
+| Cloudflare Pages  | `VITE_API_URL`              | `https://tcgtracker-api.onrender.com`     | Pages → Env vars (before first build)              |
+| Cloudflare Pages  | `VITE_ENABLE_AUTH`          | `true`                                    | Pages → Env vars (before first build)              |
+| Render (Node API) | `NODE_ENV`                  | `production`                              | Render → Environment                               |
+| Render (Node API) | `PORT`                      | `3001`                                    | Render → Environment                               |
+| Render (Node API) | `HOST`                      | `0.0.0.0`                                 | Render → Environment                               |
+| Render (Node API) | `JWT_SECRET`                | `<32+ hex>`                               | Render → Environment                               |
+| Render (Node API) | `ADMIN_BOOTSTRAP_EMAIL`     | `<administrator account email>`           | Render → Environment                               |
+| Render (Node API) | `CORS_ORIGIN`               | `https://tcgtracker-9oc.pages.dev`        | Render → Environment                               |
+| Render (Node API) | `CARD_SCANNER_URL`          | `https://tcgtracker-scanner.onrender.com` | Render → Environment                               |
+| Render (Node API) | `CARD_SCANNER_PROXY_SECRET` | `<shared random 32+ characters>`          | Blueprint environment group or Render Environment  |
+| Render (Node API) | `DATABASE_PATH`             | `/app/data/tcg-prices.db`                 | Render → Environment                               |
+| Render (Node API) | `AUTH_BYPASS_ENABLED`       | `false`                                   | Render → Environment                               |
+| Render (Node API) | `CLOUD_SYNC_ENABLED`        | `true`                                    | Render → Environment                               |
+| Render (Node API) | `SUPABASE_URL`              | `https://<your-project>.supabase.co`      | Render → Environment                               |
+| Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>`                   | Render → Environment                               |
+| Render (Node API) | `SUPABASE_BUCKET`           | `tcgtracker-data`                         | Render → Environment                               |
+| Render (scanner)  | `PORT`                      | `7860`                                    | Render → Environment                               |
+| Render (scanner)  | `SCANNER_CORS_ORIGIN`       | `https://tcgtracker-9oc.pages.dev`        | Render → Environment                               |
+| Render (scanner)  | `CARD_SCANNER_PROXY_SECRET` | `<same shared value>`                     | Blueprint environment group or Render Environment  |
+| Supabase          | —                           | —                                         | Just create the `tcgtracker-data` bucket (Private) |

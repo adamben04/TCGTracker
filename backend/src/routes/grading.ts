@@ -13,8 +13,48 @@ import {
   rowToGradingResult,
 } from '../db/gradingSchema';
 import { randomUUID } from 'crypto';
+import { env } from '../config/env';
+import { scannerLimiter } from '../middleware/rateLimiter';
 
-const SCANNER_URL = (process.env.CARD_SCANNER_URL || 'http://localhost:5001').replace(/\/+$/, '');
+const SCANNER_URL = env.scanner.url;
+const MAX_STORED_FULL_RESULT_BYTES = 128 * 1024;
+const EVIDENCE_KEYS = new Set([
+  'crops',
+  'image',
+  'imageUrl',
+  'backImageUrl',
+  'dataUrl',
+  'overlay',
+  'preview',
+  'cropImage',
+  'cardImage',
+  'display',
+]);
+
+function stripEmbeddedEvidence(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripEmbeddedEvidence);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !EVIDENCE_KEYS.has(key))
+      .map(([key, child]) => [key, stripEmbeddedEvidence(child)])
+  );
+}
+
+function remoteImageUrl(value: unknown): string | undefined {
+  return typeof value === 'string' && /^https?:\/\//i.test(value) ? value : undefined;
+}
+
+function scannerProxyHeaders(contentType: string, clientIp: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': contentType,
+    'X-Forwarded-For': clientIp,
+  };
+  if (env.scanner.proxySecret) {
+    headers['X-TCGTracker-Proxy-Key'] = env.scanner.proxySecret;
+  }
+  return headers;
+}
 
 const analyzeSchema = z.object({
   body: z.object({
@@ -48,14 +88,18 @@ function ensureTable(): Promise<void> {
   });
 }
 
-async function forwardToPython(body: {
-  image: string;
-  backImage?: string;
-  cardId?: string;
-  cardName?: string;
-  game?: string;
-  rawPrice?: number;
-}): Promise<{
+async function forwardToPython(
+  body: {
+    image: string;
+    backImage?: string;
+    cardId?: string;
+    cardName?: string;
+    game?: string;
+    rawPrice?: number;
+  },
+  clientIp: string,
+  signal?: AbortSignal
+): Promise<{
   success: boolean;
   grading?: GradingResultDTO & Record<string, unknown>;
   error?: string;
@@ -66,10 +110,11 @@ async function forwardToPython(body: {
   // Primary path: specialist CV/ML pipeline (not Ollama)
   const res = await undiciRequest(`${SCANNER_URL}/api/grade-card`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: scannerProxyHeaders('application/json', clientIp),
     body: JSON.stringify(body),
-    headersTimeout: 90_000,
-    bodyTimeout: 90_000,
+    headersTimeout: 75_000,
+    bodyTimeout: 75_000,
+    signal,
   });
 
   const data = (await res.body.json()) as {
@@ -135,7 +180,12 @@ function persistResult(
     grading.centering?.deviations || { leftRight: 0, topBottom: 0 }
   );
   const defectRegions = JSON.stringify(grading.defectRegions || []);
-  const fullResultJson = fullResult ? JSON.stringify(fullResult) : null;
+  const serializedFullResult = fullResult ? JSON.stringify(fullResult) : null;
+  const fullResultJson =
+    serializedFullResult &&
+    Buffer.byteLength(serializedFullResult, 'utf8') <= MAX_STORED_FULL_RESULT_BYTES
+      ? serializedFullResult
+      : null;
   const createdAt = grading.timestamp || new Date().toISOString();
 
   return new Promise((resolve, reject) => {
@@ -161,7 +211,7 @@ function persistResult(
         grading.grade,
         grading.gradeLabel,
         defects,
-        imageUrl || grading.imageUrl || null,
+        imageUrl || null,
         grading.estimatedGradedValue ?? null,
         grading.centering?.details || null,
         grading.corners?.details || null,
@@ -171,7 +221,7 @@ function persistResult(
         grading.suggestedCondition || null,
         defectRegions,
         fullResultJson,
-        backImageUrl || grading.backImageUrl || null,
+        backImageUrl || null,
         createdAt,
       ],
       (err) => {
@@ -181,7 +231,7 @@ function persistResult(
             ...grading,
             id,
             timestamp: createdAt,
-            imageUrl: imageUrl || grading.imageUrl || '',
+            imageUrl: grading.imageUrl || imageUrl || '',
           });
       }
     );
@@ -197,6 +247,7 @@ router.get('/health', async (_req, res: Response) => {
       headersTimeout: 4_000,
       bodyTimeout: 4_000,
     });
+
     const data = (await upstream.body.json()) as { status?: string; message?: string };
     const okStatus =
       upstream.statusCode >= 200 && upstream.statusCode < 300 && data?.status === 'ok';
@@ -217,22 +268,69 @@ router.get('/health', async (_req, res: Response) => {
   }
 });
 
+router.post('/scan-card', scannerLimiter, async (req: AuthRequest, res: Response) => {
+  const contentType = req.headers['content-type'];
+  if (!contentType) {
+    return fail(res, 'Content-Type is required', 400);
+  }
+
+  const controller = new AbortController();
+  const abortUpstream = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.once('close', abortUpstream);
+
+  try {
+    const body = contentType.includes('application/json') ? JSON.stringify(req.body) : req;
+    const upstream = await undiciRequest(`${SCANNER_URL}/api/scan-card`, {
+      method: 'POST',
+      headers: scannerProxyHeaders(contentType, req.ip || req.socket.remoteAddress || 'unknown'),
+      body,
+      headersTimeout: 75_000,
+      bodyTimeout: 75_000,
+      signal: controller.signal,
+    });
+    const payload = Buffer.from(await upstream.body.arrayBuffer());
+    const upstreamType = upstream.headers['content-type'];
+    if (upstreamType) res.setHeader('Content-Type', upstreamType);
+    return res.status(upstream.statusCode).send(payload);
+  } catch (error) {
+    logger.warn('Card identification proxy failed', {
+      error: error instanceof Error ? error.message : String(error),
+      scannerUrl: SCANNER_URL,
+    });
+    return fail(res, 'Card recognition service is unavailable', 503);
+  } finally {
+    res.off('close', abortUpstream);
+  }
+});
+
 router.post(
   '/analyze',
   optionalAuth,
   validate(analyzeSchema),
   async (req: AuthRequest, res: Response) => {
+    const controller = new AbortController();
+    const abortUpstream = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    res.once('close', abortUpstream);
+
     try {
       const { image, backImage, cardId, cardName, game, rawPrice, imageUrl } = req.body;
 
-      const python = await forwardToPython({
-        image,
-        backImage,
-        cardId,
-        cardName,
-        game,
-        rawPrice,
-      });
+      const python = await forwardToPython(
+        {
+          image,
+          backImage,
+          cardId,
+          cardName,
+          game,
+          rawPrice,
+        },
+        req.ip || req.socket.remoteAddress || 'unknown',
+        controller.signal
+      );
 
       if (!python.success || !python.grading) {
         const status =
@@ -250,12 +348,18 @@ router.post(
       const backImageUrl = python.grading?.backImageUrl || '';
       const fullResult = python.grading?.front
         ? {
-            front: python.grading.front,
-            back: python.grading.back,
+            front: stripEmbeddedEvidence(python.grading.front),
+            back: stripEmbeddedEvidence(python.grading.back),
             confidence: python.grading.confidence,
-            extraction: python.grading.extraction,
+            extraction: stripEmbeddedEvidence(python.grading.extraction),
+            backExtraction: stripEmbeddedEvidence(
+              (python.grading as Record<string, unknown>).backExtraction
+            ),
             provider: python.grading.provider,
             retakeRecommended: python.grading.retakeRecommended,
+            quality: python.grading.quality,
+            backQuality: python.grading.backQuality,
+            limitations: python.grading.limitations,
           }
         : undefined;
 
@@ -310,8 +414,8 @@ router.post(
             return persistResult(
               result,
               String(req.user!.id),
-              imageUrl || python.grading?.imageUrl || '',
-              backImageUrl,
+              remoteImageUrl(imageUrl),
+              undefined,
               fullResult
             );
           })()
@@ -335,6 +439,8 @@ router.post(
     } catch (error: any) {
       logger.error('Grading analyze failed', { error: error?.message });
       fail(res, error?.message || 'Grading failed', 500);
+    } finally {
+      res.off('close', abortUpstream);
     }
   }
 );

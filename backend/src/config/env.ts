@@ -14,6 +14,8 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   BCRYPT_ROUNDS: z.string().default('10'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  CARD_SCANNER_URL: z.string().url().default('http://localhost:5001'),
+  CARD_SCANNER_PROXY_SECRET: z.string().min(16).optional(),
   RATE_LIMIT_WINDOW_MS: z.string().default('900000'),
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
@@ -65,6 +67,10 @@ export const env = {
   },
   cors: {
     origin: parsedEnv.data.CORS_ORIGIN,
+  },
+  scanner: {
+    url: parsedEnv.data.CARD_SCANNER_URL.replace(/\/+$/, ''),
+    proxySecret: parsedEnv.data.CARD_SCANNER_PROXY_SECRET,
   },
   rateLimit: {
     windowMs: parseInt(parsedEnv.data.RATE_LIMIT_WINDOW_MS, 10),

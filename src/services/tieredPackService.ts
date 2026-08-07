@@ -1,6 +1,6 @@
 import { Pack, PackPull, PokemonCard, PackOpeningHistory, ValueRange } from '../types/pokemon';
 import { pokemonApi, proxyImageUrl } from './pokemonApi';
-import { onepieceApi } from './onepieceApi';
+import { onePieceApi } from './onepieceApi';
 import { env } from '../config/env';
 
 const PACK_HISTORY_KEY = 'tcg_tiered_pack_history';
@@ -311,16 +311,7 @@ class TieredPackService {
     if (this.onePieceCardPoolCache) {
       return this.onePieceCardPoolCache;
     }
-    const sets = await onePieceApi.getSets();
-    const sample = sets.slice(0, 8);
-    const batches = await Promise.all(
-      sample.map((s) =>
-        onePieceApi
-          .getSetCards(s.id)
-          .catch(() => [] as Awaited<ReturnType<typeof onePieceApi.getSetCards>>)
-      )
-    );
-    const all = batches.flat();
+    const all = await onePieceApi.getPackPool();
     const withPrices = all.filter((c) => (c.marketPrice ?? 0) > 0 && (c.marketPrice ?? 0) < 100000);
     this.onePieceCardPoolCache = this.shuffleArray(
       withPrices.map((c) => ({

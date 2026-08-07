@@ -1,0 +1,7 @@
+.build-cache
+ref_images
+temp_uploads
+__pycache__
+*.pyc
+tests
+ml/data

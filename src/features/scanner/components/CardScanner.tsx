@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Camera,
   Upload,
@@ -31,7 +32,7 @@ function ConfidenceBadge({ value }: { value: number }) {
     <span
       className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}
     >
-      {pct}% match
+      Similarity {pct}/100
     </span>
   );
 }
@@ -114,6 +115,7 @@ export function CardScanner() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zoomRef = useRef(1.5);
 
@@ -135,25 +137,32 @@ export function CardScanner() {
   useEffect(() => {
     if (backendStatus !== false) return;
 
-    let attempts = 0;
-    const maxAttempts = 12;
-    const interval = setInterval(async () => {
-      attempts += 1;
-      setRetryProgress(Math.round((attempts / maxAttempts) * 100));
-      const ok = await checkBackendHealth();
-      if (ok) {
-        setBackendStatus(true);
-        clearInterval(interval);
+    let cancelled = false;
+    const maxAttempts = 20;
+    const retry = async () => {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        if (cancelled) return;
+        setRetryProgress(Math.round((attempt / maxAttempts) * 100));
+        const ok = await checkBackendHealth();
+        if (cancelled) return;
+        if (ok) {
+          setBackendStatus(true);
+          return;
+        }
       }
-      if (attempts >= maxAttempts) clearInterval(interval);
-    }, 3000);
+    };
+    void retry();
 
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+    };
   }, [backendStatus]);
 
   useEffect(() => () => stopCamera(), []);
 
   const stopCamera = () => {
+    cameraRequestRef.current += 1;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -161,6 +170,7 @@ export function CardScanner() {
   };
 
   const startCamera = async () => {
+    const requestId = ++cameraRequestRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -169,21 +179,25 @@ export function CardScanner() {
           height: { ideal: 1080 },
         },
       });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsCameraActive(true);
-        setError(null);
-        const track = stream.getVideoTracks()[0];
-        try {
-          const caps = track.getCapabilities?.();
-          setTorchSupported(Boolean(caps?.torch));
-        } catch {
-          setTorchSupported(false);
-        }
+      if (cameraRequestRef.current !== requestId || !videoRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      videoRef.current.srcObject = stream;
+      streamRef.current = stream;
+      setIsCameraActive(true);
+      setError(null);
+      const track = stream.getVideoTracks()[0];
+      try {
+        const caps = track.getCapabilities?.();
+        setTorchSupported(Boolean(caps?.torch));
+      } catch {
+        setTorchSupported(false);
       }
     } catch {
-      setError('Unable to access camera. Please allow camera permission and try again.');
+      if (cameraRequestRef.current === requestId) {
+        setError('Unable to access camera. Please allow camera permission and try again.');
+      }
     }
   };
 
@@ -310,6 +324,7 @@ export function CardScanner() {
   };
 
   const recheckBackend = () => {
+    setRetryProgress(0);
     setBackendStatus(null);
     checkBackendHealth().then(setBackendStatus);
   };
@@ -321,16 +336,18 @@ export function CardScanner() {
           <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-amber-500/25 bg-amber-500/10">
             <Camera className="h-10 w-10 text-amber-300/80" />
           </div>
-          <h2 className="text-xl font-semibold text-ink-primary">Card Scanner Offline</h2>
+          <h2 className="text-xl font-semibold text-ink-primary">
+            Recognition service unavailable
+          </h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-ink-muted">
-            The card recognition service is not running. This feature requires the Python backend to
-            be started separately.
+            Camera and upload recognition need the deployed scanner service. You can still search
+            the full catalog and add the correct card manually.
           </p>
 
           {retryProgress < 100 && (
             <div className="mx-auto mt-6 max-w-xs">
               <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-ink-muted">
-                <span>Auto-retry ({Math.round((retryProgress / 100) * 12)}/12)</span>
+                <span>Waking service ({Math.round((retryProgress / 100) * 20)}/20)</span>
                 <span>{retryProgress}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -344,28 +361,27 @@ export function CardScanner() {
 
           {retryProgress >= 100 && (
             <p className="mt-4 text-sm text-amber-300/80">
-              Could not connect after 12 attempts. Start the backend and click retry.
+              The service did not become available. Catalog search remains fully usable.
             </p>
           )}
 
-          <div className="mt-6 rounded-lg border border-border-subtle bg-black/40 p-4 text-left">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-ink-muted">
-              Quick start
+          <div className="mt-6 rounded-lg border border-border-subtle bg-surface-inset p-4 text-left">
+            <p className="text-sm font-medium text-ink-primary">Reliable fallback</p>
+            <p className="mt-1 text-xs leading-5 text-ink-muted">
+              Search by the printed card name or collector number, compare candidate artwork, then
+              confirm before adding it to your vault.
             </p>
-            <div className="font-mono text-xs space-y-1">
-              <p className="text-emerald-400">$ cd card-scanner-backend</p>
-              <p className="text-emerald-400">$ python -m venv venv</p>
-              <p className="text-emerald-400">$ source venv/bin/activate</p>
-              <p className="text-emerald-400">$ pip install -r requirements.txt</p>
-              <p className="text-emerald-400">$ python app.py</p>
-            </div>
-            <p className="mt-2 text-[10px] text-ink-muted">Server runs on http://localhost:5001</p>
           </div>
 
-          <button type="button" onClick={recheckBackend} className="btn-primary mt-6">
-            <RefreshCw className="h-4 w-4" />
-            Retry connection
-          </button>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <Link to="/browse" className="btn-primary">
+              Search card catalog
+            </Link>
+            <button type="button" onClick={recheckBackend} className="btn-secondary">
+              <RefreshCw className="h-4 w-4" />
+              Retry service
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -1784,7 +1784,47 @@ const SceneContents: React.FC<PackOpeningSceneProps> = ({
    ═══════════════════════════════════════════════ */
 
 const PackOpeningScene: React.FC<PackOpeningSceneProps> = (props) => {
+  const { onComplete } = props;
   const config = GLAMOUR_CONFIG[props.glamourLevel || 'normal'];
+  const [contextLost, setContextLost] = useState(false);
+  const [contextCanvas, setContextCanvas] = useState<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (!contextCanvas) return;
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      setContextLost(true);
+    };
+    contextCanvas.addEventListener('webglcontextlost', onContextLost);
+    return () => contextCanvas.removeEventListener('webglcontextlost', onContextLost);
+  }, [contextCanvas]);
+
+  useEffect(() => {
+    if (contextLost) onComplete?.();
+  }, [contextLost, onComplete]);
+
+  if (contextLost) {
+    return (
+      <div className="flex h-[500px] w-full flex-col items-center justify-center gap-4 rounded-xl bg-surface-inset p-6 text-center sm:h-[600px]">
+        <p className="text-sm font-medium text-ink-primary">3D animation skipped</p>
+        <p className="max-w-md text-xs leading-5 text-ink-muted">
+          Your browser released the graphics context. The pack result is still valid and has been
+          revealed without the animation.
+        </p>
+        <div className="flex max-w-full gap-2 overflow-x-auto">
+          {props.cardImages.filter(Boolean).map((image, index) => (
+            <img
+              key={`${image}-${index}`}
+              src={image!}
+              alt={`Pulled card ${index + 1}`}
+              className="h-40 w-auto rounded-lg object-contain"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-[500px] w-full sm:h-[600px]" aria-label="Pack opening animation">
       <Canvas
@@ -1795,9 +1835,12 @@ const PackOpeningScene: React.FC<PackOpeningSceneProps> = (props) => {
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.2,
         }}
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         camera={{ position: [0, 0.25, config.cameraZ], fov: 40 }}
         shadows
+        onCreated={({ gl }) => {
+          setContextCanvas(gl.domElement);
+        }}
       >
         <SceneContents {...props} />
       </Canvas>

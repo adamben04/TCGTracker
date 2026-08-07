@@ -55,6 +55,10 @@ backend/*.db-*
 .vercel
 .env.vercel
 .env*
+!**/.env.example
+card-scanner-backend/.build-cache/
+card-scanner-backend/ref_images/
+card-scanner-backend/dinov2_vits14_224.onnx
 
 # Legacy static price snapshots (use backend /api/prices instead)
 public/data/prices/

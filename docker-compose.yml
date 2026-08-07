@@ -14,6 +14,8 @@ services:
       - HOST=0.0.0.0
       - DATABASE_PATH=/app/data/tcg-prices.db
       - CORS_ORIGIN=http://localhost,http://localhost:80,http://localhost:5173
+      - CARD_SCANNER_URL=http://card-scanner:5001
+      - CARD_SCANNER_PROXY_SECRET=${CARD_SCANNER_PROXY_SECRET:?Set CARD_SCANNER_PROXY_SECRET to a random 32+ char secret}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a random 64+ char secret before deploying}
     volumes:
       - backend-data:/app/data
@@ -60,6 +62,7 @@ services:
     environment:
       - PORT=5001
       - FLASK_DEBUG=false
+      - CARD_SCANNER_PROXY_SECRET=${CARD_SCANNER_PROXY_SECRET:?Set CARD_SCANNER_PROXY_SECRET to the same backend value}
     restart: unless-stopped
     networks:
       - tcgtracker-network

@@ -112,14 +112,19 @@ export const GradingResultView: React.FC<GradingResultViewProps> = ({
                 {result.back && <span className="ml-2 text-ink-muted">· Front + Back</span>}
                 {result.confidence != null && (
                   <span className="ml-2 text-ink-muted">
-                    · Confidence {Math.round(result.confidence * 100)}%
+                    · Analysis quality{' '}
+                    {result.confidence >= 0.75
+                      ? 'high'
+                      : result.confidence >= 0.5
+                        ? 'moderate'
+                        : 'low'}
                   </span>
                 )}
               </p>
               {result.retakeRecommended && (
                 <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-100">
-                  Low confidence — retake on a solid background with sharper focus for a better
-                  estimate. This is a PSA-style estimate, not a professional grade.
+                  Low analysis quality — retake on a solid background with sharper focus for a
+                  better estimate. This is not a professional grade.
                 </p>
               )}
               {result.limitations && (

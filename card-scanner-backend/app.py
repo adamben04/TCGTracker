@@ -8,6 +8,7 @@ ONNX/heuristic corners/edges/surface). Ollama LLM grading is demoted / optional.
 """
 
 import base64
+import hmac
 import os
 import re
 import tempfile
@@ -26,7 +27,7 @@ os.environ["TMP"] = _LOCAL_TMP
 tempfile.tempdir = _LOCAL_TMP
 
 import time
-from collections import defaultdict, deque
+from collections import deque
 
 import numpy as np
 from flask import Flask, request, jsonify
@@ -63,8 +64,8 @@ except ImportError:
     except ImportError:
         # Fast-path-only deployments (e.g. the cloud Hugging Face Space image)
         # deliberately skip the 1.7 GB pokemon-card-recognizer package and the
-        # EasyOCR weights. The fast DINOv2 matcher handles ~95% of scans; the
-        # OCR fallback below degrades to "no card found" instead of crashing.
+        # EasyOCR weights. The fast DINOv2 matcher is the only recognizer in this
+        # image; low-similarity results degrade to "no card found".
         _RECOGNIZER_AVAILABLE = False
         CardRecognizer = None  # type: ignore[assignment,misc]
         OperatingMode = None  # type: ignore[assignment,misc]
@@ -86,8 +87,10 @@ warnings.filterwarnings("error", category=Image.DecompressionBombWarning)
 _RATE_LIMIT = {
     "window_seconds": 60,
     "max_requests": 12,
-    "hits": defaultdict(deque),  # ip -> deque of timestamps
+    "hits": {},  # ip -> deque of timestamps
+    "last_cleanup": 0.0,
 }
+_MAX_RATE_LIMIT_CLIENTS = 5_000
 _RATE_LIMIT_LOCK = __import__("threading").Lock()
 
 
@@ -97,13 +100,38 @@ def _rate_limited(ip: str) -> bool:
     window = _RATE_LIMIT["window_seconds"]
     limit = _RATE_LIMIT["max_requests"]
     with _RATE_LIMIT_LOCK:
-        hits = _RATE_LIMIT["hits"][ip]
+        hits_by_ip = _RATE_LIMIT["hits"]
+        if now - _RATE_LIMIT["last_cleanup"] >= window:
+            for key, bucket in list(hits_by_ip.items()):
+                while bucket and now - bucket[0] > window:
+                    bucket.popleft()
+                if not bucket:
+                    del hits_by_ip[key]
+            _RATE_LIMIT["last_cleanup"] = now
+
+        hits = hits_by_ip.get(ip)
+        if hits is None:
+            if len(hits_by_ip) >= _MAX_RATE_LIMIT_CLIENTS:
+                return True
+            hits = deque()
+            hits_by_ip[ip] = hits
         while hits and now - hits[0] > window:
             hits.popleft()
         if len(hits) >= limit:
             return True
         hits.append(now)
         return False
+
+
+def _client_ip() -> str:
+    """Trust the Node-provided client address only with the shared proxy key."""
+    proxy_secret = os.environ.get("CARD_SCANNER_PROXY_SECRET", "")
+    provided_secret = request.headers.get("X-TCGTracker-Proxy-Key", "")
+    if proxy_secret and hmac.compare_digest(provided_secret, proxy_secret):
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()
+    return request.remote_addr or "unknown"
 
 def _is_production_environment(environ: dict | None = None) -> bool:
     """Identify hosted/production processes without changing local defaults."""
@@ -321,24 +349,16 @@ def _extract_card_number(img: Image.Image, recognizer: CardRecognizer) -> str | 
         all_text = " ".join(r[1] for r in results)
         print(f"  [number strip OCR] raw text: {repr(all_text)}")
 
-        # Collect all candidate tokens and pick the most specific one
-        candidates = []
-        for token in all_text.upper().replace("/", " ").split():
-            token = token.strip(".,;:()[]")
-            # Must contain at least one digit
-            if not any(c.isdigit() for c in token):
-                continue
-            # Skip very long garbage tokens
-            if len(token) > 10:
-                continue
-            candidates.append(token)
+        # Preserve collector-number forms such as 123/165 and XY124.
+        candidates = re.findall(r"\b(?:[A-Z]{1,4})?\d{1,4}(?:/\d{1,4})?\b", all_text.upper())
 
         if not candidates:
             return None
 
-        # Prefer tokens that start with letters (set prefix like XY, SM, …)
+        # Prefer a set-prefixed token, then a numerator/total token.
         prefixed = [c for c in candidates if c[0].isalpha()]
-        return prefixed[0] if prefixed else candidates[0]
+        fractions = [c for c in candidates if "/" in c]
+        return prefixed[0] if prefixed else fractions[0] if fractions else candidates[0]
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -350,22 +370,27 @@ def _lookup_by_number(number: str, recognizer: CardRecognizer) -> dict | None:
     Returns a card info dict or None.
     """
     ref = recognizer.classifier.reference
-    number_upper = number.upper()
-    for card in ref.cards:
-        card_num = str(getattr(card, "number", "") or "").upper()
-        if card_num == number_upper:
-            result = {
-                "name": _safe_str(card, "name"),
-                "set": _safe_set_name(card),
-                "number": _safe_str(card, "number", ""),
-                "id": getattr(card, "id", None),
-                "source": "card_number_direct",
-            }
-            image = _safe_card_image(card)
-            if image:
-                result["image"] = image
-            return result
-    return None
+    normalized = re.sub(r"[^A-Z0-9]", "", number.upper().split("/", 1)[0])
+    matches = [
+        card
+        for card in ref.cards
+        if re.sub(r"[^A-Z0-9]", "", str(getattr(card, "number", "") or "").upper())
+        == normalized
+    ]
+    if len(matches) != 1:
+        return None
+    card = matches[0]
+    result = {
+        "name": _safe_str(card, "name"),
+        "set": _safe_set_name(card),
+        "number": _safe_str(card, "number", ""),
+        "id": getattr(card, "id", None),
+        "source": "unique_card_number",
+    }
+    image = _safe_card_image(card)
+    if image:
+        result["image"] = image
+    return result
 
 
 def save_temp_image(img: Image.Image) -> str:
@@ -461,14 +486,14 @@ def _encode_preview(img: Image.Image) -> str:
     """Return a bounded JPEG preview without retaining the upload on the scanner."""
     try:
         preview = img.copy().convert("RGB")
-        if max(preview.size) > 1_600:
-            ratio = 1_600 / max(preview.size)
+        if max(preview.size) > 1_200:
+            ratio = 1_200 / max(preview.size)
             preview = preview.resize(
                 (max(1, int(preview.width * ratio)), max(1, int(preview.height * ratio))),
                 Image.LANCZOS,
             )
         buffer = BytesIO()
-        preview.save(buffer, format="JPEG", quality=82, optimize=True)
+        preview.save(buffer, format="JPEG", quality=78, optimize=True)
         return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
     except Exception:
         return ""
@@ -700,7 +725,7 @@ def _build_debug_info(recognizer: CardRecognizer, top_n: int = 10) -> dict:
 
 @app.route("/api/scan-card", methods=["POST"])
 def scan_card():
-    if _rate_limited(request.remote_addr or "unknown"):
+    if _rate_limited(_client_ip()):
         return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     image_path: str | None = None
     try:
@@ -819,7 +844,7 @@ def scan_card():
         # If we got a direct card-number hit, prefer it over word-match.
         # The number printed on the card is the ground truth.
         if number_match:
-            card_info = {**number_match, "confidence": 1.0}
+            card_info = {**number_match, "confidence": 0.8}
         elif pred_result and len(pred_result) > 0:
             top = pred_result[0]
             detected = recognizer.classifier.reference.lookup_card_prediction(top)
@@ -886,7 +911,7 @@ def reference_status():
 @app.route("/api/grade-card", methods=["POST"])
 def grade_card():
     """TAG-style AI condition grading (centering/corners/edges/surface) — front + optional back."""
-    if _rate_limited(request.remote_addr or "unknown"):
+    if _rate_limited(_client_ip()):
         return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     image_path: str | None = None
     back_image_path: str | None = None
@@ -924,7 +949,7 @@ def grade_card():
                 "rawPrice": request.form.get("rawPrice"),
             }
 
-        grading = grade_card_image(front_img, back_img)
+        grading = grade_card_image(front_img, back_img, strict_extraction=True)
 
         # Optional estimated graded value from raw price × grade multiplier
         estimated = None
@@ -1005,7 +1030,7 @@ def grade_card_llm():
 
     Completely free - runs locally on your hardware.
     """
-    if _rate_limited(request.remote_addr or "unknown"):
+    if _rate_limited(_client_ip()):
         return jsonify({"success": False, "error": "Rate limit exceeded. Please slow down and try again."}), 429
     if not OLLAMA_AVAILABLE:
         return jsonify({

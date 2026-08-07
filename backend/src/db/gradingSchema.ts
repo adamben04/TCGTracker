@@ -139,44 +139,34 @@ export function rowToGradingResult(row: GradingResultRow): GradingResultDTO {
   const front = fullResult?.front as Record<string, unknown> | undefined;
   const back = fullResult?.back as Record<string, unknown> | undefined;
 
-  // Build category data from front (if available) or fall back to flat columns
-  const frontCentering = front?.centering as Record<string, unknown> | undefined;
-  const frontCorners = front?.corners as Record<string, unknown> | undefined;
-  const frontEdges = front?.edges as Record<string, unknown> | undefined;
-  const frontSurface = front?.surface as Record<string, unknown> | undefined;
-
   return {
     id: row.id,
     cardId: row.card_id || '',
     cardName: row.card_name,
     game: (row.game === 'onepiece' ? 'onepiece' : 'pokemon') as 'pokemon' | 'onepiece',
     centering: {
-      score: (frontCentering?.score as number) ?? row.centering_score,
-      details: (frontCentering?.details as string) || row.centering_details || '',
-      deviations: (frontCentering?.deviations as { leftRight: number; topBottom: number }) ||
-        (deviations as { leftRight: number; topBottom: number }) || { leftRight: 0, topBottom: 0 },
-      defects: (frontCentering?.defects as string[]) || defects.centering || [],
-      crops: frontCentering?.crops as GradingResultDTO['centering']['crops'],
+      score: row.centering_score,
+      details: row.centering_details || '',
+      deviations: (deviations as { leftRight: number; topBottom: number }) || {
+        leftRight: 0,
+        topBottom: 0,
+      },
+      defects: defects.centering || [],
     },
     corners: {
-      score: (frontCorners?.score as number) ?? row.corners_score,
-      details: (frontCorners?.details as string) || row.corners_details || '',
-      defects: (frontCorners?.defects as string[]) || defects.corners || [],
-      crops: frontCorners?.crops as GradingResultDTO['corners']['crops'],
-      deviations: frontCorners?.deviations as Record<string, unknown>,
+      score: row.corners_score,
+      details: row.corners_details || '',
+      defects: defects.corners || [],
     },
     edges: {
-      score: (frontEdges?.score as number) ?? row.edges_score,
-      details: (frontEdges?.details as string) || row.edges_details || '',
-      defects: (frontEdges?.defects as string[]) || defects.edges || [],
-      crops: frontEdges?.crops as GradingResultDTO['edges']['crops'],
-      deviations: frontEdges?.deviations as Record<string, unknown>,
+      score: row.edges_score,
+      details: row.edges_details || '',
+      defects: defects.edges || [],
     },
     surface: {
-      score: (frontSurface?.score as number) ?? row.surface_score,
-      details: (frontSurface?.details as string) || row.surface_details || '',
-      defects: (frontSurface?.defects as string[]) || defects.surface || [],
-      crops: frontSurface?.crops as GradingResultDTO['surface']['crops'],
+      score: row.surface_score,
+      details: row.surface_details || '',
+      defects: defects.surface || [],
     },
     totalScore: row.total_score,
     grade: row.grade,
@@ -189,6 +179,12 @@ export function rowToGradingResult(row: GradingResultRow): GradingResultDTO {
     defectRegions,
     front: front ?? undefined,
     back: back ?? undefined,
+    confidence: fullResult?.confidence as number | undefined,
+    retakeRecommended: fullResult?.retakeRecommended as boolean | undefined,
+    limitations: fullResult?.limitations as string | undefined,
+    quality: fullResult?.quality as Record<string, unknown> | undefined,
+    extraction: fullResult?.extraction as Record<string, unknown> | undefined,
+    provider: fullResult?.provider as Record<string, unknown> | undefined,
   };
 }
 

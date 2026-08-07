@@ -103,14 +103,49 @@ jobs:
       - name: Build application
         run: npm run build
 
-  # Docker Build Test
-  docker-build:
+  scanner-test:
     runs-on: ubuntu-latest
-    needs: [frontend-test, backend-test]
+    defaults:
+      run:
+        working-directory: ./card-scanner-backend
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: card-scanner-backend/requirements-fast.txt
+
+      - name: Install scanner dependencies
+        run: pip install -r requirements-fast.txt
+
+      - name: Download verified DINOv2 model
+        run: |
+          curl -L --fail --retry 3 -o dinov2_vits14_224.onnx https://huggingface.co/sefaburak/dinov2-small-onnx/resolve/main/dinov2_vits14.onnx
+          echo "4df36ef0716a8f17d984fc7546a3a5d670fda6911eb298592250cb9e26756063  dinov2_vits14_224.onnx" | sha256sum -c -
+
+      - name: Run scanner tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile scanner application
+        run: python -m py_compile app.py grading_service.py model_inference.py extraction.py fast_match.py build_embeddings.py
+
+  # Docker Build Test
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [frontend-test, backend-test, scanner-test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -132,6 +167,16 @@ jobs:
           file: ./backend/Dockerfile
           push: false
           tags: tcgtracker-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build scanner Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./card-scanner-backend
+          file: ./card-scanner-backend/Dockerfile.hf
+          push: false
+          tags: tcgtracker-scanner:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

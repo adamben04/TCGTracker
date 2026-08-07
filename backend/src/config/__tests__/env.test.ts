@@ -41,4 +41,11 @@ describe('env validation', () => {
 
     await expect(import('../env')).rejects.toThrow();
   });
+
+  it('validates the optional shared scanner proxy secret', async () => {
+    process.env.JWT_SECRET = 'a'.repeat(32);
+    process.env.CARD_SCANNER_PROXY_SECRET = 'too-short';
+
+    await expect(import('../env')).rejects.toThrow();
+  });
 });
