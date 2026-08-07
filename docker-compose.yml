@@ -42,7 +42,7 @@ services:
         VITE_API_URL: ''
     container_name: tcgtracker-frontend
     ports:
-      - '80:80'
+      - '80:8080'
     depends_on:
       backend:
         condition: service_healthy
