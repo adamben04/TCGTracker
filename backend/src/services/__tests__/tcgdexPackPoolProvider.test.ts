@@ -13,7 +13,23 @@ describe('TCGdex pack pool fallback', () => {
       if (url.endsWith('/cards')) {
         return {
           ok: true,
-          json: async () => [{ id: 'base1-4', localId: '4', name: 'Charizard', image: 'image' }],
+          json: async () => [
+            { id: 'base1-4', localId: '4', name: 'Charizard', image: 'image' },
+            { id: 'base1-2', localId: '2', name: 'Blastoise', image: 'image' },
+          ],
+        } as Response;
+      }
+      if (url.endsWith('/base1-2')) {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'base1-2',
+            localId: '2',
+            name: 'Blastoise',
+            image: 'https://assets.tcgdex.net/en/base/base1/2',
+            set: { id: 'base1', name: 'Base Set' },
+            pricing: { cardmarket: { unit: 'EUR', avg: 200 } },
+          }),
         } as Response;
       }
       return {
@@ -40,6 +56,7 @@ describe('TCGdex pack pool fallback', () => {
       })
     );
     expect(second).toEqual(first);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(first).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

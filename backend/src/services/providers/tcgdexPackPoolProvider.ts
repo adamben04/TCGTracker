@@ -2,9 +2,12 @@ import { logger } from '../../utils/logger';
 
 const TCGDEX_BASE_URL = 'https://api.tcgdex.net/v2/en';
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const DETAIL_TIMEOUT_MS = 5_000;
-const SAMPLE_SIZE = 96;
-const BATCH_SIZE = 24;
+const DEGRADED_CACHE_TTL_MS = 60 * 1000;
+const DETAIL_TIMEOUT_MS = 8_000;
+const RETRY_TIMEOUT_MS = 12_000;
+const SAMPLE_SIZE = 320;
+const BATCH_SIZE = 32;
+const MIN_VIABLE_POOL_SIZE = 120;
 
 interface TcgDexCardSummary {
   id: string;
@@ -47,7 +50,7 @@ const PRIORITY_CARD_IDS = [
   'sv08.5-161',
 ];
 
-let cachedPool: { fetchedAt: number; cards: TcgDexPackCard[] } | null = null;
+let cachedPool: { fetchedAt: number; ttlMs: number; cards: TcgDexPackCard[] } | null = null;
 let pendingPool: Promise<TcgDexPackCard[]> | null = null;
 
 async function fetchJson<T>(url: string, timeoutMs = DETAIL_TIMEOUT_MS): Promise<T> {
@@ -77,8 +80,14 @@ function collectPriceValues(value: unknown, keyName: string, result: number[]): 
 }
 
 function resolveMarketPrice(card: TcgDexCardDetail): number {
-  const pricingSources = [card.pricing, ...(card.variants_detailed ?? []).map((v) => v.pricing)];
-  for (const key of ['marketPrice', 'midPrice', 'avg', 'trend']) {
+  const pricingSources = [card.pricing, ...(card.variants_detailed ?? []).map((v) => v.pricing)]
+    .map((pricing) =>
+      pricing && typeof pricing === 'object'
+        ? (pricing as Record<string, unknown>).tcgplayer
+        : undefined
+    )
+    .filter(Boolean);
+  for (const key of ['marketPrice', 'midPrice']) {
     const values: number[] = [];
     for (const pricing of pricingSources) collectPriceValues(pricing, key, values);
     if (values.length > 0) return Math.max(...values);
@@ -131,6 +140,7 @@ async function buildPool(): Promise<TcgDexPackCard[]> {
   const summaries = await fetchJson<TcgDexCardSummary[]>(`${TCGDEX_BASE_URL}/cards`, 10_000);
   const selected = selectSummaries(summaries);
   const cards: TcgDexPackCard[] = [];
+  const failed: TcgDexCardSummary[] = [];
 
   for (let start = 0; start < selected.length; start += BATCH_SIZE) {
     const batch = selected.slice(start, start + BATCH_SIZE);
@@ -139,14 +149,38 @@ async function buildPool(): Promise<TcgDexPackCard[]> {
         fetchJson<TcgDexCardDetail>(`${TCGDEX_BASE_URL}/cards/${encodeURIComponent(card.id)}`)
       )
     );
-    for (const detail of details) {
+    for (let index = 0; index < details.length; index += 1) {
+      const detail = details[index];
+      if (detail.status !== 'fulfilled') {
+        failed.push(batch[index]);
+        continue;
+      }
+      const card = mapDetail(detail.value);
+      if (card) cards.push(card);
+    }
+  }
+
+  for (let start = 0; start < failed.length; start += BATCH_SIZE) {
+    const batch = failed.slice(start, start + BATCH_SIZE);
+    const retryDetails = await Promise.allSettled(
+      batch.map((card) =>
+        fetchJson<TcgDexCardDetail>(
+          `${TCGDEX_BASE_URL}/cards/${encodeURIComponent(card.id)}`,
+          RETRY_TIMEOUT_MS
+        )
+      )
+    );
+    for (const detail of retryDetails) {
       if (detail.status !== 'fulfilled') continue;
       const card = mapDetail(detail.value);
       if (card) cards.push(card);
     }
   }
 
-  if (cards.length === 0) throw new Error('TCGdex returned no priced cards');
+  const minimumViable = Math.min(MIN_VIABLE_POOL_SIZE, Math.ceil(selected.length / 2));
+  if (cards.length < minimumViable) {
+    throw new Error(`TCGdex pack pool is undersized (${cards.length}/${minimumViable})`);
+  }
   logger.info('Built live TCGdex pack fallback', {
     sampled: selected.length,
     priced: cards.length,
@@ -155,7 +189,7 @@ async function buildPool(): Promise<TcgDexPackCard[]> {
 }
 
 export async function getTcgDexPackPool(limit = SAMPLE_SIZE): Promise<TcgDexPackCard[]> {
-  if (cachedPool && Date.now() - cachedPool.fetchedAt < CACHE_TTL_MS) {
+  if (cachedPool && Date.now() - cachedPool.fetchedAt < cachedPool.ttlMs) {
     return cachedPool.cards.slice(0, limit);
   }
   if (!pendingPool) {
@@ -164,7 +198,11 @@ export async function getTcgDexPackPool(limit = SAMPLE_SIZE): Promise<TcgDexPack
   const pending = pendingPool;
   try {
     const cards = await pending;
-    cachedPool = { fetchedAt: Date.now(), cards };
+    cachedPool = {
+      fetchedAt: Date.now(),
+      ttlMs: cards.length >= MIN_VIABLE_POOL_SIZE ? CACHE_TTL_MS : DEGRADED_CACHE_TTL_MS,
+      cards,
+    };
     return cards.slice(0, limit);
   } finally {
     if (pendingPool === pending) pendingPool = null;

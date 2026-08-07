@@ -558,9 +558,14 @@ router.get('/pool', async (req, res) => {
       if (cards.length === 0) {
         try {
           const fallbackCards = await getTcgDexPackPool(poolLimit);
+          const fallbackMin = Number(minPrice) || 0;
+          const fallbackMax = Number(maxPrice) || 100_000;
+          const filteredFallback = fallbackCards.filter(
+            (card) => card.marketPrice >= fallbackMin && card.marketPrice <= fallbackMax
+          );
           return res.json({
-            data: fallbackCards,
-            count: fallbackCards.length,
+            data: filteredFallback,
+            count: filteredFallback.length,
             source: 'tcgdex_live_fallback',
           });
         } catch (fallbackError) {
