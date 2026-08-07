@@ -50,3 +50,34 @@ describe('tieredPackService One Piece packs', () => {
     expect(pull.totalValue).toBeGreaterThan(0);
   });
 });
+
+describe('tieredPackService Pokemon pool recovery', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    tieredPackService.clearCache();
+    tieredPackService.clearHistory('pokemon');
+    vi.restoreAllMocks();
+  });
+
+  it('reuses the last successful pool when the backend later returns no cards', async () => {
+    const card = {
+      id: 'base1-4',
+      name: 'Charizard',
+      number: '4',
+      set: { id: 'base1', name: 'Base Set', releaseDate: '1999-01-09', total: 102 },
+      images: { small: 'image', large: 'image' },
+      marketPrice: 25,
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [card] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    const pack = tieredPackService.getAvailablePacks('pokemon')[0];
+
+    await expect(tieredPackService.openPack(pack, false, 'pokemon')).resolves.toBeDefined();
+    tieredPackService.clearCache();
+    await expect(tieredPackService.openPack(pack, false, 'pokemon')).resolves.toBeDefined();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

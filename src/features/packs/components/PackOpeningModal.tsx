@@ -132,6 +132,7 @@ export const PackOpeningModal: React.FC<PackOpeningModalProps> = ({
 
       if (
         errorMessage.includes('Unable to fetch cards') ||
+        errorMessage.includes('No cards returned from database') ||
         errorMessage.includes('No suitable card')
       ) {
         showToast(

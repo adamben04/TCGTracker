@@ -21,6 +21,7 @@ import { getPopulationCounts } from '../services/populationService';
 import { getCardMappingImages } from '../services/cardImageBackfillService';
 import { enrichCardsWithInvestmentData } from '../services/cardEnrichment';
 import { getGradedPrices } from '../services/gradedPriceService';
+import { getTcgDexPackPool } from '../services/providers/tcgdexPackPoolProvider';
 
 const router = Router();
 
@@ -534,6 +535,7 @@ router.get('/pool', async (req, res) => {
         WHERE ph1.marketPrice IS NOT NULL
       ) ph ON cm.uniqueIdentifier = ph.uniqueIdentifier
       WHERE ph.marketPrice >= ? AND ph.marketPrice <= ?
+        AND ph.marketPrice > 0
         AND cm.cardName IS NOT NULL AND TRIM(cm.cardName) <> ''
         AND cm.setId IS NOT NULL AND TRIM(cm.setId) <> ''
         AND cm.cardNumber IS NOT NULL AND TRIM(cm.cardNumber) <> ''
@@ -553,6 +555,20 @@ router.get('/pool', async (req, res) => {
 
       // Use the helper function to properly map cards with stored images
       const cards = await mapLocalRowsToPokemonCards(rows);
+      if (cards.length === 0) {
+        try {
+          const fallbackCards = await getTcgDexPackPool(poolLimit);
+          return res.json({
+            data: fallbackCards,
+            count: fallbackCards.length,
+            source: 'tcgdex_live_fallback',
+          });
+        } catch (fallbackError) {
+          logger.error('Live TCGdex pack fallback failed', {
+            error: (fallbackError as Error).message,
+          });
+        }
+      }
 
       res.json({
         data: cards,

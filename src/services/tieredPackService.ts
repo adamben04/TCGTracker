@@ -5,6 +5,8 @@ import { env } from '../config/env';
 
 const PACK_HISTORY_KEY = 'tcg_tiered_pack_history';
 const PACK_HISTORY_KEY_OP = 'tcg_tiered_pack_history_onepiece';
+const PACK_POOL_FALLBACK_KEY = 'tcg_pack_pool_fallback_v1';
+const PACK_POOL_FALLBACK_TTL_MS = 24 * 60 * 60 * 1000;
 
 const ONE_PIECE_PACKS: Pack[] = [
   {
@@ -357,17 +359,37 @@ class TieredPackService {
       return this.cardPoolCache;
     }
 
-    const resp = await fetch(`${env.apiUrl}/api/cards/pool?limit=10000`);
-
-    if (!resp.ok) {
-      throw new Error(`Failed to fetch card pool: ${resp.status}`);
+    let allCards: PokemonCard[] = [];
+    let fetchError: Error | null = null;
+    try {
+      const resp = await fetch(`${env.apiUrl}/api/cards/pool?limit=10000`);
+      if (!resp.ok) throw new Error(`Failed to fetch card pool: ${resp.status}`);
+      const json = await resp.json();
+      allCards = json.data || [];
+    } catch (error) {
+      fetchError = error as Error;
     }
 
-    const json = await resp.json();
-    const allCards = json.data || [];
+    if (allCards.length === 0) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(PACK_POOL_FALLBACK_KEY) || 'null') as {
+          savedAt?: number;
+          cards?: PokemonCard[];
+        } | null;
+        if (
+          stored?.savedAt &&
+          Date.now() - stored.savedAt < PACK_POOL_FALLBACK_TTL_MS &&
+          Array.isArray(stored.cards)
+        ) {
+          allCards = stored.cards;
+        }
+      } catch {
+        localStorage.removeItem(PACK_POOL_FALLBACK_KEY);
+      }
+    }
 
     if (allCards.length === 0) {
-      throw new Error('No cards returned from database');
+      throw fetchError ?? new Error('No cards returned from database');
     }
 
     const cardsWithPrices = allCards.filter((card: PokemonCard) => {
@@ -400,6 +422,14 @@ class TieredPackService {
     }));
 
     this.cardPoolCache = this.shuffleArray([...rewritten]);
+    try {
+      localStorage.setItem(
+        PACK_POOL_FALLBACK_KEY,
+        JSON.stringify({ savedAt: Date.now(), cards: this.cardPoolCache.slice(0, 500) })
+      );
+    } catch (error) {
+      console.warn('Unable to persist the pack pool fallback', error);
+    }
     return this.cardPoolCache;
   }
 
