@@ -681,7 +681,7 @@ export const migrations: Migration[] = [
       const run = (sql: string): Promise<void> =>
         new Promise((resolve, reject) => {
           db.run(sql, (err) => {
-            if (err) reject(err);
+            if (err && !err.message.includes('duplicate column')) reject(err);
             else resolve();
           });
         });
@@ -717,7 +717,7 @@ export const migrations: Migration[] = [
       const run = (sql: string): Promise<void> =>
         new Promise((resolve, reject) => {
           db.run(sql, (err) => {
-            if (err) reject(err);
+            if (err && !err.message.includes('duplicate column')) reject(err);
             else resolve();
           });
         });
