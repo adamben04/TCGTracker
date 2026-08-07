@@ -147,16 +147,23 @@ def detect_and_warp(image_bgr: np.ndarray) -> tuple[np.ndarray | None, dict]:
             continue
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        if len(approx) != 4:
-            continue
         rect = cv2.minAreaRect(c)
         cw, ch = rect[1]
         if min(cw, ch) < 40:
             continue
         aspect = max(cw, ch) / float(max(1, min(cw, ch)))
-        if not (1.0 <= aspect <= 2.0):
+        if not (1.15 <= aspect <= 1.75):
             continue
-        candidates.append((area, approx, aspect))
+        fill_ratio = area / float(max(1.0, cw * ch))
+        if len(approx) == 4:
+            quad = approx
+        elif fill_ratio >= 0.55:
+            # Rounded corners, glare, fingers, and busy backgrounds frequently
+            # produce 5–10 contour points even when the card rectangle is clear.
+            quad = cv2.boxPoints(rect).reshape(4, 1, 2)
+        else:
+            continue
+        candidates.append((area, quad, aspect))
 
     if not candidates:
         return None, info
@@ -261,7 +268,19 @@ class FastMatcher:
         if not results:
             return False
         top, second = results[0]["score"], results[1]["score"] if len(results) > 1 else 0.0
-        return top >= MATCH_THRESHOLD and (top - second) >= MATCH_GAP
+        if top >= MATCH_THRESHOLD and (top - second) >= MATCH_GAP:
+            return True
+        if len(results) > 1 and top >= 0.82:
+            first_identity = (
+                str(results[0].get("name", "")).strip().casefold(),
+                str(results[0].get("number", "")).strip().casefold(),
+            )
+            second_identity = (
+                str(results[1].get("name", "")).strip().casefold(),
+                str(results[1].get("number", "")).strip().casefold(),
+            )
+            return first_identity == second_identity and all(first_identity)
+        return False
 
     def match_photo(self, image_bgr: np.ndarray) -> tuple[list[dict], dict]:
         """
