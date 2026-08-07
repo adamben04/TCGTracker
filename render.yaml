@@ -25,7 +25,7 @@ services:
       - key: CORS_ORIGIN
         value: https://tcgtracker-9oc.pages.dev
       - key: CARD_SCANNER_URL
-        value: https://tcgtracker-scanner.onrender.com
+        value: https://card-scanner-backend-cp2s.onrender.com
       - key: AUTH_BYPASS_ENABLED
         value: 'false'
       - key: CLOUD_SYNC_ENABLED

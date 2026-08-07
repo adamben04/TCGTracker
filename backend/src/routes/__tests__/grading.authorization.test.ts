@@ -109,8 +109,9 @@ describe('grading authorization', () => {
       })
   );
 
-  it('requires authentication for grading history and scopes all history to the caller', async () => {
-    await request(app).get('/api/grading/history').expect(401);
+  it('returns empty anonymous history and scopes authenticated history to the caller', async () => {
+    const anonymous = await request(app).get('/api/grading/history').expect(200);
+    expect(anonymous.body.data.history).toEqual([]);
 
     const otherUser = await request(app)
       .get('/api/grading/history')

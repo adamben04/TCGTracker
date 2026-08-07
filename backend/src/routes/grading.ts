@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { request as undiciRequest } from 'undici';
 import { getDb } from '../db/database';
-import { authenticate, optionalAuth, AuthRequest } from '../middleware/auth';
+import { optionalAuth, AuthRequest } from '../middleware/auth';
 import { validate } from '../middleware/validation';
 import { ok, fail } from '../utils/apiResponse';
 import { logger } from '../utils/logger';
@@ -451,7 +451,8 @@ router.post(
   }
 );
 
-router.get('/history', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/history', optionalAuth, async (req: AuthRequest, res: Response) => {
+  if (!req.user) return ok(res, { history: [], count: 0 });
   try {
     await ensureTable();
     const db = getDb();
@@ -479,7 +480,8 @@ router.get('/history', authenticate, async (req: AuthRequest, res: Response) => 
   }
 });
 
-router.get('/history/:cardId', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/history/:cardId', optionalAuth, async (req: AuthRequest, res: Response) => {
+  if (!req.user) return ok(res, { history: [], count: 0 });
   try {
     await ensureTable();
     const db = getDb();
@@ -499,7 +501,19 @@ router.get('/history/:cardId', authenticate, async (req: AuthRequest, res: Respo
   }
 });
 
-router.get('/stats', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/stats', optionalAuth, async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return ok(res, {
+      stats: {
+        total: 0,
+        avgGrade: null,
+        avgTotalScore: null,
+        bestScore: null,
+        worstScore: null,
+        distribution: [],
+      },
+    });
+  }
   try {
     await ensureTable();
     const db = getDb();

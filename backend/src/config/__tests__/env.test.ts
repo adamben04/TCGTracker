@@ -56,5 +56,6 @@ describe('env validation', () => {
 
     const { env } = await import('../env');
     expect(env.databasePath).toBe('/app/data/tcg-prices.db');
+    expect(env.scanner.url).toBe('https://card-scanner-backend-cp2s.onrender.com');
   });
 });

@@ -25,29 +25,33 @@ TCGTracker is a full-stack app for collectors and investors. Browse 50k+ cards, 
 
 Supports **Pokemon** and **One Piece** via an in-app game switcher.
 
-| | |
-|:---:|:---:|
+|                                                                                       |                                                                                    |
+| :-----------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: |
 | <img src="docs/assets/browse-cards.jpg" alt="Browse Charizard results" width="480" /> | <img src="docs/assets/market-insights.jpg" alt="AI market insights" width="480" /> |
-| **Browse & filter** marketplace listings | **AI insights** — buy / recovery / risk signals |
+|                       **Browse & filter** marketplace listings                        |                  **AI insights** — buy / recovery / risk signals                   |
 
 ---
 
 ## Features
 
 ### Collection
+
 - **Browse** — search by name/set/rarity with undervalued, population, and return filters
 - **Vault** — log purchases, track portfolio value and P/L
 - **Sets** — generation-grouped set tracker with completion rings
 
 ### Market
+
 - **Price tracker** — watchlist, 7-day movers, and price alerts
 - **Market insights** — AI predictions (7d → 1yr), recovery/momentum/overheat categories, backtests, and Groq-powered explanations
 
 ### Tools
+
 - **Pack shop** — tiered simulated rips with boosted mode and cinematic 3D open (React Three Fiber)
 - **Card scanner** — camera / upload recognition via a Python OCR backend
 
 ### Product polish
+
 - Dark / light themes · command palette (`Ctrl/Cmd+K`) · responsive layout · JWT auth
 
 <p align="center">
@@ -59,16 +63,16 @@ Supports **Pokemon** and **One Piece** via an in-app game switcher.
 
 <br />
 
-| Home | Sets |
-|:---:|:---:|
+|                              Home                              |                           Sets                            |
+| :------------------------------------------------------------: | :-------------------------------------------------------: |
 | <img src="docs/assets/hero-home.jpg" alt="Home" width="420" /> | <img src="docs/assets/sets.jpg" alt="Sets" width="420" /> |
 
-| Pack shop | Price tracker |
-|:---:|:---:|
+|                          Pack shop                          |                         Price tracker                         |
+| :---------------------------------------------------------: | :-----------------------------------------------------------: |
 | <img src="docs/assets/packs.jpg" alt="Packs" width="420" /> | <img src="docs/assets/prices.jpg" alt="Prices" width="420" /> |
 
-| Vault | Scanner |
-|:---:|:---:|
+|                            Vault                            |                             Scanner                             |
+| :---------------------------------------------------------: | :-------------------------------------------------------------: |
 | <img src="docs/assets/vault.jpg" alt="Vault" width="420" /> | <img src="docs/assets/scanner.jpg" alt="Scanner" width="420" /> |
 
 </details>
@@ -77,12 +81,12 @@ Supports **Pokemon** and **One Piece** via an in-app game switcher.
 
 ## Tech stack
 
-| Layer | Stack |
-| --- | --- |
+| Layer    | Stack                                                                            |
+| -------- | -------------------------------------------------------------------------------- |
 | Frontend | React 18, TypeScript, Vite, Tailwind, Framer Motion, Recharts, React Three Fiber |
-| Backend | Node 20, Express, SQLite, JWT, Zod, Winston, Swagger |
-| Scanner | Python, Flask, EasyOCR / pokemon-card-recognizer |
-| Ops | Docker Compose, GitHub Actions, Cloudflare Pages, Render, Supabase Storage |
+| Backend  | Node 20, Express, SQLite, JWT, Zod, Winston, Swagger                             |
+| Scanner  | Python, Flask, EasyOCR / pokemon-card-recognizer                                 |
+| Ops      | Docker Compose, GitHub Actions, Cloudflare Pages, Render, Supabase Storage       |
 
 ```
 TCGTracker/
@@ -170,12 +174,12 @@ pip install -r requirements.txt
 python app.py              # http://localhost:5001
 ```
 
-| Service | URL |
-| --- | --- |
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:3001 |
+| Service            | URL                            |
+| ------------------ | ------------------------------ |
+| Frontend           | http://localhost:5173          |
+| Backend API        | http://localhost:3001          |
 | API docs (Swagger) | http://localhost:3001/api-docs |
-| Card scanner | http://localhost:5001 |
+| Card scanner       | http://localhost:5001          |
 
 More scanner detail: [`card-scanner-backend/README.md`](./card-scanner-backend/README.md)
 
@@ -220,13 +224,13 @@ npm run build
 
 Interactive docs: `http://localhost:3001/api-docs`
 
-| Area | Examples |
-| --- | --- |
-| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
-| Alerts | `GET/POST /api/alerts`, `PUT /api/alerts/:id/toggle` |
-| Cards | `GET /api/cards/search`, `GET /api/cards/sets`, `GET /api/prices/:cardId` |
-| Insights | Market prediction / backtest endpoints used by `/market-insights` |
-| Cloud backup | `POST /api/cloud-backup`, `GET /api/cloud-backup/status` (when enabled) |
+| Area         | Examples                                                                  |
+| ------------ | ------------------------------------------------------------------------- |
+| Auth         | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`     |
+| Alerts       | `GET/POST /api/alerts`, `PUT /api/alerts/:id/toggle`                      |
+| Cards        | `GET /api/cards/search`, `GET /api/cards/sets`, `GET /api/prices/:cardId` |
+| Insights     | Market prediction / backtest endpoints used by `/market-insights`         |
+| Cloud backup | `POST /api/cloud-backup`, `GET /api/cloud-backup/status` (when enabled)   |
 
 Non-browser API clients may send:
 
@@ -252,7 +256,7 @@ Production env highlights:
 ```env
 # Frontend
 VITE_API_URL=https://tcgtracker-api.onrender.com
-VITE_CARD_SCANNER_API_URL=https://tcgtracker-scanner.onrender.com
+VITE_CARD_SCANNER_API_URL=https://card-scanner-backend-cp2s.onrender.com
 VITE_ENABLE_AUTH=true
 
 # Backend

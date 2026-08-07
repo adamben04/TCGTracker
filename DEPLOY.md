@@ -135,7 +135,7 @@ before SQLite opens. Periodic backups run every 15 minutes after boot.
    | `JWT_SECRET`                | `<use the same value from your backend/.env>`           |
    | `ADMIN_BOOTSTRAP_EMAIL`     | `<email of the account that should administer backups>` |
    | `CORS_ORIGIN`               | `https://tcgtracker-9oc.pages.dev`                      |
-   | `CARD_SCANNER_URL`          | `https://tcgtracker-scanner.onrender.com`               |
+   | `CARD_SCANNER_URL`          | `https://card-scanner-backend-cp2s.onrender.com`        |
    | `CARD_SCANNER_PROXY_SECRET` | `<same random 32+ character value used by the scanner>` |
    | `AUTH_BYPASS_ENABLED`       | `false`                                                 |
    | `CLOUD_SYNC_ENABLED`        | `true`                                                  |
@@ -180,8 +180,8 @@ For local maintenance, the equivalent command is
 11. Click **Deploy**. Watch logs: first build compiles deps + copies the
     ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
     one-time DINOv2 ONNX warmup (~1 s), and listens on port 7860.
-12. Note the URL: `https://tcgtracker-scanner.onrender.com`.
-13. Open `https://tcgtracker-scanner.onrender.com/health` — you should get
+12. Note the URL: `https://card-scanner-backend-cp2s.onrender.com`.
+13. Open `https://card-scanner-backend-cp2s.onrender.com/health` — you should get
     JSON with `"status": "ok"` and `"fast_ready": true`.
 
 ---
@@ -245,12 +245,12 @@ curl https://tcgtracker-api.onrender.com/api/health
 # → {"status":"healthy","timestamp":"…","version":"1.0.0","environment":"production"}
 
 # 2. Scanner health
-curl https://tcgtracker-scanner.onrender.com/health
+curl https://card-scanner-backend-cp2s.onrender.com/health
 # → {"status":"ok","fast_ready":true,...}
 
 # 3. Scanner scan (use a real card photo)
 curl -F "image=@some_card_photo.jpg;type=image/jpeg" `
-  https://tcgtracker-scanner.onrender.com/api/scan-card
+  https://card-scanner-backend-cp2s.onrender.com/api/scan-card
 # → {"success":true,"card":{"id":"swsh4-25","name":"Charizard",...},"debug":{"fast":true,...}}
 ```
 
@@ -335,25 +335,25 @@ python -m unittest discover -s tests -v
 
 ## Quick reference: all env vars
 
-| Service           | Variable                    | Value                                     | Where set                                          |
-| ----------------- | --------------------------- | ----------------------------------------- | -------------------------------------------------- |
-| Cloudflare Pages  | `VITE_API_URL`              | `https://tcgtracker-api.onrender.com`     | Pages → Env vars (before first build)              |
-| Cloudflare Pages  | `VITE_ENABLE_AUTH`          | `true`                                    | Pages → Env vars (before first build)              |
-| Render (Node API) | `NODE_ENV`                  | `production`                              | Render → Environment                               |
-| Render (Node API) | `PORT`                      | `3001`                                    | Render → Environment                               |
-| Render (Node API) | `HOST`                      | `0.0.0.0`                                 | Render → Environment                               |
-| Render (Node API) | `JWT_SECRET`                | `<32+ hex>`                               | Render → Environment                               |
-| Render (Node API) | `ADMIN_BOOTSTRAP_EMAIL`     | `<administrator account email>`           | Render → Environment                               |
-| Render (Node API) | `CORS_ORIGIN`               | `https://tcgtracker-9oc.pages.dev`        | Render → Environment                               |
-| Render (Node API) | `CARD_SCANNER_URL`          | `https://tcgtracker-scanner.onrender.com` | Render → Environment                               |
-| Render (Node API) | `CARD_SCANNER_PROXY_SECRET` | `<shared random 32+ characters>`          | Blueprint environment group or Render Environment  |
-| Render (Node API) | `DATABASE_PATH`             | `/app/data/tcg-prices.db`                 | Render → Environment                               |
-| Render (Node API) | `AUTH_BYPASS_ENABLED`       | `false`                                   | Render → Environment                               |
-| Render (Node API) | `CLOUD_SYNC_ENABLED`        | `true`                                    | Render → Environment                               |
-| Render (Node API) | `SUPABASE_URL`              | `https://<your-project>.supabase.co`      | Render → Environment                               |
-| Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>`                   | Render → Environment                               |
-| Render (Node API) | `SUPABASE_BUCKET`           | `tcgtracker-data`                         | Render → Environment                               |
-| Render (scanner)  | `PORT`                      | `7860`                                    | Render → Environment                               |
-| Render (scanner)  | `SCANNER_CORS_ORIGIN`       | `https://tcgtracker-9oc.pages.dev`        | Render → Environment                               |
-| Render (scanner)  | `CARD_SCANNER_PROXY_SECRET` | `<same shared value>`                     | Blueprint environment group or Render Environment  |
-| Supabase          | —                           | —                                         | Just create the `tcgtracker-data` bucket (Private) |
+| Service           | Variable                    | Value                                            | Where set                                          |
+| ----------------- | --------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| Cloudflare Pages  | `VITE_API_URL`              | `https://tcgtracker-api.onrender.com`            | Pages → Env vars (before first build)              |
+| Cloudflare Pages  | `VITE_ENABLE_AUTH`          | `true`                                           | Pages → Env vars (before first build)              |
+| Render (Node API) | `NODE_ENV`                  | `production`                                     | Render → Environment                               |
+| Render (Node API) | `PORT`                      | `3001`                                           | Render → Environment                               |
+| Render (Node API) | `HOST`                      | `0.0.0.0`                                        | Render → Environment                               |
+| Render (Node API) | `JWT_SECRET`                | `<32+ hex>`                                      | Render → Environment                               |
+| Render (Node API) | `ADMIN_BOOTSTRAP_EMAIL`     | `<administrator account email>`                  | Render → Environment                               |
+| Render (Node API) | `CORS_ORIGIN`               | `https://tcgtracker-9oc.pages.dev`               | Render → Environment                               |
+| Render (Node API) | `CARD_SCANNER_URL`          | `https://card-scanner-backend-cp2s.onrender.com` | Render → Environment                               |
+| Render (Node API) | `CARD_SCANNER_PROXY_SECRET` | `<shared random 32+ characters>`                 | Blueprint environment group or Render Environment  |
+| Render (Node API) | `DATABASE_PATH`             | `/app/data/tcg-prices.db`                        | Render → Environment                               |
+| Render (Node API) | `AUTH_BYPASS_ENABLED`       | `false`                                          | Render → Environment                               |
+| Render (Node API) | `CLOUD_SYNC_ENABLED`        | `true`                                           | Render → Environment                               |
+| Render (Node API) | `SUPABASE_URL`              | `https://<your-project>.supabase.co`             | Render → Environment                               |
+| Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>`                          | Render → Environment                               |
+| Render (Node API) | `SUPABASE_BUCKET`           | `tcgtracker-data`                                | Render → Environment                               |
+| Render (scanner)  | `PORT`                      | `7860`                                           | Render → Environment                               |
+| Render (scanner)  | `SCANNER_CORS_ORIGIN`       | `https://tcgtracker-9oc.pages.dev`               | Render → Environment                               |
+| Render (scanner)  | `CARD_SCANNER_PROXY_SECRET` | `<same shared value>`                            | Blueprint environment group or Render Environment  |
+| Supabase          | —                           | —                                                | Just create the `tcgtracker-data` bucket (Private) |
