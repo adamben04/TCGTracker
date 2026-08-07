@@ -133,7 +133,7 @@ export class TransactionService {
     const rows = await this.list(userId, 100000);
     const header = 'date,type,card_name,game,quantity,price_each,fees,total,notes';
     const lines = rows.map((t) => {
-      const total = (t.price_each * t.quantity) - (t.fees || 0);
+      const total = t.price_each * t.quantity - (t.fees || 0);
       return [
         t.transaction_date,
         t.type,

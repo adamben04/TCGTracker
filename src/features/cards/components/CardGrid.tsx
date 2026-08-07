@@ -160,7 +160,9 @@ export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ viewMode, onChan
       type="button"
       onClick={() => onChange('grid')}
       className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-        viewMode === 'grid' ? 'bg-white/12 text-white' : 'text-ink-muted hover:text-ink-secondary'
+        viewMode === 'grid'
+          ? 'bg-surface-raised text-ink-primary shadow-xs'
+          : 'text-ink-muted hover:text-ink-secondary'
       }`}
       aria-pressed={viewMode === 'grid'}
     >
@@ -171,7 +173,9 @@ export const ViewModeToggle: React.FC<ViewModeToggleProps> = ({ viewMode, onChan
       type="button"
       onClick={() => onChange('list')}
       className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-        viewMode === 'list' ? 'bg-white/12 text-white' : 'text-ink-muted hover:text-ink-secondary'
+        viewMode === 'list'
+          ? 'bg-surface-raised text-ink-primary shadow-xs'
+          : 'text-ink-muted hover:text-ink-secondary'
       }`}
       aria-pressed={viewMode === 'list'}
     >

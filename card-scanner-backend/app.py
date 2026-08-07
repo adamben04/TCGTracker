@@ -12,6 +12,7 @@ import os
 import re
 import tempfile
 import uuid
+import warnings
 from io import BytesIO
 
 # Some libraries (ocr_ops/easyocr) write temporary files to the system temp dir,
@@ -72,7 +73,12 @@ except ImportError:
 app = Flask(__name__)
 # Reject oversized uploads early. Scans are phone photos; 20 MB is generous
 # while bounding memory on the free HF Space instance.
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_IMAGE_PIXELS = 50_000_000
+MAX_IMAGE_DIMENSION = 6_000
+app.config["MAX_CONTENT_LENGTH"] = MAX_IMAGE_BYTES
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+warnings.filterwarnings("error", category=Image.DecompressionBombWarning)
 
 # In-memory rate limit for scan/grade endpoints. Simple sliding window keyed by
 # client IP — enough to stop a single phone/script from hammering the free
@@ -99,13 +105,33 @@ def _rate_limited(ip: str) -> bool:
         hits.append(now)
         return False
 
-# CORS: allow comma-separated list of origins via SCANNER_CORS_ORIGIN env, or
-# the Cloudflare Pages origin in production. Default mirrors the local dev SPA.
-_cors_env = os.environ.get("SCANNER_CORS_ORIGIN", "").strip()
-if _cors_env:
-    CORS(app, origins=[o.strip() for o in _cors_env.split(",") if o.strip()], supports_credentials=True)
-else:
-    CORS(app, supports_credentials=True)
+def _is_production_environment(environ: dict | None = None) -> bool:
+    """Identify hosted/production processes without changing local defaults."""
+    environment = environ if environ is not None else os.environ
+    return (
+        environment.get("RENDER") == "true"
+        or bool(environment.get("RENDER_SERVICE_ID"))
+        or environment.get("FLASK_ENV", "").lower() == "production"
+        or environment.get("APP_ENV", "").lower() == "production"
+        or environment.get("ENVIRONMENT", "").lower() == "production"
+    )
+
+
+def _configure_cors(flask_app: Flask, environ: dict | None = None) -> str:
+    """Configure explicit production CORS while retaining frictionless local use."""
+    environment = environ if environ is not None else os.environ
+    origins = [origin.strip() for origin in environment.get("SCANNER_CORS_ORIGIN", "").split(",") if origin.strip()]
+    if origins:
+        CORS(flask_app, origins=origins, supports_credentials=True)
+        return "configured"
+    if not _is_production_environment(environment):
+        CORS(flask_app, supports_credentials=True)
+        return "development-open"
+    # Do not install Flask-CORS in production without an explicit allowlist.
+    return "production-disabled"
+
+
+_cors_mode = _configure_cors(app)
 
 # --- Windows fix: ocr_ops writes to an open NamedTemporaryFile, which
 # cv2.imwrite cannot overwrite on Windows ("Permission denied"). Replace the
@@ -146,11 +172,11 @@ try:
     from fast_match import FastMatcher
 
     _fast_matcher = FastMatcher()
-    _fast_ready = _fast_matcher.loaded
+    _fast_ready = _fast_matcher.loaded and _fast_matcher.size > 0
     if _fast_ready:
         print(f"Fast matcher ready: {_fast_matcher.size} cards indexed (DINOv2 embeddings)")
     else:
-        print("Fast matcher: index not found (run build_embeddings.py); using OCR path only")
+        print("Fast matcher: usable index not found (run build_embeddings.py); using OCR path only")
 except Exception as exc:
     print(f"Fast matcher disabled: {exc}")
     _fast_matcher = None
@@ -350,6 +376,104 @@ def save_temp_image(img: Image.Image) -> str:
     return path
 
 
+class ImageValidationError(ValueError):
+    """A client image failed a size, dimension, or decode safety check."""
+
+    def __init__(self, message: str, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _validate_image_dimensions(img: Image.Image) -> None:
+    width, height = img.size
+    if width <= 0 or height <= 0:
+        raise ImageValidationError("Image has invalid dimensions")
+    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+        raise ImageValidationError(
+            f"Image dimensions exceed the {MAX_IMAGE_DIMENSION}px limit",
+            413,
+        )
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ImageValidationError(
+            f"Image exceeds the {MAX_IMAGE_PIXELS:,} decoded-pixel limit",
+            413,
+        )
+
+
+def _decode_image_bytes(data: bytes) -> Image.Image:
+    """Decode a bounded image only after inspecting its decoded dimensions."""
+    if not data:
+        raise ImageValidationError("Image is empty")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ImageValidationError("Image exceeds the 20 MB upload limit", 413)
+    try:
+        # Pillow opens headers lazily. The process-wide bomb warning policy is
+        # configured once at startup so concurrent WSGI requests cannot race on
+        # warning filters.
+        with Image.open(BytesIO(data)) as probe:
+            _validate_image_dimensions(probe)
+            probe.verify()
+        with Image.open(BytesIO(data)) as decoded:
+            _validate_image_dimensions(decoded)
+            decoded.load()
+            return decoded.copy()
+    except ImageValidationError:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ImageValidationError("Image is too large to process safely", 413) from exc
+    except Exception as exc:
+        raise ImageValidationError("Invalid or corrupted image data") from exc
+
+
+def _decode_base64_image(raw: object) -> Image.Image:
+    """Decode a base64 request field while enforcing its compressed-byte limit."""
+    if not isinstance(raw, str):
+        raise ImageValidationError("Image must be a base64 string")
+    if "base64," in raw:
+        raw = raw.split("base64,", 1)[1]
+    # Base64 expands input by roughly a third. Check before allocating decoded
+    # bytes because JSON requests are not represented by FileStorage streams.
+    max_encoded_bytes = ((MAX_IMAGE_BYTES + 2) // 3) * 4
+    if len(raw) > max_encoded_bytes:
+        raise ImageValidationError("Image exceeds the 20 MB upload limit", 413)
+    try:
+        data = base64.b64decode(raw, validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ImageValidationError("Image is not valid base64") from exc
+    return _decode_image_bytes(data)
+
+
+def _decode_request_image(field_name: str) -> Image.Image | None:
+    """Read one request image into memory with compressed and decoded limits."""
+    if field_name in request.files:
+        file = request.files[field_name]
+        if not file.filename:
+            return None
+        return _decode_image_bytes(file.stream.read(MAX_IMAGE_BYTES + 1))
+    if request.is_json:
+        payload = request.get_json(silent=True)
+        if isinstance(payload, dict) and field_name in payload:
+            return _decode_base64_image(payload[field_name])
+    return None
+
+
+def _encode_preview(img: Image.Image) -> str:
+    """Return a bounded JPEG preview without retaining the upload on the scanner."""
+    try:
+        preview = img.copy().convert("RGB")
+        if max(preview.size) > 1_600:
+            ratio = 1_600 / max(preview.size)
+            preview = preview.resize(
+                (max(1, int(preview.width * ratio)), max(1, int(preview.height * ratio))),
+                Image.LANCZOS,
+            )
+        buffer = BytesIO()
+        preview.save(buffer, format="JPEG", quality=82, optimize=True)
+        return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _safe_set_name(card) -> str:
     """Extract set name regardless of whether card.set is a string or object."""
     s = getattr(card, "set", None)
@@ -418,6 +542,13 @@ def _try_fast_match(image_bgr: np.ndarray) -> dict | None:
 @app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint with grading provider status."""
+    fast_matcher_ready = bool(
+        _fast_ready
+        and _fast_matcher is not None
+        and getattr(_fast_matcher, "loaded", False)
+        and getattr(_fast_matcher, "size", 0) > 0
+    )
+    fast_cards_indexed = getattr(_fast_matcher, "size", 0) if fast_matcher_ready else 0
     provider = {}
     try:
         from model_inference import provider_info
@@ -434,6 +565,11 @@ def health():
             "extraction": EXTRACTION_AVAILABLE,
             "ollama_grading": OLLAMA_AVAILABLE,
             "preprocessing": PREPROCESSING_AVAILABLE,
+            "fast_matcher_ready": fast_matcher_ready,
+        },
+        "fast_matcher": {
+            "ready": fast_matcher_ready,
+            "cards_indexed": fast_cards_indexed,
         },
         "provider": provider,
     }
@@ -575,14 +711,11 @@ def scan_card():
             file = request.files["image"]
             if not file.filename:
                 return jsonify({"success": False, "error": "No file selected"}), 400
-            img = Image.open(file.stream)
+            img = _decode_request_image("image")
 
         # ── Accept JSON base64 ────────────────────────────────────────────────
         elif request.is_json and request.json and "image" in request.json:
-            raw = request.json["image"]
-            if "base64," in raw:
-                raw = raw.split("base64,", 1)[1]
-            img = Image.open(BytesIO(base64.b64decode(raw)))
+            img = _decode_request_image("image")
 
         else:
             return jsonify({"success": False, "error": "No image provided"}), 400
@@ -707,6 +840,10 @@ def scan_card():
 
         return jsonify({"success": True, "card": card_info, "debug": debug})
 
+    except ImageValidationError as exc:
+        _cleanup(image_path)
+        return jsonify({"success": False, "error": str(exc)}), exc.status_code
+
     except RuntimeError as exc:
         _cleanup(image_path)
         return jsonify({"success": False, "error": str(exc)}), 503
@@ -746,11 +883,6 @@ def reference_status():
     return jsonify({"success": True, **status})
 
 
-# In-memory grading history for the Python service (cardId → list of results).
-# Persistent history lives in the Node/SQLite grading_results table.
-_grading_history: dict[str, list[dict]] = {}
-
-
 @app.route("/api/grade-card", methods=["POST"])
 def grade_card():
     """TAG-style AI condition grading (centering/corners/edges/surface) — front + optional back."""
@@ -761,50 +893,20 @@ def grade_card():
     try:
         from grading_service import grade_card_image
 
-        def _decode_image_from_request(field_name: str) -> Image.Image | None:
-            """Extract a PIL Image from file upload or base64 JSON for a given field name."""
-            if field_name in request.files:
-                file = request.files[field_name]
-                if not file.filename:
-                    return None
-                return Image.open(file.stream)
-            elif request.is_json and request.json and field_name in request.json:
-                raw = request.json[field_name]
-                if "base64," in raw:
-                    raw = raw.split("base64,", 1)[1]
-                return Image.open(BytesIO(base64.b64decode(raw)))
-            return None
-
-        def _encode_preview(img: Image.Image) -> str:
-            """Encode a high-res JPEG data URL for sharp evidence viewing."""
-            try:
-                buf = BytesIO()
-                save_img = img.copy()
-                if max(save_img.size) > 2400:
-                    ratio = 2400 / max(save_img.size)
-                    save_img = save_img.resize(
-                        (int(save_img.width * ratio), int(save_img.height * ratio)),
-                        Image.LANCZOS,
-                    )
-                save_img.save(buf, format="JPEG", quality=95)
-                return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-            except Exception:
-                return ""
-
         # Decode front image (required)
-        front_img = _decode_image_from_request("image")
+        front_img = _decode_request_image("image")
         if front_img is None:
             return jsonify({"success": False, "error": "No front image provided"}), 400
 
         front_img = preprocess_for_grading(front_img)
-        front_b64 = _encode_preview(front_img)
+        front_preview = _encode_preview(front_img)
 
         # Decode back image (optional)
-        back_img = _decode_image_from_request("backImage")
-        back_b64 = ""
+        back_img = _decode_request_image("backImage")
+        back_preview = ""
         if back_img is not None:
             back_img = preprocess_for_grading(back_img)
-            back_b64 = _encode_preview(back_img)
+            back_preview = _encode_preview(back_img)
 
         meta = {}
         if request.is_json and request.json:
@@ -848,20 +950,20 @@ def grade_card():
             "cardId": meta.get("cardId") or "",
             "cardName": meta.get("cardName") or "Unknown Card",
             "game": meta.get("game") or "pokemon",
-            "imageUrl": front_b64,
-            "backImageUrl": back_b64,
+            "imageUrl": front_preview,
+            "backImageUrl": back_preview,
             "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
             "estimatedGradedValue": estimated,
         }
-
-        card_key = result["cardId"] or result["id"]
-        _grading_history.setdefault(card_key, []).insert(0, result)
-        _grading_history[card_key] = _grading_history[card_key][:50]
 
         _cleanup(image_path)
         _cleanup(back_image_path)
         return jsonify({"success": True, "grading": result})
 
+    except ImageValidationError as exc:
+        _cleanup(image_path)
+        _cleanup(back_image_path)
+        return jsonify({"success": False, "error": str(exc)}), exc.status_code
     except ImportError as exc:
         _cleanup(image_path)
         _cleanup(back_image_path)
@@ -912,38 +1014,8 @@ def grade_card_llm():
         }), 503
 
     try:
-        def _decode_image_from_request(field_name: str) -> Image.Image | None:
-            """Extract a PIL Image from file upload or base64 JSON."""
-            if field_name in request.files:
-                file = request.files[field_name]
-                if not file.filename:
-                    return None
-                return Image.open(file.stream)
-            elif request.is_json and request.json and field_name in request.json:
-                raw = request.json[field_name]
-                if "base64," in raw:
-                    raw = raw.split("base64,", 1)[1]
-                return Image.open(BytesIO(base64.b64decode(raw)))
-            return None
-
-        def _encode_preview(img: Image.Image) -> str:
-            """Encode a high-res JPEG data URL for sharp evidence viewing."""
-            try:
-                buf = BytesIO()
-                save_img = img.copy()
-                if max(save_img.size) > 2400:
-                    ratio = 2400 / max(save_img.size)
-                    save_img = save_img.resize(
-                        (int(save_img.width * ratio), int(save_img.height * ratio)),
-                        Image.LANCZOS,
-                    )
-                save_img.save(buf, format="JPEG", quality=95)
-                return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-            except Exception:
-                return ""
-
         # Decode front image (required)
-        front_img = _decode_image_from_request("image")
+        front_img = _decode_request_image("image")
         if front_img is None:
             return jsonify({"success": False, "error": "No front image provided"}), 400
 
@@ -957,11 +1029,11 @@ def grade_card_llm():
 
         # Preprocess for grading
         front_img = preprocess_for_grading(front_img)
-        front_b64 = _encode_preview(front_img)
+        front_preview = _encode_preview(front_img)
 
         # Decode back image (optional)
-        back_img = _decode_image_from_request("backImage")
-        back_b64 = ""
+        back_img = _decode_request_image("backImage")
+        back_preview = ""
         if back_img is not None:
             if PREPROCESSING_AVAILABLE:
                 try:
@@ -969,9 +1041,8 @@ def grade_card_llm():
                     back_img = preprocessed_back.card_image
                 except Exception as e:
                     print(f"[app] Back preprocessing failed, using original: {e}")
-
             back_img = preprocess_for_grading(back_img)
-            back_b64 = _encode_preview(back_img)
+            back_preview = _encode_preview(back_img)
 
         # Get metadata
         meta = {}
@@ -1053,19 +1124,16 @@ def grade_card_llm():
             "cardId": meta.get("cardId") or "",
             "cardName": meta.get("cardName") or "Unknown Card",
             "game": meta.get("game") or "pokemon",
-            "imageUrl": front_b64,
-            "backImageUrl": back_b64,
+            "imageUrl": front_preview,
+            "backImageUrl": back_preview,
             "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
             "estimatedGradedValue": estimated,
         }
 
-        # Store in history
-        card_key = result["cardId"] or result["id"]
-        _grading_history.setdefault(card_key, []).insert(0, result)
-        _grading_history[card_key] = _grading_history[card_key][:50]
-
         return jsonify({"success": True, "grading": result})
 
+    except ImageValidationError as exc:
+        return jsonify({"success": False, "error": str(exc)}), exc.status_code
     except Exception as exc:
         import traceback
         traceback.print_exc()
@@ -1094,12 +1162,6 @@ def _get_grade_label(grade: float) -> str:
         return "Good"
     else:
         return "Fair"
-
-
-@app.route("/api/grading-history/<card_id>", methods=["GET"])
-def grading_history(card_id: str):
-    history = _grading_history.get(card_id, [])
-    return jsonify({"success": True, "history": history, "count": len(history)})
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import { pokemonApi } from '../../../services/pokemonApi';
 import { setWishlistService } from '../../../services/setWishlistService';
 import { PokemonCard } from '../../../types/pokemon';
 import { AddToVaultModal } from '../../vault/components/AddToVaultModal';
-import { markOnboardingStep } from '../../../components/common/OnboardingChecklist';
+import { markOnboardingStep } from '../../../components/common/onboarding';
 
 interface ScanResultActionsProps {
   result: ScanResult;

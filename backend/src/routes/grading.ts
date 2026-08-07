@@ -118,7 +118,7 @@ function normalizeCategory(
 
 function persistResult(
   grading: GradingResultDTO,
-  userId: string | null,
+  userId: string,
   imageUrl?: string,
   backImageUrl?: string,
   fullResult?: Record<string, unknown>
@@ -198,7 +198,8 @@ router.get('/health', async (_req, res: Response) => {
       bodyTimeout: 4_000,
     });
     const data = (await upstream.body.json()) as { status?: string; message?: string };
-    const okStatus = upstream.statusCode >= 200 && upstream.statusCode < 300 && data?.status === 'ok';
+    const okStatus =
+      upstream.statusCode >= 200 && upstream.statusCode < 300 && data?.status === 'ok';
     if (!okStatus) {
       return fail(res, data?.message || 'Scanner unhealthy', 502);
     }
@@ -208,7 +209,10 @@ router.get('/health', async (_req, res: Response) => {
       scannerUrl: SCANNER_URL,
     });
   } catch (error: any) {
-    logger.warn('Grading scanner health check failed', { error: error?.message, scannerUrl: SCANNER_URL });
+    logger.warn('Grading scanner health check failed', {
+      error: error?.message,
+      scannerUrl: SCANNER_URL,
+    });
     fail(res, error?.message || 'Scanner unreachable', 503);
   }
 });
@@ -219,7 +223,6 @@ router.post(
   validate(analyzeSchema),
   async (req: AuthRequest, res: Response) => {
     try {
-      await ensureTable();
       const { image, backImage, cardId, cardName, game, rawPrice, imageUrl } = req.body;
 
       const python = await forwardToPython({
@@ -233,16 +236,17 @@ router.post(
 
       if (!python.success || !python.grading) {
         const status =
-          python.statusCode === 422 ? 422 : python.statusCode && python.statusCode >= 400
-            ? python.statusCode
-            : 502;
+          python.statusCode === 422
+            ? 422
+            : python.statusCode && python.statusCode >= 400
+              ? python.statusCode
+              : 502;
         return fail(res, python.error || 'Grading analysis failed', status, {
           code: python.code,
           retakeRecommended: python.retakeRecommended ?? status === 422,
         });
       }
 
-      const userId = req.user ? String(req.user.id) : null;
       const backImageUrl = python.grading?.backImageUrl || '';
       const fullResult = python.grading?.front
         ? {
@@ -278,33 +282,44 @@ router.post(
         return fail(res, 'Grading response missing category scores', 502);
       }
 
-      const stored = await persistResult(
-        {
-          ...python.grading,
-          cardId: cardId || python.grading?.cardId || '',
-          cardName: cardName || python.grading?.cardName || 'Unknown Card',
-          game: game || python.grading?.game || 'pokemon',
-          imageUrl: imageUrl || python.grading?.imageUrl || '',
-          backImageUrl,
-          centering,
-          corners,
-          edges,
-          surface,
-          defectRegions: (python.grading?.defectRegions || []).map((r: any) => ({
-            category: r.category,
-            side: r.side,
-            label: r.label,
-            severity: r.severity,
-            location: r.location,
-          })),
-          front: python.grading?.front,
-          back: python.grading?.back,
-        },
-        userId,
-        imageUrl || python.grading?.imageUrl || '',
+      const result = {
+        ...python.grading,
+        cardId: cardId || python.grading?.cardId || '',
+        cardName: cardName || python.grading?.cardName || 'Unknown Card',
+        game: game || python.grading?.game || 'pokemon',
+        imageUrl: imageUrl || python.grading?.imageUrl || '',
         backImageUrl,
-        fullResult
-      );
+        centering,
+        corners,
+        edges,
+        surface,
+        defectRegions: (python.grading?.defectRegions || []).map((r: any) => ({
+          category: r.category,
+          side: r.side,
+          label: r.label,
+          severity: r.severity,
+          location: r.location,
+        })),
+        front: python.grading?.front,
+        back: python.grading?.back,
+      } as GradingResultDTO;
+
+      const stored = req.user
+        ? await (async () => {
+            await ensureTable();
+            return persistResult(
+              result,
+              String(req.user!.id),
+              imageUrl || python.grading?.imageUrl || '',
+              backImageUrl,
+              fullResult
+            );
+          })()
+        : {
+            ...result,
+            id: result.id || '',
+            timestamp: result.timestamp || new Date().toISOString(),
+          };
 
       ok(res, {
         grading: {
@@ -324,20 +339,15 @@ router.post(
   }
 );
 
-router.get('/history', optionalAuth, async (req: AuthRequest, res: Response) => {
+router.get('/history', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     await ensureTable();
     const db = getDb();
     const cardId = req.query.cardId as string | undefined;
     const limit = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 200);
 
-    const params: (string | number)[] = [];
-    let sql = 'SELECT * FROM grading_results WHERE 1=1';
-
-    if (req.user) {
-      sql += ' AND (user_id = ? OR user_id IS NULL)';
-      params.push(String(req.user.id));
-    }
+    const params: (string | number)[] = [String(req.user!.id)];
+    let sql = 'SELECT * FROM grading_results WHERE user_id = ?';
     if (cardId) {
       sql += ' AND card_id = ?';
       params.push(cardId);
@@ -346,7 +356,9 @@ router.get('/history', optionalAuth, async (req: AuthRequest, res: Response) => 
     params.push(limit);
 
     const rows: GradingResultRow[] = await new Promise((resolve, reject) => {
-      db.all(sql, params, (err, r) => (err ? reject(err) : resolve((r as GradingResultRow[]) || [])));
+      db.all(sql, params, (err, r) =>
+        err ? reject(err) : resolve((r as GradingResultRow[]) || [])
+      );
     });
 
     ok(res, { history: rows.map(rowToGradingResult), count: rows.length });
@@ -355,7 +367,7 @@ router.get('/history', optionalAuth, async (req: AuthRequest, res: Response) => 
   }
 });
 
-router.get('/history/:cardId', optionalAuth, async (req: AuthRequest, res: Response) => {
+router.get('/history/:cardId', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     await ensureTable();
     const db = getDb();
@@ -363,8 +375,8 @@ router.get('/history/:cardId', optionalAuth, async (req: AuthRequest, res: Respo
 
     const rows: GradingResultRow[] = await new Promise((resolve, reject) => {
       db.all(
-        'SELECT * FROM grading_results WHERE card_id = ? ORDER BY created_at DESC LIMIT 50',
-        [cardId],
+        'SELECT * FROM grading_results WHERE card_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 50',
+        [cardId, String(req.user!.id)],
         (err, r) => (err ? reject(err) : resolve((r as GradingResultRow[]) || []))
       );
     });

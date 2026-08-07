@@ -19,8 +19,8 @@ export interface CardIdentifier {
  * Format: setId|cardNumber|cardName (normalized)
  */
 export const generateUniqueIdentifier = (
-  setId: string, 
-  cardNumber: string | undefined, 
+  setId: string,
+  cardNumber: string | undefined,
   cardName: string,
   variantKey: string = 'normal'
 ): string => {
@@ -35,7 +35,9 @@ export const generateUniqueIdentifier = (
 /**
  * Stores or updates card mapping information
  */
-export const storeCardMapping = async (cardData: Omit<CardIdentifier, 'uniqueIdentifier'>): Promise<string> => {
+export const storeCardMapping = async (
+  cardData: Omit<CardIdentifier, 'uniqueIdentifier'>
+): Promise<string> => {
   const db = getDb();
   const uniqueIdentifier = generateUniqueIdentifier(
     cardData.setId,
@@ -43,44 +45,50 @@ export const storeCardMapping = async (cardData: Omit<CardIdentifier, 'uniqueIde
     cardData.cardName,
     cardData.variantKey || 'normal'
   );
-  
+
   return new Promise((resolve, reject) => {
     const sql = `
       INSERT OR REPLACE INTO card_mappings 
       (cardId, productId, cardName, setId, setName, cardNumber, rarity, variantKey, tcgplayerProductId, uniqueIdentifier, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `;
-    
-    db.run(sql, [
-      cardData.cardId,
-      cardData.productId || null,
-      cardData.cardName,
-      cardData.setId,
-      cardData.setName,
-      cardData.cardNumber || null,
-      cardData.rarity || null,
-      cardData.variantKey || 'normal',
-      cardData.tcgplayerProductId || null,
-      uniqueIdentifier
-    ], function(err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(uniqueIdentifier);
+
+    db.run(
+      sql,
+      [
+        cardData.cardId,
+        cardData.productId || null,
+        cardData.cardName,
+        cardData.setId,
+        cardData.setName,
+        cardData.cardNumber || null,
+        cardData.rarity || null,
+        cardData.variantKey || 'normal',
+        cardData.tcgplayerProductId || null,
+        uniqueIdentifier,
+      ],
+      function (err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(uniqueIdentifier);
+        }
       }
-    });
+    );
   });
 };
 
 /**
  * Finds card mapping by unique identifier
  */
-export const findCardByIdentifier = async (uniqueIdentifier: string): Promise<CardIdentifier | null> => {
+export const findCardByIdentifier = async (
+  uniqueIdentifier: string
+): Promise<CardIdentifier | null> => {
   const db = getDb();
-  
+
   return new Promise((resolve, reject) => {
     const sql = 'SELECT * FROM card_mappings WHERE uniqueIdentifier = ?';
-    
+
     db.get(sql, [uniqueIdentifier], (err, row: any) => {
       if (err) {
         reject(err);
@@ -95,7 +103,7 @@ export const findCardByIdentifier = async (uniqueIdentifier: string): Promise<Ca
           rarity: row.rarity,
           variantKey: row.variantKey || 'normal',
           tcgplayerProductId: row.tcgplayerProductId,
-          uniqueIdentifier: row.uniqueIdentifier
+          uniqueIdentifier: row.uniqueIdentifier,
         });
       } else {
         resolve(null);
@@ -117,16 +125,6 @@ const dbGet = (sql: string, params: any[] = []): Promise<any> => {
   });
 };
 
-const dbAll = (sql: string, params: any[] = []): Promise<any[]> => {
-  const db = getDb();
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows || []);
-    });
-  });
-};
-
 export const findCardByDetails = async (
   cardName: string,
   setId: string,
@@ -138,7 +136,7 @@ export const findCardByDetails = async (
   const normalizedVariantKey = variantKey
     ? variantKey.toLowerCase().replace(/[^a-z0-9]/g, '')
     : null;
-  const isPromo = (rarity === 'Promo' || setId.toLowerCase().includes('promo'));
+  const isPromo = rarity === 'Promo' || setId.toLowerCase().includes('promo');
   const normalizedCardNumber = cardNumber
     ? cardNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
     : null;
@@ -154,7 +152,14 @@ export const findCardByDetails = async (
          CASE WHEN REPLACE(LOWER(COALESCE(setId, '')), ' ', '') = ? THEN 0 ELSE 1 END,
          updatedAt DESC
        LIMIT 1`,
-      [productId, normalizedVariantKey, normalizedVariantKey, normalizedCardNumber, normalizedCardNumber, normalizedSetId]
+      [
+        productId,
+        normalizedVariantKey,
+        normalizedVariantKey,
+        normalizedCardNumber,
+        normalizedCardNumber,
+        normalizedSetId,
+      ]
     );
     if (row) return row as CardIdentifier;
   }
@@ -205,8 +210,12 @@ export const findCardByDetails = async (
       ORDER BY ${orderClause([])}`,
     (() => {
       const p: any[] = [cardName];
-      if (!isPromo) { p.push(setId, `%${setId}%`); }
-      if (cardNumber) { p.push(cardNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()); }
+      if (!isPromo) {
+        p.push(setId, `%${setId}%`);
+      }
+      if (cardNumber) {
+        p.push(cardNumber.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+      }
       if (normalizedVariantKey) p.push(normalizedVariantKey);
       return p;
     })()
@@ -220,7 +229,9 @@ export const findCardByDetails = async (
      ORDER BY ${orderClause([])}`,
     (() => {
       const p: any[] = [`%${cardName.toLowerCase()}%`];
-      if (!isPromo) { p.push(setId, `%${setId}%`); }
+      if (!isPromo) {
+        p.push(setId, `%${setId}%`);
+      }
       if (normalizedVariantKey) p.push(normalizedVariantKey);
       return p;
     })()
@@ -239,9 +250,8 @@ export const findExactCardByDetails = async (params: {
   variantKey?: string;
 }): Promise<CardIdentifier | null> => {
   const db = getDb();
-  const normalizedVariantKey = (params.variantKey || 'normal')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '') || 'normal';
+  const normalizedVariantKey =
+    (params.variantKey || 'normal').toLowerCase().replace(/[^a-z0-9]/g, '') || 'normal';
   const normalizedSetId = params.setId.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedName = params.cardName.toLowerCase().replace(/[^a-z0-9]/g, '');
   const normalizedCardNumber = params.cardNumber
@@ -295,7 +305,7 @@ export const findExactCardByDetails = async (params: {
  */
 export const getCardPriceHistory = async (uniqueIdentifier: string): Promise<any[]> => {
   const db = getDb();
-  
+
   return new Promise((resolve, reject) => {
     const sql = `
       SELECT * FROM price_history 
@@ -314,12 +324,16 @@ export const getCardPriceHistory = async (uniqueIdentifier: string): Promise<any
   });
 };
 
-const sanitizeHistoryRow = <T extends {
-  marketPrice?: number | null;
-  price?: number | null;
-  lowPrice?: number | null;
-  highPrice?: number | null;
-}>(row: T): T => {
+const sanitizeHistoryRow = <
+  T extends {
+    marketPrice?: number | null;
+    price?: number | null;
+    lowPrice?: number | null;
+    highPrice?: number | null;
+  },
+>(
+  row: T
+): T => {
   const resolved = resolveHistoryPointPrice(row);
   if (resolved <= 0) return row;
   return {
@@ -420,10 +434,10 @@ export const updatePriceHistoryWithIdentifier = async (
   uniqueIdentifier: string
 ): Promise<void> => {
   const db = getDb();
-  
+
   return new Promise((resolve, reject) => {
     const sql = 'UPDATE price_history SET uniqueIdentifier = ? WHERE productId = ?';
-    
+
     db.run(sql, [uniqueIdentifier, productId], (err) => {
       if (err) {
         reject(err);
@@ -433,5 +447,3 @@ export const updatePriceHistoryWithIdentifier = async (
     });
   });
 };
-
- 

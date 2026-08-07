@@ -109,9 +109,7 @@ export const GradingResultView: React.FC<GradingResultViewProps> = ({
               </h2>
               <p className="mt-1 text-sm text-ink-muted">
                 {result.grade}/10 · {result.gradeLabel}
-                {result.back && (
-                  <span className="ml-2 text-ink-muted">· Front + Back</span>
-                )}
+                {result.back && <span className="ml-2 text-ink-muted">· Front + Back</span>}
                 {result.confidence != null && (
                   <span className="ml-2 text-ink-muted">
                     · Confidence {Math.round(result.confidence * 100)}%
@@ -129,7 +127,9 @@ export const GradingResultView: React.FC<GradingResultViewProps> = ({
               )}
               {result.extraction?.overlay && (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-accent">Detection overlay</summary>
+                  <summary className="cursor-pointer text-xs text-accent">
+                    Detection overlay
+                  </summary>
                   <img
                     src={result.extraction.overlay}
                     alt="Card detection overlay"
@@ -205,11 +205,11 @@ export const GradingResultView: React.FC<GradingResultViewProps> = ({
         'deviations' in centering &&
         centering.deviations &&
         typeof centering.deviations.leftRight === 'number' && (
-        <p className="mt-3 text-xs text-ink-muted">
-          Centering — L/R {formatRatio(centering.deviations.leftRight)} · T/B{' '}
-          {formatRatio(centering.deviations.topBottom)}
-        </p>
-      )}
+          <p className="mt-3 text-xs text-ink-muted">
+            Centering — L/R {formatRatio(centering.deviations.leftRight)} · T/B{' '}
+            {formatRatio(centering.deviations.topBottom)}
+          </p>
+        )}
 
       {/* Full TAG-style detailed report with close-ups */}
       <div className="mt-6">

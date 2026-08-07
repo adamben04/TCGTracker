@@ -95,10 +95,7 @@ class CardWishlistService {
     this.save(items, game);
   }
 
-  toggle(
-    card: PokemonCard | OnePieceCard,
-    game: 'pokemon' | 'onepiece' = 'pokemon'
-  ): boolean {
+  toggle(card: PokemonCard | OnePieceCard, game: 'pokemon' | 'onepiece' = 'pokemon'): boolean {
     if (this.isWishlisted(card.id, game)) {
       this.remove(card.id, game);
       return false;

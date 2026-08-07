@@ -73,14 +73,15 @@ class SetTrackerService {
     return sets;
   }
 
-  async getSetCards(setId: string, wishlistIds?: Set<string>): Promise<{
+  async getSetCards(
+    setId: string,
+    wishlistIds?: Set<string>
+  ): Promise<{
     set: PokemonSet;
     cards: SetTrackerCard[];
   }> {
     const ownedIds = this.getOwnedCardIds();
-    const wishlistParam = wishlistIds?.size
-      ? `&wishlistIds=${[...wishlistIds].join(',')}`
-      : '';
+    const wishlistParam = wishlistIds?.size ? `&wishlistIds=${[...wishlistIds].join(',')}` : '';
     const data = await this.fetchJson<{
       set: PokemonSet;
       data: SetTrackerCard[];
@@ -96,10 +97,10 @@ class SetTrackerService {
     wishlistIds?: Set<string>
   ): Promise<{ set: PokemonSet; summary: SetSummary }> {
     const ownedParam = this.ownedIdsParam();
-    const wishlistParam = wishlistIds?.size
-      ? `&wishlistIds=${[...wishlistIds].join(',')}`
-      : '';
-    return this.fetchJson(`/api/cards/sets/${encodeURIComponent(setId)}/summary?ownedIds=${ownedParam}${wishlistParam}`);
+    const wishlistParam = wishlistIds?.size ? `&wishlistIds=${[...wishlistIds].join(',')}` : '';
+    return this.fetchJson(
+      `/api/cards/sets/${encodeURIComponent(setId)}/summary?ownedIds=${ownedParam}${wishlistParam}`
+    );
   }
 
   async getSetValueHistory(
@@ -125,18 +126,14 @@ class SetTrackerService {
   /** Completion % for index badges (vault-only, no API per set) */
   getCompletionForSet(setId: string, setName: string, totalCards: number): number {
     if (totalCards <= 0) return 0;
-    const owned = vaultService.getVaultCards().filter(
-      (v) => v.card.set?.id === setId || v.card.set?.name === setName
-    );
+    const owned = vaultService
+      .getVaultCards()
+      .filter((v) => v.card.set?.id === setId || v.card.set?.name === setName);
     const uniqueOwned = new Set(owned.map((v) => v.card.id)).size;
     return (uniqueOwned / totalCards) * 100;
   }
 
-  exportChecklistCsv(
-    setName: string,
-    cards: SetTrackerCard[],
-    wishlistIds: Set<string>
-  ): void {
+  exportChecklistCsv(setName: string, cards: SetTrackerCard[], wishlistIds: Set<string>): void {
     const header = 'Number,Name,Rarity,Owned,Wishlist,Market Price';
     const rows = cards.map((c) => {
       const owned = c.owned ? 'yes' : 'no';

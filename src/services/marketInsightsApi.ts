@@ -1,5 +1,13 @@
 import { env } from '../config/env';
-import { CardPrediction, BacktestResult, ForwardTestStatus, CardPredictionDetail, PredictionFilters, PredictionWindow, ExternalSignal } from '../features/market-insights/types';
+import {
+  CardPrediction,
+  BacktestResult,
+  ForwardTestStatus,
+  CardPredictionDetail,
+  PredictionFilters,
+  PredictionWindow,
+  ExternalSignal,
+} from '../features/market-insights/types';
 
 const BASE_URL = `${env.apiUrl}/api/market-insights`;
 
@@ -36,9 +44,12 @@ export const marketInsightsApi = {
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.category) searchParams.set('category', params.category);
     if (params?.window) searchParams.set('window', params.window);
-    if (params?.filters?.minPrice !== undefined) searchParams.set('minPrice', String(params.filters.minPrice));
-    if (params?.filters?.maxPrice !== undefined) searchParams.set('maxPrice', String(params.filters.maxPrice));
-    if (params?.filters?.minConfidence !== undefined) searchParams.set('minConfidence', String(params.filters.minConfidence));
+    if (params?.filters?.minPrice !== undefined)
+      searchParams.set('minPrice', String(params.filters.minPrice));
+    if (params?.filters?.maxPrice !== undefined)
+      searchParams.set('maxPrice', String(params.filters.maxPrice));
+    if (params?.filters?.minConfidence !== undefined)
+      searchParams.set('minConfidence', String(params.filters.minConfidence));
     if (params?.filters?.rarities && params.filters.rarities.length > 0) {
       searchParams.set('rarities', params.filters.rarities.join(','));
     }
@@ -70,7 +81,7 @@ export const marketInsightsApi = {
   async runBacktest(params: {
     backtestDate: string;
     windowDays?: number;
-  }): Promise<BacktestResult & { cardResults: any[] }> {
+  }): Promise<BacktestResult & { cardResults: unknown[] }> {
     return fetchJson(`${BASE_URL}/backtest`, {
       method: 'POST',
       body: JSON.stringify(params),
@@ -93,7 +104,12 @@ export const marketInsightsApi = {
     return fetchJson(`${BASE_URL}/external-signals/${encodeURIComponent(cardId)}`);
   },
 
-  async triggerSignalScrape(): Promise<{ success: boolean; scraped: number; stored: number; message: string }> {
+  async triggerSignalScrape(): Promise<{
+    success: boolean;
+    scraped: number;
+    stored: number;
+    message: string;
+  }> {
     return fetchJson(`${BASE_URL}/run-scrape`, { method: 'POST' });
   },
 };

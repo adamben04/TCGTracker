@@ -89,90 +89,96 @@ export const mapLocalRowsToPokemonCards = async (rows: any[]) => {
   }
   const uniqueRows = Array.from(seen.values());
 
-  return await Promise.all(uniqueRows.map(async row => {
-    // PRIORITY ORDER for images:
-    // 1. Stored images from database (most reliable)
-    // 2. Deterministic Pokemon TCG API URLs
-    // No placeholder - only show real images
-    
-    let images;
-    let imageSource = row.imageSource;
-    
-    if (row.imageSmall && row.imageLarge) {
-      // Use stored images (best option)
-      images = {
-        small: row.imageSmall,
-        large: row.imageLarge
-      };
-      imageSource = imageSource || 'stored';
-    } else {
-      // Try deterministic URLs - if not available, return undefined (no image)
-      const deterministicImages = await buildDeterministicImageUrls(row.setId, row.cardNumber, row.setName);
-      if (deterministicImages) {
-        images = deterministicImages;
-        imageSource = 'deterministic';
-      } else {
-        const fallbackImage = buildFallbackImage(row.cardName, row.setName);
+  return await Promise.all(
+    uniqueRows.map(async (row) => {
+      // PRIORITY ORDER for images:
+      // 1. Stored images from database (most reliable)
+      // 2. Deterministic Pokemon TCG API URLs
+      // No placeholder - only show real images
+
+      let images;
+      let imageSource = row.imageSource;
+
+      if (row.imageSmall && row.imageLarge) {
+        // Use stored images (best option)
         images = {
-          small: fallbackImage,
-          large: fallbackImage
+          small: row.imageSmall,
+          large: row.imageLarge,
         };
-        imageSource = 'fallback';
+        imageSource = imageSource || 'stored';
+      } else {
+        // Try deterministic URLs - if not available, return undefined (no image)
+        const deterministicImages = await buildDeterministicImageUrls(
+          row.setId,
+          row.cardNumber,
+          row.setName
+        );
+        if (deterministicImages) {
+          images = deterministicImages;
+          imageSource = 'deterministic';
+        } else {
+          const fallbackImage = buildFallbackImage(row.cardName, row.setName);
+          images = {
+            small: fallbackImage,
+            large: fallbackImage,
+          };
+          imageSource = 'fallback';
+        }
       }
-    }
 
-    const resolvedLatest = resolveHistoryPointPrice({
-      marketPrice: row.latestPrice,
-      lowPrice: row.latestLowPrice,
-      highPrice: row.latestHighPrice,
-    });
+      const resolvedLatest = resolveHistoryPointPrice({
+        marketPrice: row.latestPrice,
+        lowPrice: row.latestLowPrice,
+        highPrice: row.latestHighPrice,
+      });
 
-    let catalogPrices: Record<string, { market?: number; mid?: number; low?: number; high?: number }> | undefined;
-    if (row.catalogPrices) {
-      try {
-        catalogPrices = JSON.parse(row.catalogPrices);
-      } catch {
-        catalogPrices = undefined;
+      let catalogPrices:
+        Record<string, { market?: number; mid?: number; low?: number; high?: number }> | undefined;
+      if (row.catalogPrices) {
+        try {
+          catalogPrices = JSON.parse(row.catalogPrices);
+        } catch {
+          catalogPrices = undefined;
+        }
       }
-    }
 
-    const fromCatalog = extractBestListingPrice(catalogPrices);
-    // Snapshot first; catalog listing is fallback when we have no daily sync row.
-    const marketPrice =
-      resolvedLatest > 0 ? resolvedLatest : fromCatalog.price > 0 ? fromCatalog.price : 0;
+      const fromCatalog = extractBestListingPrice(catalogPrices);
+      // Snapshot first; catalog listing is fallback when we have no daily sync row.
+      const marketPrice =
+        resolvedLatest > 0 ? resolvedLatest : fromCatalog.price > 0 ? fromCatalog.price : 0;
 
-    return {
-      id: row.cardId || `${row.setId}-${row.cardNumber || 'na'}`,
-      name: row.cardName,
-      number: row.cardNumber,
-      rarity: row.rarity,
-      set: {
-        id: row.setId,
-        name: row.setName,
-        releaseDate: '2020-01-01',
-        total: 100
-      },
-      images,
-      imageSource,
-      tcgplayer: catalogPrices
-        ? {
-            productId: row.tcgplayerProductId,
-            prices: catalogPrices,
-          }
-        : marketPrice > 0
+      return {
+        id: row.cardId || `${row.setId}-${row.cardNumber || 'na'}`,
+        name: row.cardName,
+        number: row.cardNumber,
+        rarity: row.rarity,
+        set: {
+          id: row.setId,
+          name: row.setName,
+          releaseDate: '2020-01-01',
+          total: 100,
+        },
+        images,
+        imageSource,
+        tcgplayer: catalogPrices
           ? {
               productId: row.tcgplayerProductId,
-              prices: {
-                [fromCatalog.variantKey || 'normal']: { market: marketPrice },
-              },
+              prices: catalogPrices,
             }
-          : undefined,
-      marketPrice,
-      preferredVariant: fromCatalog.variantKey || undefined,
-      uniqueIdentifier: row.uniqueIdentifier,
-      isLocalDbCard: true,
-      source: 'local_database'
-    };
-  }));
+          : marketPrice > 0
+            ? {
+                productId: row.tcgplayerProductId,
+                prices: {
+                  [fromCatalog.variantKey || 'normal']: { market: marketPrice },
+                },
+              }
+            : undefined,
+        marketPrice,
+        preferredVariant: fromCatalog.variantKey || undefined,
+        uniqueIdentifier: row.uniqueIdentifier,
+        isLocalDbCard: true,
+        source: 'local_database',
+      };
+    })
+  );
 };
-

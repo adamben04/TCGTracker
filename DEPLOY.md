@@ -4,6 +4,8 @@ This guide sets up the entire app in the cloud for free, accessible from your
 phone with nothing running on your PC. You do NOT need a credit card (Render
 free, Cloudflare Pages, Supabase all have gratis tiers with email-only signup).
 
+Current production frontend: <https://tcgtracker-9oc.pages.dev/>
+
 The architecture:
 
 | Service | Host | Free tier | Purpose |
@@ -75,13 +77,16 @@ cd backend
 npm run upload-db-to-cloud
 ```
 
-This gzips `backend/tcg-prices.db` (~140 MB → ~30 MB) and uploads it in
-chunks (each under 50 MB) to `latest/manifest.json` in your bucket.
+This creates a consistent SQLite snapshot, verifies it, gzips it, and uploads
+immutable chunks (each under 50 MB). `latest/manifest.json` is a small,
+checksummed pointer to the immutable backup manifest.
 
 The backup code is already wired — `backend/src/services/cloudBackupService.ts`
-does the chunking. The Node boot hook (`backend/src/index.ts →
-restoreDatabaseOnBootIfMissing`) pulls this file back on every Render cold
-start, before SQLite opens it. Periodic backups run every 15 minutes after boot.
+does the chunking and single-flight scheduling. The Node boot hook
+(`backend/src/index.ts → restoreDatabaseOnBootIfMissing`) validates any existing
+database before deciding whether to restore. Restore downloads to a temporary
+file, verifies checksums and `PRAGMA integrity_check`, then atomically swaps it
+before SQLite opens. Periodic backups run every 15 minutes after boot.
 
 ---
 
@@ -111,21 +116,29 @@ start, before SQLite opens it. Periodic backups run every 15 minutes after boot.
    | `PORT` | `3001` |
    | `HOST` | `0.0.0.0` |
    | `JWT_SECRET` | `<use the same value from your backend/.env>` |
-   | `CORS_ORIGIN` | leave blank — set after step D |
+   | `ADMIN_BOOTSTRAP_EMAIL` | `<email of the account that should administer backups>` |
+   | `CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` |
    | `AUTH_BYPASS_ENABLED` | `false` |
    | `CLOUD_SYNC_ENABLED` | `true` |
    | `SUPABASE_URL` | `https://<your-project>.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` |
    | `SUPABASE_BUCKET` | `tcgtracker-data` |
+   | `DATABASE_PATH` | `/app/data/tcg-prices.db` |
 
-   Do NOT set `DATABASE_PATH` — the default `/app/data/tcg-prices.db` is
-   correct. Do NOT set any `VITE_*` variables — those are frontend-only.
+   Set `DATABASE_PATH` explicitly: the application default is relative and is
+   not the persistent Render data directory. Do NOT set any `VITE_*` variables
+   on the API — those are frontend-only.
 
 5. Click **Deploy**. Watch logs: on first cold start you'll see
    `Cloud sync enabled and local DB missing — restoring from Supabase…`
    then `Cloud restore succeeded` (~30–90 s). Then
    `TCGTracker Backend server running on http://0.0.0.0:3001`.
 6. Note the URL: `https://tcgtracker-api.onrender.com`.
+
+After registering the administrator account, set `ADMIN_BOOTSTRAP_EMAIL` to its
+exact email and restart the API. Startup grants the immutable database role.
+For local maintenance, the equivalent command is
+`npm run promote-admin -- <username-or-email>` inside `backend`.
 
 #### B2. Scanner service
 
@@ -142,7 +155,7 @@ start, before SQLite opens it. Periodic backups run every 15 minutes after boot.
    | Key | Value |
    |---|---|
    | `PORT` | `7860` |
-   | `SCANNER_CORS_ORIGIN` | leave blank — set after step D |
+   | `SCANNER_CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` |
 
 9. Click **Deploy**. Watch logs: first build compiles deps + copies the
    ~110 MB ML assets; expect ~3–5 min, then the container boots, does the
@@ -177,18 +190,29 @@ start, before SQLite opens it. Periodic backups run every 15 minutes after boot.
 5. Save and Deploy. Watch the build: it runs `npm install && npm run build`
    and serves `dist/`. Cloudflare picks up `dist/_redirects` for SPA fallback
    routing automatically.
-6. After deploy you get a `https://<your-project>.pages.dev` URL.
+6. The current production URL is <https://tcgtracker-9oc.pages.dev/>.
 
 ---
 
 ### D. Wire CORS on both Render services — 5 minutes
 
-Now that you have the Cloudflare Pages URL, go back to Render:
+Use the exact production origin on both services:
 
 1. **Node API** → Environment → edit `CORS_ORIGIN` → set it to
-   `https://<your-project>.pages.dev` → Save → Manual Deploy → Restart.
+   `https://tcgtracker-9oc.pages.dev` → Save → Manual Deploy → Restart.
 2. **Scanner** → Environment → edit `SCANNER_CORS_ORIGIN` → set it to
-   `https://<your-project>.pages.dev` → Save → Manual Deploy → Restart.
+   `https://tcgtracker-9oc.pages.dev` → Save → Manual Deploy → Restart.
+
+The browser uses an HttpOnly auth cookie. Because Cloudflare Pages and Render
+are cross-site, production login requires all three settings together:
+
+- frontend requests use `credentials: include`;
+- API responses use `Access-Control-Allow-Credentials: true` for the exact
+  `CORS_ORIGIN` (never `*`);
+- the API cookie is `SameSite=None; Secure`.
+
+A future custom domain with same-site `app.example.com` and `api.example.com`
+is preferable, but the configuration above is supported.
 
 ---
 
@@ -209,14 +233,14 @@ curl -F "image=@some_card_photo.jpg;type=image/jpeg" `
 # → {"success":true,"card":{"id":"swsh4-25","name":"Charizard",...},"debug":{"fast":true,...}}
 ```
 
-Open `https://<your-project>.pages.dev` on your phone. Log in (or create an
+Open `https://tcgtracker-9oc.pages.dev` on your phone. Log in (or create an
 account). Try the Pack shop, scanner, and vault.
 
 ---
 
 ## F. End-to-end phone smoke test
 
-1. Phone → open `https://<your-project>.pages.dev`.
+1. Phone → open `https://tcgtracker-9oc.pages.dev`.
 2. Login or register.
 3. **Packs**: should load without "tcg is not defined". Tap a pack → see
    open animation. If you see "Something went wrong", check the browser
@@ -242,7 +266,9 @@ account). Try the Pack shop, scanner, and vault.
 | Scanner returns `ocr_available: false` + "Card not recognised" on a real photo | The DINOv2 fast matcher wasn't confident (gap < 0.02) and OCR is disabled in this build. | Re-take the photo with the card filling the frame, better lighting. ~5% of scans (art-similar cards like base-set Charizard w/ huge borders) may need a clearer shot |
 | Scanner cold start takes 30–60 s | Render free tier sleeps after 15 min | Cron-job.org pinging `/health` every 10 min keeps it warm. Same for the Node API. |
 | Render API takes 30–60s on first request after idle | Render free tier sleeps after 15 min | Same fix — cron pinger to `/api/health`. (We didn't add one by default; carve your own with cron-job.org) |
-| All vault data looks fresh / accounts gone after Render restart | Supabase restore-on-boot didn't fire | Check logs: `Cloud restore skipped — local DB already present` means a populated DB file survived (good). If `Cloud restore failed`, verify `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` are set in Render env and that the bucket has `latest/manifest.json` |
+| All vault data looks fresh / accounts gone after Render restart | Supabase restore-on-boot did not complete | Check logs for integrity/checksum failures. Verify `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`, and `DATABASE_PATH=/app/data/tcg-prices.db`. The bucket must contain a valid `latest/manifest.json` pointer. |
+| Login succeeds but the next request is signed out | Cross-site cookie or CORS mismatch | Confirm the exact Pages origin on `CORS_ORIGIN`, HTTPS, `credentials: include`, and a `SameSite=None; Secure` cookie in browser devtools. |
+| Scanner refuses browser requests in production | Scanner origin is unset or wrong | Production scanner CORS fails closed. Set `SCANNER_CORS_ORIGIN=https://tcgtracker-9oc.pages.dev` and restart. |
 | `card.id` is null on scans | DINOv2 matched but the card row in `meta` has no id for that set (some pre-release / promo sets) | Run `python card-scanner-backend/fast_match.py --extend` locally, re-deploy the scanner service on Render (push updated assets to the repo branch, Render auto-deploys) |
 | Render deploy fails: "Invalid environment variables: JWT_SECRET must be at least 32 characters" | You forgot to set `JWT_SECRET` | `openssl rand -hex 32`, set it on Render, redeploy |
 | Render deploy fails: "Dockerfile not found" | Dockerfile Path is wrong | For Node API: `backend/Dockerfile`. For scanner: `card-scanner-backend/Dockerfile.hf`. Both relative to repo root. |
@@ -266,6 +292,24 @@ Nothing about local dev changed — the new cloud wiring is conditional on env
 vars (`CLOUD_SYNC_ENABLED`, `SCANNER_CORS_ORIGIN`, `VITE_API_URL`,
 `VITE_CARD_SCANNER_API_URL`). When unset, the app behaves exactly as before.
 
+Quality gates before pushing:
+
+```powershell
+npm run lint
+npm run type-check
+npm run test:run
+npm run build
+npx playwright test
+
+cd backend
+npm run lint
+npm run test:run
+npm run build
+
+cd ..\card-scanner-backend
+python -m unittest discover -s tests -v
+```
+
 ---
 
 ## Quick reference: all env vars
@@ -279,12 +323,14 @@ vars (`CLOUD_SYNC_ENABLED`, `SCANNER_CORS_ORIGIN`, `VITE_API_URL`,
 | Render (Node API) | `PORT` | `3001` | Render → Environment |
 | Render (Node API) | `HOST` | `0.0.0.0` | Render → Environment |
 | Render (Node API) | `JWT_SECRET` | `<32+ hex>` | Render → Environment |
-| Render (Node API) | `CORS_ORIGIN` | `https://<your-project>.pages.dev` | Render → Environment (set after step D) |
+| Render (Node API) | `ADMIN_BOOTSTRAP_EMAIL` | `<administrator account email>` | Render → Environment |
+| Render (Node API) | `CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` | Render → Environment |
+| Render (Node API) | `DATABASE_PATH` | `/app/data/tcg-prices.db` | Render → Environment |
 | Render (Node API) | `AUTH_BYPASS_ENABLED` | `false` | Render → Environment |
 | Render (Node API) | `CLOUD_SYNC_ENABLED` | `true` | Render → Environment |
 | Render (Node API) | `SUPABASE_URL` | `https://<your-project>.supabase.co` | Render → Environment |
 | Render (Node API) | `SUPABASE_SERVICE_ROLE_KEY` | `<service_role secret>` | Render → Environment |
 | Render (Node API) | `SUPABASE_BUCKET` | `tcgtracker-data` | Render → Environment |
 | Render (scanner) | `PORT` | `7860` | Render → Environment |
-| Render (scanner) | `SCANNER_CORS_ORIGIN` | `https://<your-project>.pages.dev` | Render → Environment (set after step D) |
+| Render (scanner) | `SCANNER_CORS_ORIGIN` | `https://tcgtracker-9oc.pages.dev` | Render → Environment |
 | Supabase | — | — | Just create the `tcgtracker-data` bucket (Private) |

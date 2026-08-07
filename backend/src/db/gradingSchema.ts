@@ -7,7 +7,7 @@ export const GRADING_RESULTS_TABLE = 'grading_results';
 
 export interface GradingResultRow {
   id: string;
-  user_id: string | null;
+  user_id: string;
   card_id: string | null;
   card_name: string;
   game: string;
@@ -43,27 +43,43 @@ export interface GradingResultDTO {
     details: string;
     deviations: { leftRight: number; topBottom: number };
     defects: string[];
-    crops?: Array<{ label: string; image: string; location?: { x: number; y: number; width: number; height: number } }>;
+    crops?: Array<{
+      label: string;
+      image: string;
+      location?: { x: number; y: number; width: number; height: number };
+    }>;
   };
   corners: {
     score: number;
     details: string;
     defects: string[];
-    crops?: Array<{ label: string; image: string; location?: { x: number; y: number; width: number; height: number } }>;
+    crops?: Array<{
+      label: string;
+      image: string;
+      location?: { x: number; y: number; width: number; height: number };
+    }>;
     deviations?: Record<string, unknown>;
   };
   edges: {
     score: number;
     details: string;
     defects: string[];
-    crops?: Array<{ label: string; image: string; location?: { x: number; y: number; width: number; height: number } }>;
+    crops?: Array<{
+      label: string;
+      image: string;
+      location?: { x: number; y: number; width: number; height: number };
+    }>;
     deviations?: Record<string, unknown>;
   };
   surface: {
     score: number;
     details: string;
     defects: string[];
-    crops?: Array<{ label: string; image: string; location?: { x: number; y: number; width: number; height: number } }>;
+    crops?: Array<{
+      label: string;
+      image: string;
+      location?: { x: number; y: number; width: number; height: number };
+    }>;
   };
   totalScore: number;
   grade: number;
@@ -110,20 +126,14 @@ export function rowToGradingResult(row: GradingResultRow): GradingResultDTO {
     surface?: string[];
   }>(row.defects, {});
 
-  const deviations = parseJson<Record<string, unknown>>(
-    row.deviations,
-    { leftRight: 0, topBottom: 0 }
-  );
+  const deviations = parseJson<Record<string, unknown>>(row.deviations, {
+    leftRight: 0,
+    topBottom: 0,
+  });
 
-  const defectRegions = parseJson<GradingResultDTO['defectRegions']>(
-    row.defect_regions,
-    undefined
-  );
+  const defectRegions = parseJson<GradingResultDTO['defectRegions']>(row.defect_regions, undefined);
 
-  const fullResult = parseJson<Record<string, unknown> | null>(
-    row.full_result,
-    null
-  );
+  const fullResult = parseJson<Record<string, unknown> | null>(row.full_result, null);
 
   // If fullResult has front/back structure, use it
   const front = fullResult?.front as Record<string, unknown> | undefined;
@@ -144,7 +154,7 @@ export function rowToGradingResult(row: GradingResultRow): GradingResultDTO {
       score: (frontCentering?.score as number) ?? row.centering_score,
       details: (frontCentering?.details as string) || row.centering_details || '',
       deviations: (frontCentering?.deviations as { leftRight: number; topBottom: number }) ||
-        deviations as { leftRight: number; topBottom: number } || { leftRight: 0, topBottom: 0 },
+        (deviations as { leftRight: number; topBottom: number }) || { leftRight: 0, topBottom: 0 },
       defects: (frontCentering?.defects as string[]) || defects.centering || [],
       crops: frontCentering?.crops as GradingResultDTO['centering']['crops'],
     },
@@ -185,7 +195,7 @@ export function rowToGradingResult(row: GradingResultRow): GradingResultDTO {
 export const CREATE_GRADING_RESULTS_SQL = `
 CREATE TABLE IF NOT EXISTS grading_results (
   id TEXT PRIMARY KEY,
-  user_id TEXT,
+  user_id TEXT NOT NULL,
   card_id TEXT,
   card_name TEXT NOT NULL,
   game TEXT NOT NULL DEFAULT 'pokemon',

@@ -23,6 +23,9 @@ export function resolveTheme(): Theme {
 
 export function applyTheme(theme: Theme) {
   document.documentElement.setAttribute('data-theme', theme);
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'dark' ? '#101216' : '#f6f4ef');
 }
 
 export function setThemePreference(theme: Theme) {

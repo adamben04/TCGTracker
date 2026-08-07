@@ -117,7 +117,7 @@ export interface ApiResponse<T> {
   totalCount?: number;
 }
 
-export type SortOption = 
+export type SortOption =
   | 'price-high'
   | 'price-low'
   | 'name-asc'
@@ -133,7 +133,13 @@ export type SortOption =
   | 'undervalued'
   | 'trend-bullish';
 
-export type FilterOption = 'all' | 'undervalued' | 'overvalued' | 'low-pop' | 'high-return' | 'bullish';
+export type FilterOption =
+  | 'all'
+  | 'undervalued'
+  | 'overvalued'
+  | 'low-pop'
+  | 'high-return'
+  | 'bullish';
 
 export interface RealData {
   psaData: PSAData | null;
@@ -150,11 +156,19 @@ export interface VaultCard {
   condition: CardCondition; // Card condition
   notes?: string; // Optional user notes
   game?: 'pokemon' | 'onepiece'; // Which game this card belongs to
+  /** ISO timestamp of the last local mutation; used to version sync merges. */
+  updatedAt?: string;
   /** Optional AI grading result (TAG-style 1000-point analysis). */
   gradingResult?: import('./grading').GradingResult;
 }
 
-export type CardCondition = 'raw' | 'near-mint' | 'lightly-played' | 'moderately-played' | 'heavily-played' | 'damaged';
+export type CardCondition =
+  | 'raw'
+  | 'near-mint'
+  | 'lightly-played'
+  | 'moderately-played'
+  | 'heavily-played'
+  | 'damaged';
 
 export interface VaultStats {
   totalCards: number;
@@ -165,7 +179,17 @@ export interface VaultStats {
 }
 
 // Pack Opening / Ripping System (like GameStop Power Packs)
-export type PackTier = 'starter' | 'bronze' | 'silver' | 'gold' | 'platinum' | 'common' | 'uncommon' | 'rare' | 'ultra-rare' | 'secret-rare';
+export type PackTier =
+  | 'starter'
+  | 'bronze'
+  | 'silver'
+  | 'gold'
+  | 'platinum'
+  | 'common'
+  | 'uncommon'
+  | 'rare'
+  | 'ultra-rare'
+  | 'secret-rare';
 
 export interface Pack {
   id: string;

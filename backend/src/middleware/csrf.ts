@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { env } from '../config/env';
+import { getAuthCookie } from '../utils/cookies';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -17,7 +18,11 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
       next();
       return;
     }
-    next();
+    if (!getAuthCookie(req.headers.cookie)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: 'CSRF validation failed' });
     return;
   }
 
@@ -34,9 +39,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
   const matchesAllowedOrigin = (value: string): boolean =>
     allowedOrigins.some(
       (allowed) =>
-        value === allowed ||
-        value.startsWith(`${allowed}/`) ||
-        value.startsWith(`${allowed}:`)
+        value === allowed || value.startsWith(`${allowed}/`) || value.startsWith(`${allowed}:`)
     );
 
   // Vite dev proxy sets Origin to the backend target (changeOrigin: true) while Referer

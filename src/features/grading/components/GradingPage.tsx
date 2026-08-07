@@ -77,7 +77,14 @@ export const GradingPage: React.FC = () => {
       gradeToVaultCondition(grading.grade)) as import('../../../types/pokemon').CardCondition;
 
     const price = grading.estimatedGradedValue || 0;
-    const entry = vaultService.addToVault(stub, price, 1, condition, `PSA-style Grade ${grading.grade} ${grading.gradeLabel}`, game);
+    const entry = vaultService.addToVault(
+      stub,
+      price,
+      1,
+      condition,
+      `PSA-style Grade ${grading.grade} ${grading.gradeLabel}`,
+      game
+    );
     vaultService.updateVaultCard(entry.id, { gradingResult: grading }, game);
     showToast('Added graded card to vault', 'success');
   };
@@ -107,9 +114,8 @@ export const GradingPage: React.FC = () => {
           )}
         </div>
         <p className="mt-1 max-w-2xl text-sm text-ink-muted">
-          PSA-style condition estimate — Centering, Corners, Edges, and Surface on a 10-point
-          scale. Specialist computer vision (not a chatbot). Not a substitute for professional
-          grading.
+          PSA-style condition estimate — Centering, Corners, Edges, and Surface on a 10-point scale.
+          Specialist computer vision (not a chatbot). Not a substitute for professional grading.
         </p>
       </div>
 
@@ -120,7 +126,8 @@ export const GradingPage: React.FC = () => {
             <div>
               <p className="font-medium">Grading service not reachable on port 5001.</p>
               <p className="mt-1 text-amber-200/80">
-                Start the Python backend: <code className="font-mono text-xs">cd card-scanner-backend && python app.py</code>
+                Start the Python backend:{' '}
+                <code className="font-mono text-xs">cd card-scanner-backend && python app.py</code>
               </p>
               <button
                 type="button"
@@ -159,9 +166,7 @@ export const GradingPage: React.FC = () => {
                 <p className="text-sm font-medium text-ink-primary">
                   Analyzing centering, corners, edges & surface…
                 </p>
-                <p className="text-xs text-ink-muted">
-                  This takes a few seconds
-                </p>
+                <p className="text-xs text-ink-muted">This takes a few seconds</p>
               </div>
             </div>
           )}

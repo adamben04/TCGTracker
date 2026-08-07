@@ -26,10 +26,12 @@ const loginSchema = z.object({
 });
 
 const updateUserSchema = z.object({
-  body: z.object({
-    username: z.string().min(3).max(50).optional(),
-    email: z.string().email().optional(),
-  }),
+  body: z
+    .object({
+      username: z.string().min(3).max(50).optional(),
+      email: z.string().email().optional(),
+    })
+    .strict(),
 });
 
 const changePasswordSchema = z.object({
@@ -73,7 +75,7 @@ export const createAuthRouter = (authService: AuthService) => {
     try {
       const { username, email, password } = req.body;
       const result = await authService.register(username, email, password);
-      setAuthCookie(res, result.token);
+      setAuthCookie(res, result.token, req);
       res.status(201).json({ user: result.user });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -110,15 +112,15 @@ export const createAuthRouter = (authService: AuthService) => {
     try {
       const { email, password } = req.body;
       const result = await authService.login(email, password);
-      setAuthCookie(res, result.token);
+      setAuthCookie(res, result.token, req);
       res.json({ user: result.user });
     } catch (error: any) {
       res.status(401).json({ error: error.message });
     }
   });
 
-  router.post('/logout', (_req, res: Response) => {
-    clearAuthCookie(res);
+  router.post('/logout', (req, res: Response) => {
+    clearAuthCookie(res, req);
     res.json({ success: true });
   });
 
@@ -153,15 +155,20 @@ export const createAuthRouter = (authService: AuthService) => {
     }
   });
 
-  router.put('/update', authenticate, validate(updateUserSchema), async (req: AuthRequest, res: Response) => {
-    try {
-      const updates = req.body;
-      const user = await authService.updateUser(req.user!.id, updates);
-      res.json({ user });
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
+  router.put(
+    '/update',
+    authenticate,
+    validate(updateUserSchema),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const updates = req.body;
+        const user = await authService.updateUser(req.user!.id, updates);
+        res.json({ user });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message });
+      }
     }
-  });
+  );
 
   /**
    * @swagger
@@ -211,4 +218,3 @@ export const createAuthRouter = (authService: AuthService) => {
 
   return router;
 };
-

@@ -25,14 +25,6 @@ const dbGet = <T>(sql: string, params: unknown[] = []): Promise<T | undefined> =
     });
   });
 
-const dbAll = <T>(sql: string, params: unknown[] = []): Promise<T[]> =>
-  new Promise((resolve, reject) => {
-    getDb().all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve((rows as T[]) || []);
-    });
-  });
-
 /** Bulk copy catalog images into card_mappings using persisted set_id_aliases. */
 async function bulkBackfillFromCatalog(): Promise<number> {
   return dbRun(`
@@ -129,15 +121,6 @@ async function bulkBackfillDirectSetMatch(): Promise<number> {
   `);
 }
 
-interface MissingImageRow {
-  id: number;
-  cardId: string;
-  cardName: string;
-  setId: string;
-  setName: string;
-  cardNumber: string | null;
-}
-
 async function countMissingImages(): Promise<number> {
   const row = await dbGet<{ count: number }>(
     `SELECT COUNT(*) as count FROM card_mappings
@@ -153,7 +136,12 @@ export async function copyCatalogImagesToMapping(
   setName?: string,
   cardNumber?: string | null
 ): Promise<{ imageSmall?: string; imageLarge?: string; catalogSetId?: string } | null> {
-  const direct = await dbGet<{ imageSmall: string; imageLarge: string; setId: string; cardNumber: string }>(
+  const direct = await dbGet<{
+    imageSmall: string;
+    imageLarge: string;
+    setId: string;
+    cardNumber: string;
+  }>(
     `SELECT imageSmall, imageLarge, setId, cardNumber
      FROM catalog_cards
      WHERE cardName = ? AND setId = ?
@@ -169,7 +157,12 @@ export async function copyCatalogImagesToMapping(
     };
   }
 
-  const aliased = await dbGet<{ imageSmall: string; imageLarge: string; catalogSetId: string; cardNumber: string }>(
+  const aliased = await dbGet<{
+    imageSmall: string;
+    imageLarge: string;
+    catalogSetId: string;
+    cardNumber: string;
+  }>(
     `SELECT cc.imageSmall, cc.imageLarge, sa.catalogSetId, cc.cardNumber
      FROM catalog_cards cc
      INNER JOIN set_id_aliases sa ON sa.catalogSetId = cc.setId
@@ -196,7 +189,12 @@ let isBackfillRunning = false;
 export async function backfillCardMappingImages(): Promise<ImageBackfillResult> {
   if (isBackfillRunning) {
     logger.warn('Card image backfill already running, skipping duplicate');
-    return { aliasesSynced: 0, bulkUpdated: 0, individuallyUpdated: 0, stillMissing: await countMissingImages() };
+    return {
+      aliasesSynced: 0,
+      bulkUpdated: 0,
+      individuallyUpdated: 0,
+      stillMissing: await countMissingImages(),
+    };
   }
 
   isBackfillRunning = true;
@@ -234,10 +232,9 @@ export async function getCardMappingImages(cardId: string): Promise<{
     imageSmall: string | null;
     imageLarge: string | null;
     cardNumber: string | null;
-  }>(
-    `SELECT imageSmall, imageLarge, cardNumber FROM card_mappings WHERE cardId = ? LIMIT 1`,
-    [cardId]
-  );
+  }>(`SELECT imageSmall, imageLarge, cardNumber FROM card_mappings WHERE cardId = ? LIMIT 1`, [
+    cardId,
+  ]);
 
   if (!row || (!row.imageSmall && !row.imageLarge)) return null;
 

@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     id: number;
     email: string;
     username: string;
+    role: 'user' | 'admin';
   };
 }
 
@@ -20,11 +21,20 @@ function extractToken(req: Request): string | null {
   return cookieToken ?? null;
 }
 
-function verifyToken(token: string) {
-  return jwt.verify(token, env.jwt.secret) as {
+function verifyToken(token: string): NonNullable<AuthRequest['user']> {
+  const payload = jwt.verify(token, env.jwt.secret) as {
     id: number;
     email: string;
     username: string;
+    role?: string;
+  };
+
+  return {
+    id: payload.id,
+    email: payload.email,
+    username: payload.username,
+    // Tokens issued before roles existed are deliberately non-admin.
+    role: payload.role === 'admin' ? 'admin' : 'user',
   };
 }
 

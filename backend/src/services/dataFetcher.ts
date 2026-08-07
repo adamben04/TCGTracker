@@ -5,10 +5,8 @@ import { logger } from '../utils/logger';
 import { isSkippedDbJob, withDbJobLock } from '../utils/dbJobLock';
 import { syncCatalogData } from './catalogSync';
 import { tcgdexMarketProvider } from './providers/tcgdexMarketProvider';
-import { MarketPriceProvider, MarketPriceSnapshot } from './providers/contracts';
+import { MarketPriceProvider } from './providers/contracts';
 import { normalizeVariantKey } from '../utils/normalizeVariantKey';
-import { createPkmnPricesProvider, PkmnPricesMarketProvider } from './providers/pkmnPricesProvider';
-import { env } from '../config/env';
 import { resolveListingPrice } from '../utils/resolveListingPrice';
 
 export { normalizeVariantKey } from '../utils/normalizeVariantKey';
@@ -17,43 +15,6 @@ const SYNC_TIMEZONE = 'America/New_York';
 
 const MAX_REASONABLE_PRICE = 50000;
 const MIN_PRICE = 0.01;
-
-// Initialize PkmnPrices provider
-const pkmnPricesProvider = createPkmnPricesProvider(env.apis.pkmnprices);
-
-/**
- * Multi-provider wrapper that tries TCGdex first, then PkmnPrices, then returns null.
- */
-class MultiSourceMarketProvider implements MarketPriceProvider {
-  private providers: MarketPriceProvider[];
-
-  constructor(providers: MarketPriceProvider[]) {
-    this.providers = providers;
-  }
-
-  async getSnapshotForCard(cardId: string, cardName?: string, setId?: string, setName?: string): Promise<MarketPriceSnapshot | null> {
-    for (const provider of this.providers) {
-      try {
-        const snapshot = await provider.getSnapshotForCard(cardId, cardName, setId, setName);
-        if (snapshot && snapshot.points.length > 0) {
-          return snapshot;
-        }
-      } catch (error) {
-        logger.debug('Provider failed, trying next', {
-          provider: provider.constructor.name,
-          cardId,
-          error: (error as Error).message,
-        });
-      }
-    }
-    return null;
-  }
-}
-
-const multiSourceProvider = new MultiSourceMarketProvider([
-  tcgdexMarketProvider,
-  pkmnPricesProvider,
-]);
 
 export const isValidPrice = (price: number | null | undefined): boolean => {
   if (price == null || !Number.isFinite(price)) return false;
@@ -104,7 +65,12 @@ const createSyncRun = async (runType: string, runDate: string): Promise<number> 
 const finalizeSyncRun = async (
   runId: number,
   status: 'completed' | 'failed',
-  payload: { totalPricesProcessed?: number; groupsProcessed?: number; groupsFailed?: number; message?: string }
+  payload: {
+    totalPricesProcessed?: number;
+    groupsProcessed?: number;
+    groupsFailed?: number;
+    message?: string;
+  }
 ) => {
   const db = getDb();
   return new Promise<void>((resolve, reject) => {
@@ -229,7 +195,7 @@ const extractCatalogFallbackPoints = (
 
 const createDailySnapshot = async (date: string) => {
   const db = getDb();
-  
+
   return new Promise<void>((resolve, reject) => {
     // Calculate daily statistics
     const statsSql = `
@@ -240,7 +206,7 @@ const createDailySnapshot = async (date: string) => {
       FROM price_history 
       WHERE date = ?
     `;
-    
+
     db.get(statsSql, [date], (err, stats: any) => {
       if (err) {
         reject(err);
@@ -300,21 +266,25 @@ const createDailySnapshot = async (date: string) => {
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `;
 
-            db.run(insertSnapshotSql, [
-              date,
-              stats?.totalCards || 0,
-              stats?.avgPrice || 0,
-              medianRow?.medianPrice ?? null,
-              stats?.totalVolume || 0,
-              JSON.stringify(gainers || []),
-              JSON.stringify(losers || [])
-            ], (err) => {
-              if (err) {
-                reject(err);
-              } else {
-                resolve();
+            db.run(
+              insertSnapshotSql,
+              [
+                date,
+                stats?.totalCards || 0,
+                stats?.avgPrice || 0,
+                medianRow?.medianPrice ?? null,
+                stats?.totalVolume || 0,
+                JSON.stringify(gainers || []),
+                JSON.stringify(losers || []),
+              ],
+              (err) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  resolve();
+                }
               }
-            });
+            );
           });
         });
       });
@@ -329,7 +299,7 @@ export const deterministicProductId = (cardId: string, variantKey: string): numb
   const hash = crypto.createHash('sha256').update(input).digest();
   // Use first 4 bytes as a 32-bit unsigned integer
   // SHA-256 collision probability for N items is ~N^2 / 2^257, negligible for ~20k cards
-  return (hash.readUInt32BE(0) >>> 0) % 100000000 + 1;
+  return ((hash.readUInt32BE(0) >>> 0) % 100000000) + 1;
 };
 
 const snapshotFromPokemonCatalog = async (date: string) => {
@@ -372,24 +342,25 @@ const snapshotFromPokemonCatalog = async (date: string) => {
     await syncCatalogData();
   }
 
-  const refreshedRows = rows.length > 0
-    ? rows
-    : await new Promise<any[]>((resolve, reject) => {
-        db.all(
-          `SELECT cardId, cardName, setId, setName, cardNumber, tcgplayerProductId, tcgplayerPrices
+  const refreshedRows =
+    rows.length > 0
+      ? rows
+      : await new Promise<any[]>((resolve, reject) => {
+          db.all(
+            `SELECT cardId, cardName, setId, setName, cardNumber, tcgplayerProductId, tcgplayerPrices
            FROM catalog_cards
            WHERE tcgplayerPrices IS NOT NULL
            AND tcgplayerPrices <> ''`,
-          [],
-          (err, resultRows: any[]) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(resultRows || []);
+            [],
+            (err, resultRows: any[]) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(resultRows || []);
+              }
             }
-          }
-        );
-      });
+          );
+        });
 
   const stmt = db.prepare(priceInsertSql);
   let inserted = 0;
@@ -442,7 +413,10 @@ const snapshotFromPokemonCatalog = async (date: string) => {
           : Number.NaN;
         const productId = Number.isFinite(parsedProductId)
           ? parsedProductId
-          : deterministicProductId(row.cardId || `${row.setId}-${row.cardNumber}-${row.cardName}`, variantKey);
+          : deterministicProductId(
+              row.cardId || `${row.setId}-${row.cardNumber}-${row.cardName}`,
+              variantKey
+            );
 
         await runStmt([
           productId,
@@ -616,11 +590,8 @@ const snapshotFromMarketProvider = async (
   );
 
   const collected = workerResults.flatMap((r) => r.entries);
-  let cardsProcessed = workerResults.reduce((s, r) => s + r.cardsProcessed, 0);
-  let cardsFailed = workerResults.reduce((s, r) => s + r.cardsFailed, 0);
-  let tcgdexAttempted = workerResults.reduce((s, r) => s + r.tcgdexAttempted, 0);
-  let tcgdexSuccessful = workerResults.reduce((s, r) => s + r.tcgdexSuccessful, 0);
-
+  const cardsProcessed = workerResults.reduce((s, r) => s + r.cardsProcessed, 0);
+  const cardsFailed = workerResults.reduce((s, r) => s + r.cardsFailed, 0);
   const runPriceStmt = (params: unknown[]): Promise<void> =>
     new Promise((resolve, reject) => {
       priceStmt.run(params, (err: Error | null) => {
@@ -705,7 +676,9 @@ const snapshotFromMarketProvider = async (
 };
 
 export const updatePriceData = async () => {
-  const result = await withDbJobLock('price_update', () => performPriceUpdate(), { skipIfBusy: true });
+  const result = await withDbJobLock('price_update', () => performPriceUpdate(), {
+    skipIfBusy: true,
+  });
 
   if (isSkippedDbJob(result)) {
     return {
@@ -748,7 +721,7 @@ const performPriceUpdate = async () => {
       groupsFailed = 0;
       usedFallback = true;
     }
-    
+
     logger.info('Creating daily market snapshot...');
     await createDailySnapshot(runDate);
     logger.info('Daily market snapshot created.');

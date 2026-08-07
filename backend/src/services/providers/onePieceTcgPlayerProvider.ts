@@ -60,7 +60,10 @@ function getProductNumber(product: TcgcsvProduct): string {
   return numberField?.value?.trim() ?? '';
 }
 
-function pickBestPrice(prices: TcgcsvPrice[]): { marketPrice: number | null; lowPrice: number | null } {
+function pickBestPrice(prices: TcgcsvPrice[]): {
+  marketPrice: number | null;
+  lowPrice: number | null;
+} {
   if (!prices.length) return { marketPrice: null, lowPrice: null };
 
   const ranked = [...prices].sort((a, b) => {
@@ -102,7 +105,10 @@ async function loadSetGroupMap(forceRefresh = false): Promise<Map<string, number
   return map;
 }
 
-async function loadGroupListings(groupId: number, forceRefresh = false): Promise<Map<string, TcgPlayerListing[]>> {
+async function loadGroupListings(
+  groupId: number,
+  forceRefresh = false
+): Promise<Map<string, TcgPlayerListing[]>> {
   const cached = groupCache.get(groupId);
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
     return cached.byNumber;
@@ -176,7 +182,8 @@ function scoreListingMatch(
   if (cardLower.includes('parallel') && listingLower.includes('parallel')) score += 15;
   if (cardLower.includes('reprint') && listingLower.includes('reprint')) score += 15;
   if (cardImageId.includes('_p1') && listingLower.includes('parallel')) score += 10;
-  if (cardImageId.includes('_p2') && (listingVariant === 'TR' || listingVariant === 'SP')) score += 10;
+  if (cardImageId.includes('_p2') && (listingVariant === 'TR' || listingVariant === 'SP'))
+    score += 10;
   if (cardImageId.includes('_r') && listingLower.includes('reprint')) score += 10;
   if (!cardVariant && !listingVariant && !cardImageId.match(/_[pr]\d/i)) score += 5;
 
@@ -192,7 +199,8 @@ function pickBestListing(
   if (listings.length === 1) return listings[0];
 
   const ranked = [...listings].sort((a, b) => {
-    const scoreDiff = scoreListingMatch(b, cardName, cardImageId) - scoreListingMatch(a, cardName, cardImageId);
+    const scoreDiff =
+      scoreListingMatch(b, cardName, cardImageId) - scoreListingMatch(a, cardName, cardImageId);
     if (scoreDiff !== 0) return scoreDiff;
     return (b.marketPrice ?? 0) - (a.marketPrice ?? 0);
   });

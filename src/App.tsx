@@ -1,5 +1,13 @@
 import { Suspense, lazy, useEffect, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { HeroSection } from './components/common/HeroSection';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -9,12 +17,15 @@ import { Footer } from './components/layout/Footer';
 import { BottomTabBar } from './components/layout/BottomTabBar';
 import { CommandPalette } from './components/common/CommandPalette';
 import { OnboardingChecklist } from './components/common/OnboardingChecklist';
+import { useToast } from './components/common/Toast';
+import { getDocumentTitle } from './config/navigation';
 import { CardModalProvider } from './contexts/CardModalContext';
 import { GameProvider } from './contexts/GameContext';
 import { useAuth } from './hooks/useAuth';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { BrowsePage } from './pages/BrowsePage';
+import { MethodologyPage } from './pages/MethodologyPage';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 import { VIEW_PATHS, browseSearchPath } from './utils/routes';
 
@@ -104,17 +115,53 @@ function RequireAuth({ children }: { children: ReactNode }) {
 function UnauthorizedRedirect() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
 
   useEffect(() => {
     const onUnauthorized = () => {
       if (location.pathname === '/login' || location.pathname === '/register') return;
+      showToast('Your session expired. Please sign in again to continue.', 'info');
       navigate('/login', { state: { from: location.pathname } });
     };
     window.addEventListener('auth:unauthorized', onUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
-  }, [navigate, location.pathname]);
+  }, [navigate, location.pathname, showToast]);
 
   return null;
+}
+
+function DocumentTitle() {
+  const location = useLocation();
+
+  useEffect(() => {
+    document.title = getDocumentTitle(location.pathname);
+  }, [location.pathname]);
+
+  return null;
+}
+
+function NotFoundPage() {
+  return (
+    <section
+      className={`${PAGE_CONTAINER} flex min-h-[40vh] items-center justify-center text-center`}
+    >
+      <div className="max-w-md rounded-2xl border border-border-default bg-surface-raised p-8 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-accent">404</p>
+        <h1 className="mt-2 text-2xl font-semibold text-ink-primary">Page not found</h1>
+        <p className="mt-3 text-sm leading-6 text-ink-secondary">
+          The link may be outdated. Return home or search the card catalog instead.
+        </p>
+        <div className="mt-6 flex justify-center gap-2">
+          <Link to="/" className="btn-secondary">
+            Go home
+          </Link>
+          <Link to="/browse" className="btn-primary">
+            Browse cards
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function HomePage() {
@@ -131,7 +178,7 @@ function SetsPage() {
   const { setId } = useParams();
   const navigate = useNavigate();
   return (
-    <div className="animate-fade-in">
+    <div>
       {setId ? (
         <SetDetail setId={setId} onBack={() => navigate('/sets')} />
       ) : (
@@ -144,16 +191,16 @@ function SetsPage() {
 function VaultPage() {
   const navigate = useNavigate();
   return (
-    <div className="animate-fade-in">
+    <div>
       <VaultView onOpenSet={(setId) => navigate(`/sets/${setId}`)} />
     </div>
   );
 }
 
 const pageVariants = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
-  exit: { opacity: 0, y: -8, transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] } },
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: 0.16, ease: 'easeOut' } },
+  exit: { opacity: 0, transition: { duration: 0.1, ease: 'easeIn' } },
 };
 
 const PAGE_CONTAINER = 'mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8';
@@ -161,7 +208,7 @@ const PAGE_CONTAINER = 'mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8';
 function AppRoutes() {
   const location = useLocation();
   return (
-    <AnimatePresence mode="popLayout">
+    <AnimatePresence mode="wait">
       <motion.div
         key={location.pathname}
         variants={pageVariants}
@@ -177,6 +224,7 @@ function AppRoutes() {
               <Route path="/browse" element={<BrowsePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/methodology" element={<MethodologyPage />} />
               <Route
                 path="/prices"
                 element={
@@ -274,7 +322,7 @@ function AppRoutes() {
                   </div>
                 }
               />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </ErrorBoundary>
         </Suspense>
@@ -289,16 +337,15 @@ function App() {
       <GameProvider>
         <CardModalProvider>
           <div className="flex min-h-screen min-w-0 bg-surface-base text-ink-primary">
+            <a
+              href="#main-content"
+              className="sr-only z-[95] rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-[color:var(--accent-foreground)] shadow-md focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+            >
+              Skip to content
+            </a>
             <Sidebar />
 
             <div className="flex min-w-0 flex-1 flex-col">
-              <a
-                href="#main-content"
-                className="sr-only z-[95] rounded-none bg-accent px-4 py-2 text-sm font-bold uppercase tracking-wider text-black focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
-              >
-                Skip to content
-              </a>
-
               <Header />
 
               <main id="main-content" className="relative min-w-0 flex-1 pb-20 md:pb-0">
@@ -312,6 +359,7 @@ function App() {
             <BottomTabBar />
             <CommandPalette />
             <UnauthorizedRedirect />
+            <DocumentTitle />
           </div>
         </CardModalProvider>
       </GameProvider>

@@ -18,13 +18,13 @@ router.get('/sets', async (req, res) => {
     res.json({
       data: sets,
       count: sets.length,
-      source: 'enhanced_pack_service'
+      source: 'enhanced_pack_service',
     });
   } catch (error) {
     logger.error('Error fetching available sets:', error);
     res.status(500).json({
       error: 'Failed to fetch available sets',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -39,28 +39,31 @@ router.post('/open/:setId', authenticate, async (req, res) => {
 
     if (!setId) {
       return res.status(400).json({
-        error: 'Set ID is required'
+        error: 'Set ID is required',
       });
     }
 
     // Custom pack configuration if provided
-    const packConfig = packPrice || packName ? {
-      price: packPrice || 4.99,
-      name: packName || 'Custom Pack'
-    } : {};
+    const packConfig =
+      packPrice || packName
+        ? {
+            price: packPrice || 4.99,
+            name: packName || 'Custom Pack',
+          }
+        : {};
 
     const result = await enhancedPackService.openPack(setId, packConfig);
 
     res.json({
       success: true,
       data: result,
-      message: `Successfully opened ${result.cards.length} cards from ${setId}`
+      message: `Successfully opened ${result.cards.length} cards from ${setId}`,
     });
   } catch (error) {
     logger.error(`Error opening pack for set ${req.params.setId}:`, error);
     res.status(500).json({
       error: 'Failed to open pack',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -74,7 +77,7 @@ router.get('/resolve-set-code/:setId', async (req, res) => {
 
     if (!setId) {
       return res.status(400).json({
-        error: 'Set ID is required'
+        error: 'Set ID is required',
       });
     }
 
@@ -83,20 +86,20 @@ router.get('/resolve-set-code/:setId', async (req, res) => {
     if (!apiSetCode) {
       return res.status(404).json({
         error: 'Could not resolve set code',
-        databaseSetId: setId
+        databaseSetId: setId,
       });
     }
 
     res.json({
       databaseSetId: setId,
       apiSetCode,
-      resolved: true
+      resolved: true,
     });
   } catch (error) {
     logger.error(`Error resolving set code for ${req.params.setId}:`, error);
     res.status(500).json({
       error: 'Failed to resolve set code',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -110,7 +113,7 @@ router.get('/stats/:setId', async (req, res) => {
 
     if (!setId) {
       return res.status(400).json({
-        error: 'Set ID is required'
+        error: 'Set ID is required',
       });
     }
 
@@ -148,13 +151,13 @@ router.get('/stats/:setId', async (req, res) => {
     res.json({
       setId,
       stats,
-      source: 'enhanced_pack_service'
+      source: 'enhanced_pack_service',
     });
   } catch (error) {
     logger.error(`Error getting stats for set ${req.params.setId}:`, error);
     res.status(500).json({
       error: 'Failed to get set statistics',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -166,19 +169,19 @@ router.get('/debug/set-codes', async (req, res) => {
   try {
     const stats = setCodeService.getSetMappingStats();
     const isInitialized = setCodeService.isInitialized();
-    
+
     res.json({
       initialized: isInitialized,
       stats,
-      message: isInitialized 
-        ? '✅ Set code service is initialized and ready' 
-        : '❌ Set code service is NOT initialized - images may not load'
+      message: isInitialized
+        ? '✅ Set code service is initialized and ready'
+        : '❌ Set code service is NOT initialized - images may not load',
     });
   } catch (error) {
     logger.error('Error getting set code debug info:', error);
     res.status(500).json({
       error: 'Failed to get set code debug info',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -190,18 +193,18 @@ router.get('/debug/normalize-set/:setId', async (req, res) => {
   try {
     const { setId } = req.params;
     const { setName } = req.query;
-    
+
     if (!setId) {
       return res.status(400).json({
-        error: 'Set ID is required'
+        error: 'Set ID is required',
       });
     }
 
     const normalizedSetId = await setCodeService.normalizeSetIdForImageUrl(
-      setId, 
+      setId,
       setName as string | undefined
     );
-    
+
     const imageUrls = await setCodeService.buildDeterministicImageUrls(
       setId,
       '1',
@@ -211,17 +214,17 @@ router.get('/debug/normalize-set/:setId', async (req, res) => {
     res.json({
       input: {
         setId,
-        setName: setName || null
+        setName: setName || null,
       },
       normalized: normalizedSetId,
       exampleImageUrl: imageUrls,
-      success: !!normalizedSetId
+      success: !!normalizedSetId,
     });
   } catch (error) {
     logger.error('Error testing set normalization:', error);
     res.status(500).json({
       error: 'Failed to test set normalization',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -232,22 +235,22 @@ router.get('/debug/normalize-set/:setId', async (req, res) => {
 router.get('/debug/all-sets', async (req, res) => {
   try {
     const sets = await pokemonApiClient.getSets(1000);
-    
+
     res.json({
       count: sets.length,
-      sets: sets.map(s => ({
+      sets: sets.map((s) => ({
         id: s.id,
         name: s.name,
         series: s.series,
         ptcgoCode: s.ptcgoCode,
-        releaseDate: s.releaseDate
-      }))
+        releaseDate: s.releaseDate,
+      })),
     });
   } catch (error) {
     logger.error('Error getting all sets:', error);
     res.status(500).json({
       error: 'Failed to get all sets',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });

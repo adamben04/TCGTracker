@@ -25,11 +25,7 @@ export const ERA_GROUPS: EraGroup[] = [
 
 const eraSortIndex = new Map(ERA_GROUPS.map((g) => [g.id, g.sortOrder]));
 
-export const classifySetEra = (input: {
-  id: string;
-  name: string;
-  series?: string;
-}): string => {
+export const classifySetEra = (input: { id: string; name: string; series?: string }): string => {
   const id = input.id.toLowerCase();
   const name = input.name.toLowerCase();
   const series = (input.series || '').toLowerCase();
@@ -46,7 +42,12 @@ export const classifySetEra = (input: {
   if (series.includes('sun') || series.includes('moon') || /^sm\d|^sm-/.test(id)) {
     return 'sm';
   }
-  if (series.includes(' xy') || series === 'xy' || series.startsWith('xy') || /^xy\d|^xy-|^dc1|^g1|^k1/.test(id)) {
+  if (
+    series.includes(' xy') ||
+    series === 'xy' ||
+    series.startsWith('xy') ||
+    /^xy\d|^xy-|^dc1|^g1|^k1/.test(id)
+  ) {
     return 'xy';
   }
   if (series.includes('black') || series.includes('white') || /^bw\d|^bw-/.test(id)) {
@@ -105,9 +106,10 @@ export const sortSetsForDisplay = <T extends { era: string; releaseDate: string;
 ): T[] => [...sets].sort(compareSetsByEraAndRelease);
 
 /** Use image URLs returned by the set API when available. */
-export const resolveSetImages = (
-  apiImages?: { logo?: string; symbol?: string }
-): { logo: string; symbol: string } => {
+export const resolveSetImages = (apiImages?: {
+  logo?: string;
+  symbol?: string;
+}): { logo: string; symbol: string } => {
   if (apiImages?.logo || apiImages?.symbol) {
     return {
       logo: apiImages.logo || '',

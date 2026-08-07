@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, Camera, Check, LayoutGrid, LineChart, X } from 'lucide-react';
+import { type OnboardingStep, readCompletedOnboardingSteps } from './onboarding';
 
 const STORAGE_KEY = 'tcg.onboarding';
-
-export type OnboardingStep = 'browse' | 'scan' | 'vault' | 'track';
 
 interface StepDef {
   id: OnboardingStep;
@@ -20,36 +19,16 @@ const STEPS: StepDef[] = [
   { id: 'track', label: 'Track a price', to: '/prices', icon: LineChart },
 ];
 
-function readCompleted(): Set<OnboardingStep> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    return new Set(JSON.parse(raw) as OnboardingStep[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCompleted(steps: Set<OnboardingStep>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...steps]));
-}
-
-export function markOnboardingStep(step: OnboardingStep) {
-  const completed = readCompleted();
-  if (completed.has(step)) return;
-  completed.add(step);
-  writeCompleted(completed);
-  window.dispatchEvent(new CustomEvent('tcg:onboarding-update'));
-}
-
 export const OnboardingChecklist: React.FC = () => {
-  const [completed, setCompleted] = useState<Set<OnboardingStep>>(() => readCompleted());
+  const [completed, setCompleted] = useState<Set<OnboardingStep>>(() =>
+    readCompletedOnboardingSteps()
+  );
   const [dismissed, setDismissed] = useState(
     () => localStorage.getItem(`${STORAGE_KEY}.dismissed`) === '1'
   );
 
   useEffect(() => {
-    const sync = () => setCompleted(readCompleted());
+    const sync = () => setCompleted(readCompletedOnboardingSteps());
     window.addEventListener('tcg:onboarding-update', sync);
     window.addEventListener('storage', sync);
     return () => {

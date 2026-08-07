@@ -7,7 +7,6 @@ import {
   computeVolatility,
   computeRecoveryMetrics,
   getLatestPrice,
-  getPriceAtDate,
   computeMarketBenchmark,
 } from './marketAnalyzer';
 import {
@@ -15,9 +14,7 @@ import {
   computeRecoveryScore,
   computeDemandScore,
   computeRiskScore,
-  computeExternalSignalScore,
   computeExpectedReturns,
-  computePriceRanges,
   computeLiquidityScore,
   computeDataQualityScore,
   isRarityInvestmentWorthy,
@@ -91,7 +88,10 @@ export interface BacktestResult {
   cardResults: BacktestCardResult[];
 }
 
-function fetchPriceHistoryUpToDate(uniqueIdentifier: string, cutoffDate: string): Promise<PricePoint[]> {
+function fetchPriceHistoryUpToDate(
+  uniqueIdentifier: string,
+  cutoffDate: string
+): Promise<PricePoint[]> {
   const db = getDb();
   return new Promise((resolve, reject) => {
     db.all(
@@ -102,18 +102,24 @@ function fetchPriceHistoryUpToDate(uniqueIdentifier: string, cutoffDate: string)
       [uniqueIdentifier, cutoffDate],
       (err, rows: any[]) => {
         if (err) return reject(err);
-        resolve(rows.map(r => ({
-          date: r.date,
-          price: r.price ?? 0,
-          marketPrice: r.marketPrice ?? r.price,
-          volume: r.volume,
-        })));
+        resolve(
+          rows.map((r) => ({
+            date: r.date,
+            price: r.price ?? 0,
+            marketPrice: r.marketPrice ?? r.price,
+            volume: r.volume,
+          }))
+        );
       }
     );
   });
 }
 
-function fetchFuturePrice(uniqueIdentifier: string, startDate: string, daysAhead: number): Promise<number | null> {
+function fetchFuturePrice(
+  uniqueIdentifier: string,
+  startDate: string,
+  daysAhead: number
+): Promise<number | null> {
   const db = getDb();
   return new Promise((resolve, reject) => {
     const targetDate = new Date(startDate);
@@ -145,7 +151,7 @@ export async function runBacktest(
 ): Promise<BacktestResult> {
   const db = getDb();
 
-  let cards: any[] = await new Promise((resolve, reject) => {
+  const cards: any[] = await new Promise((resolve, reject) => {
     let sql = `SELECT cm.cardId, cm.cardName, cm.setId, cm.setName, cm.cardNumber, cm.rarity, cm.uniqueIdentifier
                FROM card_mappings cm WHERE cm.cardName IS NOT NULL`;
     const params: any[] = [];
@@ -201,7 +207,10 @@ export async function runBacktest(
       const riskScore = computeRiskScore(volatility, priceChanges, movingAverages, 0);
 
       const scores: ScoringScores = {
-        trendScore, recoveryScore, demandScore, riskScore,
+        trendScore,
+        recoveryScore,
+        demandScore,
+        riskScore,
         externalSignalScore: 0,
         liquidityScore,
         dataQualityScore,
@@ -232,7 +241,12 @@ export async function runBacktest(
         returns.push(actualReturn);
       }
 
-      const category = determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
+      const category = determineCategory(
+        scores,
+        expectedReturns.expected90dReturn,
+        priceChanges,
+        recoveryMetrics
+      );
 
       cardResults.push({
         cardId: card.cardId,
@@ -253,21 +267,22 @@ export async function runBacktest(
   }
 
   const cardsTested = cardResults.length;
-  const directionalAccuracy = totalDirectionalTests > 0 ? totalDirectionalCorrect / totalDirectionalTests : null;
+  const directionalAccuracy =
+    totalDirectionalTests > 0 ? totalDirectionalCorrect / totalDirectionalTests : null;
   const mape = totalMapeCount > 0 ? totalMape / totalMapeCount : null;
 
   const top10 = [...cardResults]
-    .filter(r => r.predictedReturn !== null)
+    .filter((r) => r.predictedReturn !== null)
     .sort((a, b) => b.predictedReturn - a.predictedReturn)
     .slice(0, 10);
-  const top10AvgReturn = top10.length > 0
-    ? top10.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / top10.length
-    : null;
+  const top10AvgReturn =
+    top10.length > 0 ? top10.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / top10.length : null;
 
-  const withActualReturns = cardResults.filter(r => r.actualReturn !== null);
-  const marketAvgReturn = withActualReturns.length > 0
-    ? withActualReturns.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / withActualReturns.length
-    : null;
+  const withActualReturns = cardResults.filter((r) => r.actualReturn !== null);
+  const marketAvgReturn =
+    withActualReturns.length > 0
+      ? withActualReturns.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / withActualReturns.length
+      : null;
 
   // Compute market benchmark from all tested cards' price histories
   const allHistories: PricePoint[][] = [];
@@ -285,21 +300,23 @@ export async function runBacktest(
   }
   const benchmark = computeMarketBenchmark(allHistories, windowDays);
 
-  const strongBuyCards = cardResults.filter(r => r.category === 'strong_buy');
-  const strongBuyFalsePositive = strongBuyCards.filter(r => r.actualReturn !== null && r.actualReturn < 0);
-  const strongBuyFalsePositiveRate = strongBuyCards.length > 0
-    ? strongBuyFalsePositive.length / strongBuyCards.length
-    : null;
+  const strongBuyCards = cardResults.filter((r) => r.category === 'strong_buy');
+  const strongBuyFalsePositive = strongBuyCards.filter(
+    (r) => r.actualReturn !== null && r.actualReturn < 0
+  );
+  const strongBuyFalsePositiveRate =
+    strongBuyCards.length > 0 ? strongBuyFalsePositive.length / strongBuyCards.length : null;
 
-  const avoidCards = cardResults.filter(r => r.category === 'avoid' && r.actualReturn !== null);
-  const avoidAvgReturn = avoidCards.length > 0
-    ? avoidCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / avoidCards.length
-    : null;
+  const avoidCards = cardResults.filter((r) => r.category === 'avoid' && r.actualReturn !== null);
+  const avoidAvgReturn =
+    avoidCards.length > 0
+      ? avoidCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / avoidCards.length
+      : null;
 
-  const winRate = returns.length > 0 ? returns.filter(r => r > 0).length / returns.length : null;
+  const winRate = returns.length > 0 ? returns.filter((r) => r > 0).length / returns.length : null;
 
-  const gains = returns.filter(r => r > 0);
-  const losses = returns.filter(r => r < 0).map(r => Math.abs(r));
+  const gains = returns.filter((r) => r > 0);
+  const losses = returns.filter((r) => r < 0).map((r) => Math.abs(r));
   const avgGain = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / gains.length : 0;
   const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
   const profitFactor = avgLoss > 0 ? avgGain / avgLoss : null;
@@ -326,14 +343,26 @@ export async function runBacktest(
     maxDrawdown = maxDd;
   }
 
-  const categories: PredictionCategory[] = ['strong_buy', 'watch_dip', 'recovery', 'momentum', 'stagnant', 'avoid', 'downtrend'];
-  const categoryPerformance: CategoryPerformance[] = categories.map(cat => {
-    const catCards = cardResults.filter(r => r.category === cat && r.actualReturn !== null);
+  const categories: PredictionCategory[] = [
+    'strong_buy',
+    'watch_dip',
+    'recovery',
+    'momentum',
+    'stagnant',
+    'avoid',
+    'downtrend',
+  ];
+  const categoryPerformance: CategoryPerformance[] = categories.map((cat) => {
+    const catCards = cardResults.filter((r) => r.category === cat && r.actualReturn !== null);
     const count = catCards.length;
-    const avgReturn = count > 0 ? catCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / count : 0;
-    const avgPredictedReturn = count > 0
-      ? catCards.filter(r => r.predictedReturn !== null).reduce((s, r) => s + r.predictedReturn, 0) / count
-      : 0;
+    const avgReturn =
+      count > 0 ? catCards.reduce((s, r) => s + (r.actualReturn ?? 0), 0) / count : 0;
+    const avgPredictedReturn =
+      count > 0
+        ? catCards
+            .filter((r) => r.predictedReturn !== null)
+            .reduce((s, r) => s + r.predictedReturn, 0) / count
+        : 0;
     return { category: cat, count, avgReturn, avgPredictedReturn };
   });
 
@@ -406,16 +435,18 @@ export async function getBacktestResults(): Promise<any[]> {
       [],
       (err, rows: any[]) => {
         if (err) return reject(err);
-        resolve(rows.map(r => ({
-          ...r,
-          category_performance: (() => {
-            try {
-              return r.category_performance ? JSON.parse(r.category_performance) : [];
-            } catch {
-              return [];
-            }
-          })(),
-        })));
+        resolve(
+          rows.map((r) => ({
+            ...r,
+            category_performance: (() => {
+              try {
+                return r.category_performance ? JSON.parse(r.category_performance) : [];
+              } catch {
+                return [];
+              }
+            })(),
+          }))
+        );
       }
     );
   });
@@ -459,7 +490,10 @@ export async function runWalkForwardValidation(
       [],
       (err, row: any) => {
         if (err) return reject(err);
-        resolve({ minDate: row?.minDate || '2023-01-01', maxDate: row?.maxDate || new Date().toISOString().split('T')[0] });
+        resolve({
+          minDate: row?.minDate || '2023-01-01',
+          maxDate: row?.maxDate || new Date().toISOString().split('T')[0],
+        });
       }
     );
   });
@@ -504,24 +538,28 @@ export async function runWalkForwardValidation(
   }
 
   // Compute aggregate metrics
-  const validWindows = windows.filter(w => w.directionalAccuracy !== null);
-  const avgDirectionalAccuracy = validWindows.length > 0
-    ? validWindows.reduce((s, w) => s + w.directionalAccuracy!, 0) / validWindows.length
-    : null;
+  const validWindows = windows.filter((w) => w.directionalAccuracy !== null);
+  const avgDirectionalAccuracy =
+    validWindows.length > 0
+      ? validWindows.reduce((s, w) => s + w.directionalAccuracy!, 0) / validWindows.length
+      : null;
 
-  const windowsWithMape = windows.filter(w => w.mape !== null);
-  const avgMape = windowsWithMape.length > 0
-    ? windowsWithMape.reduce((s, w) => s + w.mape!, 0) / windowsWithMape.length
-    : null;
+  const windowsWithMape = windows.filter((w) => w.mape !== null);
+  const avgMape =
+    windowsWithMape.length > 0
+      ? windowsWithMape.reduce((s, w) => s + w.mape!, 0) / windowsWithMape.length
+      : null;
 
-  const windowsWithTop10 = windows.filter(w => w.top10AvgReturn !== null);
-  const avgTop10Return = windowsWithTop10.length > 0
-    ? windowsWithTop10.reduce((s, w) => s + w.top10AvgReturn!, 0) / windowsWithTop10.length
-    : null;
+  const windowsWithTop10 = windows.filter((w) => w.top10AvgReturn !== null);
+  const avgTop10Return =
+    windowsWithTop10.length > 0
+      ? windowsWithTop10.reduce((s, w) => s + w.top10AvgReturn!, 0) / windowsWithTop10.length
+      : null;
 
-  const consistencyScore = validWindows.length > 0
-    ? validWindows.filter(w => w.directionalAccuracy! > 0.5).length / validWindows.length
-    : null;
+  const consistencyScore =
+    validWindows.length > 0
+      ? validWindows.filter((w) => w.directionalAccuracy! > 0.5).length / validWindows.length
+      : null;
 
   return {
     windows,

@@ -1,5 +1,4 @@
 import { env } from '../config/env';
-import { logger } from '../utils/logger';
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -96,8 +95,6 @@ function parseExternalSignals(raw: string): string {
   for (const s of signals) {
     const type = s.type || s.sourceType || 'unknown';
     const title = s.title || '';
-    const summary = s.summary || '';
-    const sentiment = s.sentiment ?? 0;
 
     switch (type) {
       case 'tournament_meta':
@@ -129,7 +126,7 @@ function parseExternalSignals(raw: string): string {
   if (humanSignals.length === 0) return '';
 
   const top = humanSignals.slice(0, 4);
-  return `External factors to consider:\n${top.map(s => `- ${s}`).join('\n')}`;
+  return `External factors to consider:\n${top.map((s) => `- ${s}`).join('\n')}`;
 }
 
 async function callGroqApi(prompt: string): Promise<string> {
@@ -149,7 +146,8 @@ async function callGroqApi(prompt: string): Promise<string> {
       messages: [
         {
           role: 'system',
-          content: 'You are a friendly Pokemon TCG market analyst. Write concise, plain-language explanations that collectors and investors can understand. Avoid jargon. Reference specific factors that affect price.',
+          content:
+            'You are a friendly Pokemon TCG market analyst. Write concise, plain-language explanations that collectors and investors can understand. Avoid jargon. Reference specific factors that affect price.',
         },
         {
           role: 'user',

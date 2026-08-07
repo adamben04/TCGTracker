@@ -13,7 +13,7 @@ export function useResolvedPredictionCards(predictions: CardPrediction[]) {
     return next;
   }, [predictions]);
 
-  const cacheResolved = (_cardId: string, _card: PokemonCard) => {
+  const cacheResolved = () => {
     // No-op: cards are sourced from the predictions API, not client-side resolution.
   };
 

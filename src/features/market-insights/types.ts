@@ -45,13 +45,21 @@ export const PREDICTION_WINDOW_LABELS: Record<PredictionWindow, string> = {
 };
 
 /** Expected return for the given window; long windows fall back to 90d for old prediction runs. */
-export function expectedReturnForWindow(prediction: CardPrediction, window: PredictionWindow): number {
+export function expectedReturnForWindow(
+  prediction: CardPrediction,
+  window: PredictionWindow
+): number {
   switch (window) {
-    case '7d': return prediction.expected7dReturn;
-    case '30d': return prediction.expected30dReturn;
-    case '90d': return prediction.expected90dReturn;
-    case '180d': return prediction.expected180dReturn ?? prediction.expected90dReturn;
-    case '365d': return prediction.expected365dReturn ?? prediction.expected90dReturn;
+    case '7d':
+      return prediction.expected7dReturn;
+    case '30d':
+      return prediction.expected30dReturn;
+    case '90d':
+      return prediction.expected90dReturn;
+    case '180d':
+      return prediction.expected180dReturn ?? prediction.expected90dReturn;
+    case '365d':
+      return prediction.expected365dReturn ?? prediction.expected90dReturn;
   }
 }
 

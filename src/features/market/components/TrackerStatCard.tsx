@@ -1,7 +1,6 @@
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 import { CountUp } from '../../../components/common/CountUp';
-import { fillPriceHistoryGaps } from '../../../utils/priceHistory';
 
 interface TrackerStatCardProps {
   icon: LucideIcon;
@@ -40,11 +39,3 @@ export const TrackerStatCard: React.FC<TrackerStatCardProps> = ({
     </article>
   );
 };
-
-function buildSparklinePrices(history: { date: string; price: number }[]): number[] {
-  if (history.length === 0) return [];
-  const { points } = fillPriceHistoryGaps(history);
-  return points.slice(-7).map((p) => p.price);
-}
-
-export { buildSparklinePrices };

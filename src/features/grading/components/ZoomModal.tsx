@@ -93,19 +93,23 @@ export function ZoomModal({ imageSrc, label, onClose }: ZoomModalProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-2 backdrop-blur-sm sm:p-4"
-      onClick={onClose}
       role="presentation"
     >
-      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
       <div
-        className="flex w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border-strong bg-surface-overlay shadow-2xl"
+        className="relative z-10 flex w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border-strong bg-surface-overlay shadow-2xl"
         style={{
           // Account for padding on the backdrop; keep entire dialog in view
           height: 'min(calc(100dvh - 1rem), 52rem)',
           maxHeight: 'calc(100dvh - 1rem)',
           width: 'min(56rem, calc(100vw - 1rem))',
         }}
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={label}

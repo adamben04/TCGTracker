@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { VaultCard as VaultCardType } from '../../../types/pokemon';
 import { vaultService } from '../../../services/vaultService';
 import { useGame } from '../../../contexts/GameContext';
@@ -8,12 +7,30 @@ import { VaultCard } from './VaultCard';
 import { VaultPortfolioBySet } from './VaultPortfolioBySet';
 import { VaultHeatmap } from './VaultHeatmap';
 import { VaultPerformanceReport } from './VaultPerformanceReport';
-import { SectionLabel } from '../../../components/common/SectionLabel';
 import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { useToast } from '../../../components/common/Toast';
 import { CountUp } from '../../../components/common/CountUp';
-import { Vault, TrendingUp, TrendingDown, Download, Upload, Trash2, Camera, Search } from 'lucide-react';
+import {
+  Vault,
+  TrendingUp,
+  TrendingDown,
+  Download,
+  Upload,
+  Trash2,
+  Camera,
+  Search,
+} from 'lucide-react';
+import { Button } from '../../../components/ui/Button';
+import { DataProvenance } from '../../../components/ui/DataProvenance';
+import { PageHeader } from '../../../components/ui/PageHeader';
+import { Surface } from '../../../components/ui/Surface';
+import { authService } from '../../../services/authService';
+import {
+  getVaultSyncState,
+  VAULT_SYNC_STATUS_EVENT,
+  type VaultSyncState,
+} from '../../../services/vaultSyncService';
 
 interface VaultViewProps {
   onOpenSet?: (setId: string) => void;
@@ -25,6 +42,7 @@ export const VaultView: React.FC<VaultViewProps> = ({ onOpenSet }) => {
   const [vaultCards, setVaultCards] = useState<VaultCardType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [syncState, setSyncState] = useState<VaultSyncState>(() => getVaultSyncState());
 
   const loadVaultCards = useCallback(() => {
     setIsLoading(true);
@@ -40,6 +58,12 @@ export const VaultView: React.FC<VaultViewProps> = ({ onOpenSet }) => {
     window.addEventListener('tcg:vault-updated', onVaultUpdated);
     return () => window.removeEventListener('tcg:vault-updated', onVaultUpdated);
   }, [loadVaultCards]);
+
+  useEffect(() => {
+    const onSyncStatus = () => setSyncState(getVaultSyncState());
+    window.addEventListener(VAULT_SYNC_STATUS_EVENT, onSyncStatus);
+    return () => window.removeEventListener(VAULT_SYNC_STATUS_EVENT, onSyncStatus);
+  }, []);
 
   const handleRemoveCard = (id: string) => {
     vaultService.removeFromVault(id, game);
@@ -103,121 +127,125 @@ export const VaultView: React.FC<VaultViewProps> = ({ onOpenSet }) => {
   }
 
   const gain = stats.profit >= 0;
-  const gameLabel = isPokemon ? 'Pokemon' : 'One Piece';
+  const gameLabel = isPokemon ? 'Pokémon' : 'One Piece';
 
   return (
     <>
-      {/* Portfolio header — the numbers are the design */}
-      <div className="animate-slide-up">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <SectionLabel>Portfolio</SectionLabel>
-            <h1 className="mt-1 text-h1 text-ink-primary">My {gameLabel} Vault</h1>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleExport} className="btn-secondary" disabled={vaultCards.length === 0}>
+      <PageHeader
+        eyebrow="Portfolio"
+        title={`My ${gameLabel} vault`}
+        description="Track holdings, cost basis, grading notes, and current estimated market value."
+        actions={
+          <>
+            <Button onClick={handleExport} disabled={vaultCards.length === 0}>
               <Download className="h-4 w-4" aria-hidden="true" />
               Export
-            </button>
-            <button onClick={handleImport} className="btn-secondary">
+            </Button>
+            <Button onClick={handleImport}>
               <Upload className="h-4 w-4" aria-hidden="true" />
               Import
-            </button>
-            {vaultCards.length > 0 && (
-              <button onClick={handleClearVault} className="btn-destructive">
+            </Button>
+            {vaultCards.length > 0 ? (
+              <Button variant="danger" onClick={handleClearVault}>
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                 Clear
-              </button>
-            )}
-          </div>
-        </div>
+              </Button>
+            ) : null}
+          </>
+        }
+        meta={
+          <DataProvenance
+            source={
+              !authService.isAuthenticated()
+                ? 'Stored on this device'
+                : syncState.status === 'synced'
+                  ? 'Account vault synced'
+                  : syncState.status === 'syncing'
+                    ? 'Syncing account vault'
+                    : syncState.status === 'error'
+                      ? 'Cloud sync paused — saved locally'
+                      : 'Account vault awaiting sync'
+            }
+            qualifier="Market values are estimates; condition and finish affect realized price."
+          />
+        }
+      />
 
-        {vaultCards.length > 0 && (
-          <div className="mt-5 flex flex-wrap items-end gap-x-10 gap-y-4">
-            <div>
-              <p className="text-xs font-medium text-ink-muted">Current value</p>
-              <p className="text-gradient font-mono text-[32px] font-bold leading-tight tabular-nums">
-                <CountUp end={stats.currentValue} prefix="$" decimals={2} />
-              </p>
-              <motion.p
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3, duration: 0.4 }}
-                className={`mt-0.5 inline-flex items-center gap-1 text-sm font-semibold tabular-nums ${
-                  gain ? 'text-gain' : 'text-loss'
-                }`}
-              >
-                {gain ? (
-                  <TrendingUp className="h-4 w-4" aria-hidden="true" />
-                ) : (
-                  <TrendingDown className="h-4 w-4" aria-hidden="true" />
-                )}
-                {stats.profit >= 0 ? '+' : ''}
-                <CountUp end={Math.abs(stats.profit)} prefix="$" decimals={2} />
-                {' ('}
-                {stats.profitPercentage >= 0 ? '+' : ''}
-                {stats.profitPercentage.toFixed(1)}%) all time
-              </motion.p>
-            </div>
-            <dl className="flex flex-wrap gap-x-8 gap-y-3 border-l border-border-default pl-8">
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15, duration: 0.35 }}
-              >
-                <dt className="text-xs font-medium text-ink-muted">Cost basis</dt>
-                <dd className="text-lg font-semibold tabular-nums text-ink-secondary">
-                  <CountUp end={stats.totalValue} prefix="$" decimals={2} />
-                </dd>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25, duration: 0.35 }}
-              >
-                <dt className="text-xs font-medium text-ink-muted">Cards held</dt>
-                <dd className="text-lg font-semibold tabular-nums text-ink-secondary">
-                  <CountUp end={stats.totalCards} />
-                  <span className="ml-1 text-xs font-normal text-ink-muted">
-                    ({vaultCards.length} entries)
-                  </span>
-                </dd>
-              </motion.div>
-            </dl>
+      {authService.isAuthenticated() && syncState.status === 'error' ? (
+        <div
+          className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-ink-primary"
+          role="alert"
+        >
+          {syncState.message ?? 'Cloud sync is unavailable. Changes remain saved locally.'}
+        </div>
+      ) : null}
+
+      {vaultCards.length > 0 ? (
+        <Surface className="mt-5 grid gap-4 p-5 sm:grid-cols-3">
+          <div className="sm:col-span-1">
+            <p className="text-xs font-medium text-ink-muted">Current value</p>
+            <p className="mt-2 font-mono text-3xl font-semibold leading-tight tabular-nums text-ink-primary">
+              <CountUp end={stats.currentValue} prefix="$" decimals={2} />
+            </p>
+            <p
+              className={`mt-2 inline-flex items-center gap-1 text-sm font-medium tabular-nums ${
+                gain ? 'text-gain' : 'text-loss'
+              }`}
+            >
+              {gain ? (
+                <TrendingUp className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <TrendingDown className="h-4 w-4" aria-hidden="true" />
+              )}
+              {stats.profit >= 0 ? '+' : ''}
+              <CountUp end={Math.abs(stats.profit)} prefix="$" decimals={2} />
+              {' · '}
+              {stats.profitPercentage >= 0 ? '+' : ''}
+              {stats.profitPercentage.toFixed(1)}%
+            </p>
           </div>
-        )}
-      </div>
+          <div>
+            <p className="text-xs font-medium text-ink-muted">Cost basis</p>
+            <p className="mt-2 font-mono text-xl font-semibold tabular-nums text-ink-primary">
+              <CountUp end={stats.totalValue} prefix="$" decimals={2} />
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">Recorded purchase value</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-ink-muted">Cards held</p>
+            <p className="mt-2 font-mono text-xl font-semibold tabular-nums text-ink-primary">
+              <CountUp end={stats.totalCards} />
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">{vaultCards.length} vault entries</p>
+          </div>
+        </Surface>
+      ) : null}
 
       {/* Empty State */}
       {vaultCards.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="card-glass-scene mt-6 flex flex-col items-center p-16 text-center"
-        >
-          <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-accent/25 bg-accent-muted shadow-[0_0_24px_rgba(168,132,26,0.15)]">
-            <Vault className="h-10 w-10 text-accent" aria-hidden="true" />
+        <Surface className="mt-6 flex flex-col items-center px-6 py-14 text-center">
+          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl border border-accent/25 bg-accent-muted">
+            <Vault className="h-7 w-7 text-accent" aria-hidden="true" />
           </div>
-          <h3 className="mb-2 text-2xl font-display font-bold text-ink-primary">Your vault is empty</h3>
-          <p className="mx-auto mb-8 max-w-sm text-sm text-ink-muted">
+          <h2 className="text-xl font-semibold text-ink-primary">Your vault is empty</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-secondary">
             {isPokemon
               ? 'Scan your first card or browse the marketplace to start building your collection.'
               : 'Browse One Piece cards to add your first entry.'}
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
             {isPokemon && (
-              <Link to="/scanner" className="btn-primary gap-3 px-6 py-3 text-base">
+              <Link to="/scanner" className="btn-secondary">
                 <Camera className="h-5 w-5" aria-hidden="true" />
                 Scan a card
               </Link>
             )}
-            <Link to="/browse" className="btn-primary gap-3 px-6 py-3 text-base">
+            <Link to="/browse" className="btn-primary">
               <Search className="h-5 w-5" aria-hidden="true" />
               Browse {gameLabel} cards
             </Link>
           </div>
-        </motion.div>
+        </Surface>
       ) : (
         <div className="space-y-8">
           <VaultPerformanceReport vaultCards={vaultCards} />
@@ -230,7 +258,10 @@ export const VaultView: React.FC<VaultViewProps> = ({ onOpenSet }) => {
           <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-ink-primary">
-                Holdings <span className="text-sm font-normal tabular-nums text-ink-muted">({vaultCards.length})</span>
+                Holdings{' '}
+                <span className="text-sm font-normal tabular-nums text-ink-muted">
+                  ({vaultCards.length})
+                </span>
               </h2>
             </div>
             <div className="stagger-children space-y-4">

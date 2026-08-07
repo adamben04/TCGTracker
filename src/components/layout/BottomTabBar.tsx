@@ -1,79 +1,130 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { CircleDot, LockKeyhole, MoreHorizontal, Swords, X, type LucideIcon } from 'lucide-react';
 import {
-  Award,
-  BookOpen,
-  Camera,
-  Heart,
-  LayoutGrid,
-  LineChart,
-  MoreHorizontal,
-  Package,
-  Receipt,
-  Swords,
-  TrendingUp,
-} from 'lucide-react';
+  isNavigationItemActive,
+  mobileDestinationOrder,
+  navigationItems,
+  type NavigationItem,
+} from '../../config/navigation';
 import { useGame, GameType } from '../../contexts/GameContext';
 
-const PRIMARY_TABS: { to: string; label: string; icon: React.ElementType; end?: boolean }[] = [
-  { to: '/', label: 'Home', icon: LayoutGrid, end: true },
-  { to: '/browse', label: 'Browse', icon: LayoutGrid },
-];
-
-const SECONDARY_TABS: { to: string; label: string; icon: React.ElementType }[] = [
-  { to: '/vault', label: 'Vault', icon: BookOpen },
-  { to: '/sealed', label: 'Sealed', icon: Package },
-];
-
-const MORE_ITEMS: { to: string; label: string; icon: React.ElementType }[] = [
-  { to: '/sets', label: 'Sets', icon: LayoutGrid },
-  { to: '/wishlist', label: 'Wishlist', icon: Heart },
-  { to: '/packs', label: 'Packs', icon: LayoutGrid },
-  { to: '/trade', label: 'Trade', icon: Swords },
-  { to: '/rip-grade', label: 'Rip & Grade', icon: Award },
-  { to: '/ledger', label: 'Ledger', icon: Receipt },
-  { to: '/grading', label: 'Grade', icon: Award },
-  { to: '/prices', label: 'Prices', icon: LineChart },
-  { to: '/market-insights', label: 'Insights', icon: TrendingUp },
-];
-
-const GAME_OPTIONS: { value: GameType; label: string; icon: React.ElementType }[] = [
-  { value: 'pokemon', label: 'Pokemon', icon: LayoutGrid },
+const GAME_OPTIONS: { value: GameType; label: string; icon: LucideIcon }[] = [
+  { value: 'pokemon', label: 'Pokémon', icon: CircleDot },
   { value: 'onepiece', label: 'One Piece', icon: Swords },
 ];
 
+const mobileTabs = mobileDestinationOrder.map((destination) => {
+  const item = navigationItems.find((navigationItem) => navigationItem.mobile === destination);
+  if (!item) throw new Error(`Missing mobile destination: ${destination}`);
+  return item;
+});
+const moreItems = navigationItems.filter((item) => item.mobile === 'more');
+
 const tabClass = ({ isActive }: { isActive: boolean }) =>
-  `relative flex h-full min-w-[56px] flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-200 active:scale-[0.94] neon-flood ${
-    isActive ? 'text-accent' : 'text-ink-muted hover:text-ink-secondary'
+  `relative flex h-full min-w-[56px] flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-150 ${
+    isActive ? 'text-ink-primary' : 'text-ink-muted hover:text-ink-secondary'
   }`;
 
-const TabIndicator: React.FC<{ isActive: boolean }> = ({ isActive }) => (
+const TabIndicator = ({ isActive }: { isActive: boolean }) => (
   <span
-    className={`absolute top-0 h-0.5 w-8 bg-accent transition-all duration-200 ${
-      isActive ? 'opacity-100 shadow-[0_0_8px_var(--accent)]' : 'opacity-0'
+    className={`absolute top-0 h-0.5 w-8 rounded-b bg-accent transition-opacity duration-150 ${
+      isActive ? 'opacity-100' : 'opacity-0'
     }`}
     aria-hidden="true"
   />
 );
 
-export const BottomTabBar: React.FC = () => {
+export const BottomTabBar = () => {
   const [moreOpen, setMoreOpen] = useState(false);
   const { game, setGame } = useGame();
   const location = useLocation();
   const sheetRef = useRef<HTMLDivElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setMoreOpen(false);
   }, [location.pathname]);
 
-  const moreActive = MORE_ITEMS.some((item) => location.pathname.startsWith(item.to));
+  useEffect(() => {
+    if (!moreOpen) return;
+
+    const trigger = moreTriggerRef.current;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMoreOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusableElements?.length) return;
+
+      const first = focusableElements[0];
+      const last = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      trigger?.focus();
+    };
+  }, [moreOpen]);
+
+  const moreActive = moreItems.some((item) => isNavigationItemActive(item, location.pathname));
+  const renderMobileTab = (item: NavigationItem) => {
+    const Icon = item.icon;
+    if (item.mobile === 'scan') {
+      return (
+        <NavLink
+          key={item.path}
+          to={item.path}
+          aria-label={item.title}
+          className={({ isActive }) =>
+            `relative -mt-2 flex flex-col items-center justify-start gap-1 text-[11px] font-medium ${
+              isActive ? 'text-ink-primary' : 'text-ink-muted'
+            }`
+          }
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/50 bg-accent text-[color:var(--accent-foreground)] shadow-md transition-transform duration-150 active:scale-95">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </span>
+          {item.label}
+        </NavLink>
+      );
+    }
+
+    return (
+      <NavLink key={item.path} to={item.path} end={item.end} className={tabClass}>
+        {({ isActive }) => (
+          <>
+            <TabIndicator isActive={isActive} />
+            <Icon className="h-[22px] w-[22px]" aria-hidden="true" />
+            {item.label}
+          </>
+        )}
+      </NavLink>
+    );
+  };
 
   return (
     <>
       {moreOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 md:hidden"
-          onClick={() => setMoreOpen(false)}
+          className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] md:hidden"
+          onMouseDown={() => setMoreOpen(false)}
           aria-hidden="true"
         />
       )}
@@ -81,21 +132,37 @@ export const BottomTabBar: React.FC = () => {
       {moreOpen && (
         <div
           ref={sheetRef}
-          role="menu"
-          aria-label="More destinations"
-          className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 animate-slide-up border-2 border-accent/30 bg-surface-overlay shadow-[0_0_30px_var(--ring-accent)] md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="more-destinations-title"
+          className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 animate-slide-up overflow-hidden rounded-2xl border border-border-strong bg-surface-overlay shadow-elevated md:hidden"
         >
-          {/* Game Switcher in More menu */}
-          <div className="mb-2 flex border border-border-default bg-surface-inset">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <h2 id="more-destinations-title" className="text-base font-semibold text-ink-primary">
+              More destinations
+            </h2>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={() => setMoreOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink-primary"
+              aria-label="Close more destinations"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="m-3 flex rounded-lg border border-border-default bg-surface-inset p-1">
             {GAME_OPTIONS.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setGame(value)}
-                className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-2.5 text-xs font-bold uppercase tracking-wider transition-all neon-flood ${
+                aria-pressed={game === value}
+                className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors ${
                   game === value
-                    ? 'bg-accent text-black shadow-[0_0_12px_var(--ring-accent)]'
-                    : 'text-ink-muted hover:text-ink-secondary'
+                    ? 'bg-surface-raised text-ink-primary shadow-xs'
+                    : 'text-ink-muted hover:text-ink-primary'
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -104,77 +171,51 @@ export const BottomTabBar: React.FC = () => {
             ))}
           </div>
 
-          {MORE_ITEMS.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              role="menuitem"
-              className={({ isActive }) =>
-                `flex items-center gap-3 border-l-2 px-4 py-3 text-sm font-bold transition-all neon-flood ${
-                  isActive
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-transparent text-ink-secondary hover:border-accent/30 hover:bg-surface-hover'
-                }`
-              }
-            >
-              <Icon className="h-4 w-4" aria-hidden="true" />
-              {label}
-            </NavLink>
-          ))}
+          <div className="max-h-[55vh] overflow-y-auto py-1">
+            {moreItems.map(({ path, label, icon: Icon, end, requiresAuth }) => (
+              <NavLink
+                key={path}
+                to={path}
+                end={end}
+                className={({ isActive }) =>
+                  `mx-2 flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-accent-muted text-ink-primary'
+                      : 'text-ink-secondary hover:bg-surface-hover hover:text-ink-primary'
+                  }`
+                }
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="min-w-0 flex-1">{label}</span>
+                {requiresAuth && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-muted">
+                    <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span className="sr-only">Sign-in required</span>
+                  </span>
+                )}
+              </NavLink>
+            ))}
+          </div>
         </div>
       )}
 
       <nav
         aria-label="Mobile"
-        className="fixed inset-x-0 bottom-0 z-50 h-16 border-t-2 border-border-subtle bg-surface-base pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 h-16 border-t border-border-subtle bg-surface-base/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
         <div className="mx-auto flex h-16 max-w-md items-stretch justify-around px-2">
-          {PRIMARY_TABS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className={tabClass}>
-              {({ isActive }) => (
-                <>
-                  <TabIndicator isActive={isActive} />
-                  <Icon className="h-[22px] w-[22px]" aria-hidden="true" />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
-
-          <NavLink
-            to="/scanner"
-            aria-label="Scan a card"
-            className={({ isActive }) =>
-              `relative -mt-2 flex flex-col items-center justify-start gap-1 text-[10px] font-bold uppercase tracking-wider ${
-                isActive ? 'text-accent' : 'text-ink-muted'
-              }`
-            }
-          >
-            <span className="flex h-11 w-11 items-center justify-center border-2 border-accent bg-surface-base text-accent shadow-[0_0_20px_var(--ring-accent)] transition-transform duration-200 active:scale-95">
-              <Camera className="h-5 w-5" aria-hidden="true" />
-            </span>
-            Scan
-          </NavLink>
-
-          {SECONDARY_TABS.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className={tabClass}>
-              {({ isActive }) => (
-                <>
-                  <TabIndicator isActive={isActive} />
-                  <Icon className="h-[22px] w-[22px]" aria-hidden="true" />
-                  {label}
-                </>
-              )}
-            </NavLink>
-          ))}
+          {mobileTabs.map(renderMobileTab)}
 
           <button
+            ref={moreTriggerRef}
             type="button"
             onClick={() => setMoreOpen((v) => !v)}
             aria-expanded={moreOpen}
-            aria-haspopup="menu"
-            className={`relative flex h-full min-w-[56px] flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-200 active:scale-[0.94] neon-flood ${
-              moreActive || moreOpen ? 'text-accent' : 'text-ink-muted hover:text-ink-secondary'
+            aria-haspopup="dialog"
+            className={`relative flex h-full min-w-[56px] flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-150 ${
+              moreActive || moreOpen
+                ? 'text-ink-primary'
+                : 'text-ink-muted hover:text-ink-secondary'
             }`}
           >
             <TabIndicator isActive={moreActive || moreOpen} />

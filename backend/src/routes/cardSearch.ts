@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/database';
 import { logger } from '../utils/logger';
-import {
-  pokemonApiClient,
-  CardImageMatchResult,
-} from '../services/pokemonApiClient';
+import { pokemonApiClient, CardImageMatchResult } from '../services/pokemonApiClient';
 import { generateUniqueIdentifier } from '../services/cardIdentifier';
 import { setCodeService } from '../services/setCodeService';
 import {
@@ -19,10 +16,7 @@ import {
   PokemonPersistentCacheRow,
 } from '../services/cardCache';
 import { getImageColumnSelectFragment } from '../services/cardImageUtils';
-import {
-  getLocalCardsForQuery,
-  mapLocalRowsToPokemonCards,
-} from '../services/cardDatabase';
+import { getLocalCardsForQuery, mapLocalRowsToPokemonCards } from '../services/cardDatabase';
 import { getPopulationCounts } from '../services/populationService';
 import { getCardMappingImages } from '../services/cardImageBackfillService';
 import { enrichCardsWithInvestmentData } from '../services/cardEnrichment';
@@ -30,11 +24,13 @@ import { getGradedPrices } from '../services/gradedPriceService';
 
 const router = Router();
 
-import { extractBestListingPrice, ListingPriceFields, resolveHistoryPointPrice } from '../utils/resolveListingPrice';
+import {
+  extractBestListingPrice,
+  ListingPriceFields,
+  resolveHistoryPointPrice,
+} from '../utils/resolveListingPrice';
 
-const parsePrices = (
-  value?: string | null
-): Record<string, ListingPriceFields> | undefined => {
+const parsePrices = (value?: string | null): Record<string, ListingPriceFields> | undefined => {
   if (!value) {
     return undefined;
   }
@@ -192,10 +188,10 @@ router.get('/resolve-image', async (req, res) => {
 router.get('/search', async (req, res) => {
   try {
     const { query, setId, limit = '100' } = req.query;
-    
+
     if (!query || typeof query !== 'string') {
-      return res.status(400).json({ 
-        error: 'Query parameter is required' 
+      return res.status(400).json({
+        error: 'Query parameter is required',
       });
     }
 
@@ -256,7 +252,7 @@ router.get('/search', async (req, res) => {
       ) ph ON cc.cardId = ph.cardId
       WHERE cc.cardName LIKE ?
     `;
-    
+
     const params: any[] = [`%${query}%`];
 
     if (setId && typeof setId === 'string') {
@@ -272,7 +268,7 @@ router.get('/search', async (req, res) => {
         logger.error('Error searching cards:', err);
         return res.status(500).json({
           error: 'Database error',
-          message: err.message
+          message: err.message,
         });
       }
 
@@ -332,15 +328,14 @@ router.get('/search', async (req, res) => {
       res.json({
         data: cards,
         count: cards.length,
-        source: 'local_database'
+        source: 'local_database',
       });
     });
-
   } catch (error) {
     logger.error('Error in card search:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
-      message: (error as Error).message 
+      message: (error as Error).message,
     });
   }
 });
@@ -385,9 +380,9 @@ router.get('/stats', async (req, res) => {
     db.get(sql, [], (err, row: any) => {
       if (err) {
         logger.error('Error fetching stats:', err);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Database error',
-          message: err.message 
+          message: err.message,
         });
       }
 
@@ -396,7 +391,7 @@ router.get('/stats', async (req, res) => {
           totalCards: 0,
           totalSets: 0,
           totalEntries: 0,
-          source: 'local_database'
+          source: 'local_database',
         });
       }
 
@@ -404,15 +399,14 @@ router.get('/stats', async (req, res) => {
         totalCards: row.totalCards || 0,
         totalSets: row.totalSets || 0,
         totalEntries: row.totalEntries || 0,
-        source: 'local_database'
+        source: 'local_database',
       });
     });
-
   } catch (error) {
     logger.error('Error fetching stats:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
-      message: (error as Error).message 
+      message: (error as Error).message,
     });
   }
 });
@@ -466,7 +460,7 @@ router.get('/pool', async (req, res) => {
       'League & Championship Cards',
       'Jumbo Cards',
       'Blister Exclusives',
-      'McDonald%',  // McDonald's promos
+      'McDonald%', // McDonald's promos
       'Burger King Promos',
       'Countdown Calendar Promos',
       'Professor Program Promos',
@@ -553,7 +547,7 @@ router.get('/pool', async (req, res) => {
         logger.error('Error fetching random card pool:', err);
         return res.status(500).json({
           error: 'Database error',
-          message: err.message
+          message: err.message,
         });
       }
 
@@ -563,18 +557,17 @@ router.get('/pool', async (req, res) => {
       res.json({
         data: cards,
         count: cards.length,
-        source: 'local_database'
+        source: 'local_database',
       });
     });
   } catch (error) {
     logger.error('Error building card pool:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
-      message: (error as Error).message 
+      message: (error as Error).message,
     });
   }
 });
-
 
 router.get('/pokemon', async (req, res) => {
   let persistentCacheEntry: PokemonPersistentCacheRow | null = null;
@@ -841,7 +834,11 @@ router.get('/search-pokemon', async (req, res) => {
       cardNumber: typeof cardNumber === 'string' ? cardNumber.trim() : undefined,
     });
 
-    if (!searchResult.card || !searchResult.card.images?.small || !searchResult.card.images?.large) {
+    if (
+      !searchResult.card ||
+      !searchResult.card.images?.small ||
+      !searchResult.card.images?.large
+    ) {
       return res.status(404).json({
         error: `Card not found or missing images`,
         searched: { cardName, setId, setName, cardNumber },
@@ -887,7 +884,11 @@ router.get('/search-pokemon', async (req, res) => {
       const setIdNormalized = card.set?.id || '';
       const cardNumber = card.number || '';
       const resolvedCardName = card.name || '';
-      const uniqueIdentifier = generateUniqueIdentifier(setIdNormalized, cardNumber, resolvedCardName);
+      const uniqueIdentifier = generateUniqueIdentifier(
+        setIdNormalized,
+        cardNumber,
+        resolvedCardName
+      );
 
       db.run(
         'UPDATE card_mappings SET rarity = ? WHERE uniqueIdentifier = ?',
@@ -926,13 +927,13 @@ router.post('/refresh-set-mappings', async (req, res) => {
       success: true,
       message: `Refreshed ${mappings.size} set mappings`,
       mappingsCount: mappings.size,
-      source: 'pokemon_tcg_api'
+      source: 'pokemon_tcg_api',
     });
   } catch (error) {
     logger.error('❌ Failed to refresh set mappings:', error);
     res.status(500).json({
       error: 'Failed to refresh set mappings',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -949,13 +950,13 @@ router.get('/set-mappings/stats', async (req, res) => {
       cachedMappings: stats.cachedMappings,
       lastRefreshed: stats.lastRefreshed ? new Date(stats.lastRefreshed).toISOString() : null,
       cacheAge: stats.lastRefreshed ? Date.now() - stats.lastRefreshed : null,
-      cacheTtl: stats.cacheTtl
+      cacheTtl: stats.cacheTtl,
     });
   } catch (error) {
     logger.error('Error fetching set mapping stats:', error);
     res.status(500).json({
       error: 'Internal server error',
-      message: (error as Error).message
+      message: (error as Error).message,
     });
   }
 });
@@ -984,4 +985,3 @@ router.get('/graded-prices', async (req, res) => {
 });
 
 export default router;
-

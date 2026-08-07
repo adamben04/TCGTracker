@@ -71,7 +71,7 @@ export const RipGradeCalculator: React.FC = () => {
     void pokemonApi.getSets().then(setSets);
   }, []);
 
-  const analyze = useCallback(async (setId: string, price: string) => {
+  const analyze = useCallback(async (setId: string) => {
     if (!setId) return;
     setLoading(true);
     setError('');
@@ -85,8 +85,8 @@ export const RipGradeCalculator: React.FC = () => {
       const json = (await response.json()) as { success: boolean; data: RipGradeResult };
       if (!json?.success || !json?.data) throw new Error('Unexpected response');
       setResult(json.data);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to analyze set');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze set');
       setResult(null);
     } finally {
       setLoading(false);
@@ -95,13 +95,13 @@ export const RipGradeCalculator: React.FC = () => {
 
   const onSetChange = (setId: string) => {
     setSelectedSetId(setId);
-    void analyze(setId, packPrice);
+    void analyze(setId);
   };
 
   const onPackPriceChange = (value: string) => {
     setPackPrice(value);
     if (result) {
-      void analyze(selectedSetId, value);
+      void analyze(selectedSetId);
     }
   };
 
@@ -126,11 +126,15 @@ export const RipGradeCalculator: React.FC = () => {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border-default bg-surface p-5">
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+          <label
+            htmlFor="rip-grade-set"
+            className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+          >
             Set
           </label>
           <select
             value={selectedSetId}
+            id="rip-grade-set"
             onChange={(e) => onSetChange(e.target.value)}
             className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary focus:border-accent/50 focus:outline-none"
           >
@@ -142,11 +146,15 @@ export const RipGradeCalculator: React.FC = () => {
             ))}
           </select>
 
-          <label className="mt-4 mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+          <label
+            htmlFor="rip-grade-pack-price"
+            className="mt-4 mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+          >
             Pack price ($)
           </label>
           <input
             type="number"
+            id="rip-grade-pack-price"
             min={0}
             step="0.01"
             value={packPrice}
@@ -157,9 +165,9 @@ export const RipGradeCalculator: React.FC = () => {
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-border-default bg-surface-inset/50 p-3 text-xs text-ink-muted">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
             <p>
-              Expected value uses a simplified pull-rate model (commons x8, uncommons x3, rare slot x1)
-              combined with each rarity tier's average market price. Real pull rates vary by set - treat
-              this as a rough guide.
+              Expected value uses a simplified pull-rate model (commons x8, uncommons x3, rare slot
+              x1) combined with each rarity tier's average market price. Real pull rates vary by set
+              - treat this as a rough guide.
             </p>
           </div>
         </div>
@@ -209,8 +217,8 @@ export const RipGradeCalculator: React.FC = () => {
                 />
               </div>
               <p className="text-xs text-ink-muted">
-                Based on {result.pricedCards.toLocaleString()} of {result.totalCards.toLocaleString()}{' '}
-                cards with pricing data.
+                Based on {result.pricedCards.toLocaleString()} of{' '}
+                {result.totalCards.toLocaleString()} cards with pricing data.
               </p>
             </div>
           ) : (

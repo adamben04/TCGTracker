@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, SlidersHorizontal } from 'lucide-react';
 import { PokemonCard } from '../types/pokemon';
 import { OnePieceCard } from '../types/onepiece';
 import { SearchFilters } from '../features/cards/components/SearchAndSort';
@@ -13,9 +12,12 @@ import { EmptyState } from '../components/common/EmptyState';
 import { useCards, isPokemonCard, isOnePieceCard, getCardPrice } from '../hooks/useCards';
 import { useGame } from '../contexts/GameContext';
 import { useCardModal } from '../contexts/CardModalContext';
-import { markOnboardingStep } from '../components/common/OnboardingChecklist';
+import { markOnboardingStep } from '../components/common/onboarding';
 import { formatCurrency, getRarityBadgeClass } from '../utils/cardDisplay';
 import { BookPlus, Eye, LineChart } from 'lucide-react';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Badge } from '../components/ui/Badge';
+import { DataProvenance } from '../components/ui/DataProvenance';
 
 const DEFAULT_FILTERS: MarketplaceFilters = {
   setName: 'all',
@@ -34,9 +36,6 @@ export function BrowsePage() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [cardViewMode, setCardViewMode] = useState<CardViewMode>('grid');
   const [marketplaceFilters, setMarketplaceFilters] = useState<MarketplaceFilters>(DEFAULT_FILTERS);
-  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
-  const [onePieceCards, setOnePieceCards] = useState<OnePieceCard[]>([]);
-  const [onePieceLoading, setOnePieceLoading] = useState(false);
 
   const {
     cards,
@@ -53,7 +52,7 @@ export function BrowsePage() {
 
   useEffect(() => {
     setSearchQuery(urlQuery);
-  }, [urlQuery]);
+  }, [urlQuery, setSearchQuery]);
 
   useEffect(() => {
     if (searchQuery.trim() && cards.length > 0 && !isLoading) {
@@ -128,55 +127,34 @@ export function BrowsePage() {
   });
 
   const facetChips: { key: keyof MarketplaceFilters; label: string }[] = [];
-  if (marketplaceFilters.setName !== 'all') facetChips.push({ key: 'setName', label: marketplaceFilters.setName });
-  if (marketplaceFilters.rarity !== 'all') facetChips.push({ key: 'rarity', label: marketplaceFilters.rarity });
-  if (marketplaceFilters.cardType !== 'all') facetChips.push({ key: 'cardType', label: marketplaceFilters.cardType });
+  if (marketplaceFilters.setName !== 'all')
+    facetChips.push({ key: 'setName', label: marketplaceFilters.setName });
+  if (marketplaceFilters.rarity !== 'all')
+    facetChips.push({ key: 'rarity', label: marketplaceFilters.rarity });
+  if (marketplaceFilters.cardType !== 'all')
+    facetChips.push({ key: 'cardType', label: marketplaceFilters.cardType });
   if (marketplaceFilters.priceRange !== 'all')
     facetChips.push({ key: 'priceRange', label: `$${marketplaceFilters.priceRange}` });
 
-  const gameLabel = isPokemon ? 'Pokemon' : 'One Piece';
+  const gameLabel = isPokemon ? 'Pokémon' : 'One Piece';
 
   return (
     <div className="relative mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="page-accent-strip" />
-
-      {/* Header */}
-      <div className="mb-8 pl-4 shadow-[inset_0_0_20px_var(--ring-accent)]">
-        <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
-          MARKETPLACE
-        </span>
-        <h1 className="mt-1 font-display text-[clamp(1.5rem,3vw,2.2rem)] font-bold leading-tight tracking-tight">
-          Browse{' '}
-          <span className="text-ink-primary">{gameLabel}</span>{' '}
-          <span className="text-ink-primary">Cards</span>
-        </h1>
-        <p className="mt-1 text-sm font-semibold text-ink-secondary">
-          Analyze cards with marketplace filters, pricing surfaces, and collection actions.
-        </p>
-      </div>
-
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs text-ink-muted font-medium">TCG:</span>
-        <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
-          <button
-            onClick={() => setTcg('pokemon')}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
-            }`}
-          >
-            Pokemon
-          </button>
-          <button
-            onClick={() => setTcg('onepiece')}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
-            }`}
-          >
-            One Piece
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Catalog"
+        title={`Browse ${gameLabel} cards`}
+        description="Search by card name, then narrow results by set, rarity, type, price, and market signal."
+        meta={
+          <div className="flex flex-wrap items-center gap-3">
+            <Badge tone="accent">{gameLabel}</Badge>
+            <DataProvenance
+              source={isPokemon ? 'Pokémon TCG API + TCGplayer pricing' : 'OPTCG catalog feeds'}
+              qualifier="Prices vary by finish and condition."
+            />
+          </div>
+        }
+        className="mb-6"
+      />
 
       <SearchFilters
         searchQuery={searchQuery}
@@ -195,43 +173,53 @@ export function BrowsePage() {
         <ViewModeToggle viewMode={cardViewMode} onChange={setCardViewMode} />
       </div>
 
-      {(searchQuery || facetChips.length > 0) && !isLoading && !error && cardsWithMarketplaceFilters.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-2" aria-live="polite">
-          <p className="text-sm font-semibold text-ink-secondary">
-            <span className="font-mono font-bold tabular-nums text-accent">{cardsWithMarketplaceFilters.length}</span>{' '}
-            {cardsWithMarketplaceFilters.length === 1 ? 'result' : 'results'}
-            {searchQuery && (
-              <>
-                {' '}for <span className="font-bold text-ink-primary">"{searchQuery}"</span>
-              </>
+      {(searchQuery || facetChips.length > 0) &&
+        !isLoading &&
+        !error &&
+        cardsWithMarketplaceFilters.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2" aria-live="polite">
+            <p className="text-sm font-semibold text-ink-secondary">
+              <span className="font-mono font-bold tabular-nums text-accent">
+                {cardsWithMarketplaceFilters.length}
+              </span>{' '}
+              {cardsWithMarketplaceFilters.length === 1 ? 'result' : 'results'}
+              {searchQuery && (
+                <>
+                  {' '}
+                  for <span className="font-bold text-ink-primary">"{searchQuery}"</span>
+                </>
+              )}
+            </p>
+            {filterBy !== 'all' && (
+              <span className="badge-gain border px-2.5 py-1 text-xs font-bold uppercase tracking-wider">
+                {filterBy}
+              </span>
             )}
-          </p>
-          {filterBy !== 'all' && (
-            <span className="badge-gain border px-2.5 py-1 text-xs font-bold uppercase tracking-wider">{filterBy}</span>
-          )}
-          {facetChips.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setMarketplaceFilters({ ...marketplaceFilters, [key]: 'all' })}
-              className="inline-flex items-center gap-1.5 border border-accent bg-accent-muted px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-accent transition-all hover:bg-accent/20 neon-flood"
-            >
-              {label}
-              <span aria-hidden="true" className="text-accent ml-1">×</span>
-              <span className="sr-only">Remove {label} filter</span>
-            </button>
-          ))}
-          {facetChips.length > 0 && (
-            <button
-              type="button"
-              onClick={handleResetBrowseState}
-              className="border border-border-default bg-surface-raised px-3 py-1 text-xs font-bold uppercase tracking-wider text-ink-muted transition-all hover:border-accent hover:text-accent neon-flood"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-      )}
+            {facetChips.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMarketplaceFilters({ ...marketplaceFilters, [key]: 'all' })}
+                className="inline-flex items-center gap-1.5 border border-accent bg-accent-muted px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-accent transition-all hover:bg-accent/20 neon-flood"
+              >
+                {label}
+                <span aria-hidden="true" className="text-accent ml-1">
+                  ×
+                </span>
+                <span className="sr-only">Remove {label} filter</span>
+              </button>
+            ))}
+            {facetChips.length > 0 && (
+              <button
+                type="button"
+                onClick={handleResetBrowseState}
+                className="border border-border-default bg-surface-raised px-3 py-1 text-xs font-bold uppercase tracking-wider text-ink-muted transition-all hover:border-accent hover:text-accent neon-flood"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
 
       <div className="grid min-h-96 min-w-0 gap-5 lg:grid-cols-[minmax(0,270px)_minmax(0,1fr)]">
         <FilterSidebar
@@ -249,14 +237,14 @@ export function BrowsePage() {
         />
 
         <section className="min-w-0">
-          {tcg === 'onepiece' ? (
-            onePieceLoading ? (
+          {isOnePiece ? (
+            isLoading ? (
               <LoadingGrid />
-            ) : onePieceCards.length > 0 ? (
+            ) : cardsWithMarketplaceFilters.length > 0 ? (
               <section className="animate-fade-in">
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                  {onePieceCards.map((card) => (
-                    <OnePieceCardItem key={card.id} card={card} onClick={() => openCard(card as any)} />
+                  {cardsWithMarketplaceFilters.filter(isOnePieceCard).map((card) => (
+                    <OnePieceCardItem key={card.id} card={card} onClick={() => openCard(card)} />
                   ))}
                 </div>
               </section>
@@ -303,11 +291,26 @@ function OnePieceCardItem({ card, onClick }: { card: OnePieceCard; onClick: () =
         'transition-colors duration-150 hover:border-border-strong',
       ].join(' ')}
     >
-      <div className="relative aspect-[63/88] overflow-hidden bg-surface-inset cursor-pointer" onClick={onClick}>
+      <div
+        className="relative aspect-[63/88] overflow-hidden bg-surface-inset cursor-pointer"
+        onClick={onClick}
+        onKeyDown={(event) => {
+          if (
+            event.currentTarget === event.target &&
+            (event.key === 'Enter' || event.key === ' ')
+          ) {
+            event.preventDefault();
+            onClick();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`View ${card.name}`}
+      >
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt={`${card.name} card image`}
+            alt={card.name}
             className="relative z-0 h-full w-full object-contain p-2.5 transition-transform duration-300 ease-out group-hover:scale-[1.03]"
             loading="lazy"
             decoding="async"

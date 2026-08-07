@@ -19,7 +19,9 @@ export class SetCodeService {
    */
   async initialize(): Promise<void> {
     if (this.initialized && this.dynamicSetMap.size > 0) {
-      logger.info('SetCodeService already initialized with ' + this.dynamicSetMap.size + ' mappings');
+      logger.info(
+        'SetCodeService already initialized with ' + this.dynamicSetMap.size + ' mappings'
+      );
       return;
     }
 
@@ -44,7 +46,7 @@ export class SetCodeService {
     try {
       logger.info('Loading Pokemon TCG sets from API...');
       const allSets = await pokemonApiClient.getSets(1000);
-      
+
       if (allSets.length === 0) {
         logger.error('❌ Pokemon TCG API returned 0 sets! This will cause image loading issues.');
         throw new Error('Pokemon TCG API returned no sets');
@@ -59,15 +61,17 @@ export class SetCodeService {
 
       this.initialized = true;
       this.lastRefresh = Date.now();
-      logger.info(`✅ Loaded ${allSets.length} sets, created ${this.dynamicSetMap.size} mappings from Pokemon TCG API`);
-      
+      logger.info(
+        `✅ Loaded ${allSets.length} sets, created ${this.dynamicSetMap.size} mappings from Pokemon TCG API`
+      );
+
       // Log first 10 mappings for debugging
       const sampleMappings = Array.from(this.dynamicSetMap.entries()).slice(0, 10);
       logger.info(`Sample mappings: ${JSON.stringify(sampleMappings)}`);
     } catch (error) {
-      logger.error('❌ Failed to load sets from Pokemon TCG API', { 
+      logger.error('❌ Failed to load sets from Pokemon TCG API', {
         error: (error as Error).message,
-        stack: (error as Error).stack
+        stack: (error as Error).stack,
       });
       const localFallbackCount = await this.loadSetsFromLocalCatalog();
       if (localFallbackCount > 0) {
@@ -88,9 +92,7 @@ export class SetCodeService {
     return (
       this.setById.get(setId) ||
       this.setById.get(setId.toLowerCase()) ||
-      [...this.setById.values()].find(
-        (set) => set.id.toLowerCase() === setId.toLowerCase()
-      )
+      [...this.setById.values()].find((set) => set.id.toLowerCase() === setId.toLowerCase())
     );
   }
 
@@ -113,10 +115,7 @@ export class SetCodeService {
   }
 
   resolveApiSet(catalogId: string, setName?: string): PokemonApiSet | undefined {
-    return (
-      this.getSetById(catalogId) ||
-      (setName ? this.getSetByName(setName) : undefined)
-    );
+    return this.getSetById(catalogId) || (setName ? this.getSetByName(setName) : undefined);
   }
 
   private addSetMappings(set: PokemonApiSet): void {
@@ -163,9 +162,10 @@ export class SetCodeService {
 
   private async loadSetsFromLocalCatalog(): Promise<number> {
     const db = getDb();
-    const localSets = await new Promise<Array<{ setId: string; setName: string }>>((resolve, reject) => {
-      db.all(
-        `SELECT DISTINCT setId, setName
+    const localSets = await new Promise<Array<{ setId: string; setName: string }>>(
+      (resolve, reject) => {
+        db.all(
+          `SELECT DISTINCT setId, setName
          FROM catalog_cards
          WHERE setId IS NOT NULL AND setId <> ''
            AND setName IS NOT NULL AND setName <> ''
@@ -174,13 +174,14 @@ export class SetCodeService {
          FROM card_mappings
          WHERE setId IS NOT NULL AND setId <> ''
            AND setName IS NOT NULL AND setName <> ''`,
-        [],
-        (err, rows: any[]) => {
-          if (err) reject(err);
-          else resolve((rows || []) as Array<{ setId: string; setName: string }>);
-        }
-      );
-    }).catch((err) => {
+          [],
+          (err, rows: any[]) => {
+            if (err) reject(err);
+            else resolve((rows || []) as Array<{ setId: string; setName: string }>);
+          }
+        );
+      }
+    ).catch((err) => {
       logger.error('Failed to load local set mappings', { error: (err as Error).message });
       return [];
     });
@@ -250,7 +251,9 @@ export class SetCodeService {
     for (const [key, apiSetId] of this.dynamicSetMap.entries()) {
       if (key.length >= 3 && normalizedId.length >= 3) {
         if (key.includes(normalizedId) || normalizedId.includes(key)) {
-          logger.debug(`✅ Partial match for ${setId} (${normalizedId} matches ${key}) -> ${apiSetId}`);
+          logger.debug(
+            `✅ Partial match for ${setId} (${normalizedId} matches ${key}) -> ${apiSetId}`
+          );
           return apiSetId;
         }
       }
@@ -262,7 +265,7 @@ export class SetCodeService {
       normalizedId.replace(/^pokemon/, '').replace(/pokemon$/, ''),
       normalizedId.replace(/^tcg/, '').replace(/tcg$/, ''),
     ];
-    
+
     for (const variation of variations) {
       if (variation && variation !== normalizedId) {
         const match = this.dynamicSetMap.get(variation);
@@ -273,7 +276,9 @@ export class SetCodeService {
       }
     }
 
-    logger.warn(`❌ Could not normalize set ID: "${setId}"${setName ? ` (setName: "${setName}")` : ''}. Tried ${this.dynamicSetMap.size} mappings.`);
+    logger.warn(
+      `❌ Could not normalize set ID: "${setId}"${setName ? ` (setName: "${setName}")` : ''}. Tried ${this.dynamicSetMap.size} mappings.`
+    );
     return null;
   }
 
@@ -307,7 +312,9 @@ export class SetCodeService {
 
     const normalizedSet = await this.normalizeSetIdForImageUrl(setId, setName || undefined);
     if (!normalizedSet) {
-      logger.warn(`Could not normalize set ID for image URL: "${setId}"${setName ? ` (setName: "${setName}")` : ''}`);
+      logger.warn(
+        `Could not normalize set ID for image URL: "${setId}"${setName ? ` (setName: "${setName}")` : ''}`
+      );
       return null;
     }
 
@@ -329,8 +336,10 @@ export class SetCodeService {
     }
 
     const imageUrl = `https://images.pokemontcg.io/${normalizedSet}/${normalizedCardNumber}.png`;
-    logger.debug(`Built deterministic image URL: ${imageUrl} (from setId: ${setId}, cardNumber: ${cardNumber} -> normalized: ${normalizedCardNumber})`);
-    
+    logger.debug(
+      `Built deterministic image URL: ${imageUrl} (from setId: ${setId}, cardNumber: ${cardNumber} -> normalized: ${normalizedCardNumber})`
+    );
+
     return {
       small: imageUrl,
       large: imageUrl, // Use same URL for both

@@ -52,7 +52,6 @@ function quoteDates(points: ChartPricePoint[]): string[] {
 
 export const PriceChart: React.FC<PriceChartProps> = ({
   priceHistory,
-  title = 'Price History',
   fillGaps = true,
   variant,
   height = 260,
@@ -149,11 +148,15 @@ export const PriceChart: React.FC<PriceChartProps> = ({
         <>
           <div
             className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
-              isDark ? 'border-border-subtle bg-surface-inset' : 'border-border-default bg-surface-raised'
+              isDark
+                ? 'border-border-subtle bg-surface-inset'
+                : 'border-border-default bg-surface-raised'
             }`}
           >
             <div className="flex items-center gap-2">
-              <span className={`h-4 w-4 ${isDark ? 'text-emerald-400' : 'text-ink-muted'}`}>📅</span>
+              <span className={`h-4 w-4 ${isDark ? 'text-emerald-400' : 'text-ink-muted'}`}>
+                📅
+              </span>
               <div>
                 <p
                   className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}
@@ -162,7 +165,9 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 </p>
                 <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {formatFullDate(firstDate)}
-                  <span className={`mx-1.5 ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>→</span>
+                  <span className={`mx-1.5 ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>
+                    →
+                  </span>
                   {formatFullDate(latestDate)}
                 </p>
               </div>
@@ -173,9 +178,13 @@ export const PriceChart: React.FC<PriceChartProps> = ({
               >
                 Latest quote
               </p>
-              <p className={`text-sm font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
+              <p
+                className={`text-sm font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}
+              >
                 {formatPrice(lastPrice)}
-                <span className={`ml-2 text-xs font-medium ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>
+                <span
+                  className={`ml-2 text-xs font-medium ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}
+                >
                   {formatShortDate(latestDate)}
                 </span>
               </p>
@@ -199,7 +208,10 @@ export const PriceChart: React.FC<PriceChartProps> = ({
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <p className={`text-xs ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>
-              <span className="inline-block h-2 w-2 rounded-full align-middle" style={{ background: strokeColor }} />
+              <span
+                className="inline-block h-2 w-2 rounded-full align-middle"
+                style={{ background: strokeColor }}
+              />
               <span className="ml-1.5">
                 {quoteCount} market {quoteCount === 1 ? 'quote' : 'quotes'}
               </span>
@@ -210,13 +222,15 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                   className="inline-block w-4 border-t border-dashed align-middle"
                   style={{ borderColor: carryColor }}
                 />
-                <span className="ml-1.5">{carriedDayCount} weekend carry day{carriedDayCount === 1 ? '' : 's'}</span>
+                <span className="ml-1.5">
+                  {carriedDayCount} weekend carry day{carriedDayCount === 1 ? '' : 's'}
+                </span>
               </p>
             )}
             {missingSpanCount > 0 && (
               <p className={`text-xs ${isDark ? 'text-amber-400/90' : 'text-amber-700'}`}>
-                {missingSpanCount} gap{missingSpanCount === 1 ? '' : 's'} without snapshots (line breaks — not flat
-                price)
+                {missingSpanCount} gap{missingSpanCount === 1 ? '' : 's'} without snapshots (line
+                breaks — not flat price)
               </p>
             )}
           </div>
@@ -228,7 +242,10 @@ export const PriceChart: React.FC<PriceChartProps> = ({
           {formatShortDate(firstDate)} – {formatShortDate(latestDate)} · {quoteCount} market{' '}
           {quoteCount === 1 ? 'quote' : 'quotes'}
           {missingSpanCount > 0 && (
-            <span className="text-amber-500/90"> · {missingSpanCount} unsynced gap{missingSpanCount === 1 ? '' : 's'}</span>
+            <span className="text-amber-500/90">
+              {' '}
+              · {missingSpanCount} unsynced gap{missingSpanCount === 1 ? '' : 's'}
+            </span>
           )}
         </p>
       )}
@@ -281,14 +298,20 @@ export const PriceChart: React.FC<PriceChartProps> = ({
                 return (
                   <div
                     className={`rounded-lg border px-3 py-2 text-sm shadow-lg ${
-                      isDark ? 'border-border-default bg-surface-inset text-ink-primary' : 'border-slate-200 bg-white text-slate-900'
+                      isDark
+                        ? 'border-border-default bg-surface-inset text-ink-primary'
+                        : 'border-slate-200 bg-white text-slate-900'
                     }`}
                   >
                     <p className={`text-xs ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>
                       {formatFullDate(String(label))}
                     </p>
                     <p className="mt-0.5 font-bold tabular-nums">{formatPrice(row.price)}</p>
-                    <p className={`mt-1 text-[11px] ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}>{detail}</p>
+                    <p
+                      className={`mt-1 text-[11px] ${isDark ? 'text-ink-muted' : 'text-ink-muted'}`}
+                    >
+                      {detail}
+                    </p>
                   </div>
                 );
               }}

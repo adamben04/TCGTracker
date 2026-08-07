@@ -1,5 +1,6 @@
 import { Database } from 'sqlite3';
 import { logger } from '../utils/logger';
+import { ensureUserCollectionsSchema } from './userCollectionsSchema';
 
 export interface Migration {
   id: number;
@@ -117,7 +118,7 @@ export const migrations: Migration[] = [
             logger.warn('Error dropping old price_alerts table', { error: dropErr });
             // Continue anyway - table might not exist
           }
-          
+
           // Create table with correct schema
           db.run(
             `CREATE TABLE IF NOT EXISTS price_alerts (
@@ -258,7 +259,7 @@ export const migrations: Migration[] = [
 
       logger.info('Added image fields to card_mappings table');
     },
-    down: async (db: Database) => {
+    down: async () => {
       logger.info('Skipping rollback of image columns (SQLite limitation)');
     },
   },
@@ -317,7 +318,7 @@ export const migrations: Migration[] = [
 
       logger.info('Fixed image column names to camelCase');
     },
-    down: async (db: Database) => {
+    down: async () => {
       logger.info('Skipping rollback (SQLite limitation)');
     },
   },
@@ -460,19 +461,34 @@ export const migrations: Migration[] = [
             PRIMARY KEY (productId, date, subTypeName, source)
           )`,
           (err) => {
-            if (err) { reject(err); return; }
+            if (err) {
+              reject(err);
+              return;
+            }
             db.run(
               `INSERT INTO price_history_old SELECT DISTINCT
                 productId, date, price, subTypeName, productName, groupName,
                 source, lowPrice, highPrice, marketPrice, volume, uniqueIdentifier
                FROM price_history`,
               (copyErr) => {
-                if (copyErr) { reject(copyErr); return; }
+                if (copyErr) {
+                  reject(copyErr);
+                  return;
+                }
                 db.run('DROP TABLE price_history', (dropErr) => {
-                  if (dropErr) { reject(dropErr); return; }
+                  if (dropErr) {
+                    reject(dropErr);
+                    return;
+                  }
                   db.run('ALTER TABLE price_history_old RENAME TO price_history', (renameErr) => {
-                    if (renameErr) { reject(renameErr); return; }
-                    db.run('CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date)', () => {});
+                    if (renameErr) {
+                      reject(renameErr);
+                      return;
+                    }
+                    db.run(
+                      'CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date)',
+                      () => {}
+                    );
                     resolve();
                   });
                 });
@@ -594,11 +610,21 @@ export const migrations: Migration[] = [
         PRIMARY KEY (catalogId, date, source)
       )`);
 
-      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_name ON onepiece_catalog(cardName)');
-      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_set ON onepiece_catalog(setId, setName)');
-      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_card_set_id ON onepiece_catalog(cardSetId)');
-      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_card ON onepiece_price_history(catalogId)');
-      await run('CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_date ON onepiece_price_history(date)');
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_name ON onepiece_catalog(cardName)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_set ON onepiece_catalog(setId, setName)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_onepiece_catalog_card_set_id ON onepiece_catalog(cardSetId)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_card ON onepiece_price_history(catalogId)'
+      );
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_onepiece_price_history_date ON onepiece_price_history(date)'
+      );
 
       logger.info('Rebuilt One Piece catalog tables with per-variant catalogId primary key');
     },
@@ -665,7 +691,9 @@ export const migrations: Migration[] = [
       await run('ALTER TABLE backtest_runs ADD COLUMN win_rate REAL');
       await run('ALTER TABLE backtest_runs ADD COLUMN profit_factor REAL');
 
-      logger.info('Added sharpe_ratio, max_drawdown, win_rate, profit_factor columns to backtest_runs');
+      logger.info(
+        'Added sharpe_ratio, max_drawdown, win_rate, profit_factor columns to backtest_runs'
+      );
     },
     down: async (db: Database) => {
       const run = (sql: string): Promise<void> =>
@@ -736,13 +764,15 @@ export const migrations: Migration[] = [
               reject(err);
               return;
             }
-            logger.info(`Backfilled rarity on ${this.changes} card_mappings rows from catalog_cards`);
+            logger.info(
+              `Backfilled rarity on ${this.changes} card_mappings rows from catalog_cards`
+            );
             resolve();
           }
         );
       });
     },
-    down: async (_db: Database) => {
+    down: async () => {
       logger.info('Skipping rarity backfill rollback');
     },
   },
@@ -786,7 +816,7 @@ export const migrations: Migration[] = [
 
       logger.info('Added 180d/365d prediction columns to card_predictions and prediction_results');
     },
-    down: async (_db: Database) => {
+    down: async () => {
       logger.info('Skipping rollback of long-term prediction columns (SQLite limitation)');
     },
   },
@@ -873,7 +903,9 @@ export const migrations: Migration[] = [
       `);
       await run('CREATE INDEX IF NOT EXISTS idx_grading_results_card ON grading_results(card_id)');
       await run('CREATE INDEX IF NOT EXISTS idx_grading_results_user ON grading_results(user_id)');
-      await run('CREATE INDEX IF NOT EXISTS idx_grading_results_created ON grading_results(created_at)');
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_grading_results_created ON grading_results(created_at)'
+      );
       logger.info('Created grading_results table');
     },
     down: async (db: Database) => {
@@ -905,7 +937,7 @@ export const migrations: Migration[] = [
       });
       logger.info('Added defect_regions column to grading_results');
     },
-    down: async (db: Database) => {
+    down: async () => {
       // SQLite doesn't support DROP COLUMN before 3.35.0, so we skip rollback
       logger.info('Skipping defect_regions rollback (SQLite limitation)');
     },
@@ -926,7 +958,7 @@ export const migrations: Migration[] = [
       await run(`ALTER TABLE grading_results ADD COLUMN back_image_url TEXT`).catch(() => {});
       logger.info('Added full_result and back_image_url columns to grading_results');
     },
-    down: async (db: Database) => {
+    down: async () => {
       logger.info('Skipping full_result/back_image_url rollback (SQLite limitation)');
     },
   },
@@ -979,7 +1011,9 @@ export const migrations: Migration[] = [
         )
       `);
       await run('CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)');
-      await run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date)');
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date)'
+      );
       logger.info('Created sealed_products and transactions tables');
     },
     down: async (db: Database) => {
@@ -992,6 +1026,76 @@ export const migrations: Migration[] = [
         });
       await run('DROP TABLE IF EXISTS transactions');
       await run('DROP TABLE IF EXISTS sealed_products');
+    },
+  },
+  {
+    id: 23,
+    name: 'rebuild_user_collections_for_vault_sync',
+    up: async (db: Database) => {
+      await ensureUserCollectionsSchema(db);
+      logger.info('user_collections keyed by client_vault_id with per-game scoping');
+    },
+    down: async () => {
+      logger.info('Skipping user_collections rebuild rollback (SQLite limitation)');
+    },
+  },
+  {
+    id: 24,
+    name: 'add_server_managed_user_roles',
+    up: async (db: Database) => {
+      const run = (sql: string, params: unknown[] = []): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, params, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      try {
+        await run(
+          "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin'))"
+        );
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('duplicate column')) {
+          throw error;
+        }
+      }
+
+      // Preserve the legacy administrator once; later username changes cannot affect this role.
+      await run("UPDATE users SET role = 'admin' WHERE username = ?", [
+        process.env.ADMIN_USERNAME || 'admin',
+      ]);
+      logger.info('Added server-managed user roles');
+    },
+    down: async () => {
+      logger.info('Skipping user role rollback (SQLite limitation)');
+    },
+  },
+  {
+    id: 25,
+    name: 'remove_anonymous_grading_results',
+    up: async (db: Database) => {
+      const run = (sql: string): Promise<void> =>
+        new Promise((resolve, reject) => {
+          db.run(sql, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+
+      await run("DELETE FROM grading_results WHERE user_id IS NULL OR TRIM(user_id) = ''");
+      await run(
+        'CREATE INDEX IF NOT EXISTS idx_grading_results_user_card_created ON grading_results(user_id, card_id, created_at)'
+      );
+      logger.info('Removed anonymous grading results and added scoped lookup index');
+    },
+    down: async (db: Database) => {
+      return new Promise((resolve, reject) => {
+        db.run('DROP INDEX IF EXISTS idx_grading_results_user_card_created', (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
     },
   },
 ];
@@ -1027,13 +1131,10 @@ export const rollbackLastMigration = async (db: Database): Promise<void> => {
   try {
     const lastMigration: { id: number; name: string } | undefined = await new Promise(
       (resolve, reject) => {
-        db.get(
-          'SELECT id, name FROM migrations ORDER BY id DESC LIMIT 1',
-          (err, row: any) => {
-            if (err) reject(err);
-            else resolve(row);
-          }
-        );
+        db.get('SELECT id, name FROM migrations ORDER BY id DESC LIMIT 1', (err, row: any) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
       }
     );
 
@@ -1063,4 +1164,3 @@ export const rollbackLastMigration = async (db: Database): Promise<void> => {
     throw error;
   }
 };
-

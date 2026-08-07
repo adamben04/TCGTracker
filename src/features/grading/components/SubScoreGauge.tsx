@@ -44,7 +44,7 @@ export const SubScoreGauge: React.FC<SubScoreGaugeProps> = ({
             fill="none"
             stroke="currentColor"
             strokeWidth={stroke}
-            className="text-white/10"
+            className="text-border-default"
           />
           <motion.circle
             cx="48"
@@ -61,11 +61,15 @@ export const SubScoreGauge: React.FC<SubScoreGaugeProps> = ({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono text-lg font-bold tabular-nums text-ink-primary">{displayScore}</span>
+          <span className="font-mono text-lg font-bold tabular-nums text-ink-primary">
+            {displayScore}
+          </span>
           <span className="text-[9px] text-ink-muted">/{max}</span>
         </div>
       </div>
-      <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-ink-secondary">{label}</p>
+      <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+        {label}
+      </p>
       {defects.length > 0 && (
         <div className="mt-1 w-full">
           <p className="line-clamp-2 text-center text-[10px] text-amber-300/90">{defects[0]}</p>

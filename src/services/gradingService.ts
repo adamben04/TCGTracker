@@ -12,8 +12,7 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const HISTORY_KEY = 'tcg_grading_history';
 
-const SCANNER_BASE =
-  import.meta.env.VITE_CARD_SCANNER_API_URL || 'http://localhost:5001';
+const SCANNER_BASE = import.meta.env.VITE_CARD_SCANNER_API_URL || 'http://localhost:5001';
 
 const client = axios.create({
   withCredentials: true,
@@ -102,12 +101,13 @@ function normalizeGradingResult(grading: GradingResult): GradingResult {
   const front = grading.front;
   return {
     ...grading,
-    centering: grading.centering ?? front?.centering ?? {
-      score: 0,
-      details: '',
-      deviations: { leftRight: 0, topBottom: 0 },
-      defects: [],
-    },
+    centering: grading.centering ??
+      front?.centering ?? {
+        score: 0,
+        details: '',
+        deviations: { leftRight: 0, topBottom: 0 },
+        defects: [],
+      },
     corners: grading.corners ?? front?.corners ?? { score: 0, details: '', defects: [] },
     edges: grading.edges ?? front?.edges ?? { score: 0, details: '', defects: [] },
     surface: grading.surface ?? front?.surface ?? { score: 0, details: '', defects: [] },
@@ -124,7 +124,8 @@ function hasLegacyScores(result: GradingResult): boolean {
 function normalizeLegacyResult(result: GradingResult): GradingResult {
   if (!hasLegacyScores(result)) return result;
   const divisor = result.centering?.score > 100 ? 100 : 25;
-  const norm = (v: number | undefined) => (v != null && v > 10 ? Math.round((v / divisor) * 10) / 10 : v ?? 0);
+  const norm = (v: number | undefined) =>
+    v != null && v > 10 ? Math.round((v / divisor) * 10) / 10 : (v ?? 0);
   return {
     ...result,
     centering: { ...result.centering, score: norm(result.centering?.score) },
@@ -180,23 +181,27 @@ export async function gradeCard(
     const res = await client.post(buildApiUrl('/api/grading/analyze'), payload);
     const grading = (res.data?.data?.grading || res.data?.grading) as GradingResult;
     if (grading) {
-      const withImage = normalizeLegacyResult(normalizeGradingResult({
-        ...grading,
-        imageUrl: grading.imageUrl || previewUrl,
-        estimatedGradedValue:
-          grading.estimatedGradedValue ??
-          (options.rawPrice != null
-            ? calculateGradedValue(options.rawPrice, grading.grade)
-            : undefined),
-        suggestedCondition:
-          grading.suggestedCondition || gradeToVaultCondition(grading.grade),
-      }));
+      const withImage = normalizeLegacyResult(
+        normalizeGradingResult({
+          ...grading,
+          imageUrl: grading.imageUrl || previewUrl,
+          estimatedGradedValue:
+            grading.estimatedGradedValue ??
+            (options.rawPrice != null
+              ? calculateGradedValue(options.rawPrice, grading.grade)
+              : undefined),
+          suggestedCondition: grading.suggestedCondition || gradeToVaultCondition(grading.grade),
+        })
+      );
       persistLocal(withImage);
       return withImage;
     }
   } catch (nodeErr: unknown) {
     const ax = nodeErr as {
-      response?: { status?: number; data?: { error?: string; code?: string; retakeRecommended?: boolean } };
+      response?: {
+        status?: number;
+        data?: { error?: string; code?: string; retakeRecommended?: boolean };
+      };
       message?: string;
     };
     if (ax.response?.status === 422) {
@@ -207,28 +212,28 @@ export async function gradeCard(
   }
 
   // Fallback: Flask CV service
-  const flask = await axios.post(
-    `${SCANNER_BASE}/api/grade-card`,
-    payload,
-    { timeout: 60_000, headers: { 'Content-Type': 'application/json' } }
-  );
+  const flask = await axios.post(`${SCANNER_BASE}/api/grade-card`, payload, {
+    timeout: 60_000,
+    headers: { 'Content-Type': 'application/json' },
+  });
 
   if (!flask.data?.success || !flask.data?.grading) {
     throw new Error(flask.data?.error || 'Grading failed');
   }
 
-  const grading = normalizeLegacyResult(normalizeGradingResult({
-    ...flask.data.grading,
-    imageUrl: flask.data.grading.imageUrl || previewUrl,
-    estimatedGradedValue:
-      flask.data.grading.estimatedGradedValue ??
-      (options.rawPrice != null
-        ? calculateGradedValue(options.rawPrice, flask.data.grading.grade)
-        : undefined),
-    suggestedCondition:
-      flask.data.grading.suggestedCondition ||
-      gradeToVaultCondition(flask.data.grading.grade),
-  }));
+  const grading = normalizeLegacyResult(
+    normalizeGradingResult({
+      ...flask.data.grading,
+      imageUrl: flask.data.grading.imageUrl || previewUrl,
+      estimatedGradedValue:
+        flask.data.grading.estimatedGradedValue ??
+        (options.rawPrice != null
+          ? calculateGradedValue(options.rawPrice, flask.data.grading.grade)
+          : undefined),
+      suggestedCondition:
+        flask.data.grading.suggestedCondition || gradeToVaultCondition(flask.data.grading.grade),
+    })
+  );
   persistLocal(grading);
   return grading;
 }
@@ -240,7 +245,8 @@ export async function getGradingHistory(cardId?: string): Promise<GradingResult[
       : buildApiUrl('/api/grading/history');
     const res = await client.get(url);
     const history = (res.data?.data?.history || res.data?.history || []) as GradingResult[];
-    if (history.length > 0) return history.map((h) => normalizeLegacyResult(normalizeGradingResult(h)));
+    if (history.length > 0)
+      return history.map((h) => normalizeLegacyResult(normalizeGradingResult(h)));
   } catch {
     // fall through to local
   }

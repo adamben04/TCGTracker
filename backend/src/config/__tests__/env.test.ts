@@ -33,4 +33,12 @@ describe('env validation', () => {
     process.env.NODE_ENV = 'invalid';
     await expect(import('../env')).rejects.toThrow();
   });
+
+  it('rejects an invalid administrator bootstrap email', async () => {
+    process.env.JWT_SECRET = 'a'.repeat(32);
+    process.env.NODE_ENV = 'production';
+    process.env.ADMIN_BOOTSTRAP_EMAIL = 'not-an-email';
+
+    await expect(import('../env')).rejects.toThrow();
+  });
 });

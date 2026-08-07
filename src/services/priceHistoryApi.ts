@@ -22,7 +22,7 @@ interface CardPriceHistoryResponse {
     cardNumber?: string;
   };
   priceHistory: PriceHistoryPoint[];
-  rollingAverages: any[];
+  rollingAverages: unknown[];
 }
 
 interface CardMatchResponse {
@@ -33,7 +33,7 @@ interface CardMatchResponse {
     uniqueIdentifier?: string;
   };
   priceHistory: PriceHistoryPoint[];
-  rollingAverages: any[];
+  rollingAverages: unknown[];
   message?: string;
   searchCriteria?: {
     cardName: string;
@@ -186,15 +186,15 @@ export class PriceHistoryApi {
     try {
       const params = new URLSearchParams({
         cardName,
-        setId
+        setId,
       });
-      
+
       if (cardNumber) {
         params.append('cardNumber', cardNumber);
       }
 
       const response = await fetch(`${this.baseUrl}/card?${params}`);
-      
+
       if (!response.ok) {
         // Silently return null for 404s (expected when card not in database)
         return null;
@@ -222,19 +222,19 @@ export class PriceHistoryApi {
     try {
       const params = new URLSearchParams({
         cardName,
-        setName
+        setName,
       });
-      
+
       if (cardNumber) {
         params.append('cardNumber', cardNumber);
       }
-      
+
       if (setId) {
         params.append('setId', setId);
       }
 
       const response = await fetch(`${this.baseUrl}/match?${params}`);
-      
+
       if (!response.ok) {
         // Silently return null (expected when card not in database)
         return null;
@@ -264,7 +264,8 @@ export class PriceHistoryApi {
       const rowVariant = normalizeVariantKey(subTypeName);
       if (rowVariant === preferred) return 3;
       if (preferred !== 'normal' && rowVariant.includes(preferred)) return 2;
-      if (preferred === 'normal' && (rowVariant === 'normal' || rowVariant === 'unlimited')) return 2;
+      if (preferred === 'normal' && (rowVariant === 'normal' || rowVariant === 'unlimited'))
+        return 2;
       return rowVariant === 'normal' ? 1 : 0;
     };
 
@@ -288,7 +289,8 @@ export class PriceHistoryApi {
     // If variant filter was too strict, keep best available row per day.
     if (
       deduped.length === 0 ||
-      deduped.length < Math.min(10, priceHistory.filter((p) => resolveHistoryPointPrice(p) > 0).length * 0.25)
+      deduped.length <
+        Math.min(10, priceHistory.filter((p) => resolveHistoryPointPrice(p) > 0).length * 0.25)
     ) {
       byDate.clear();
       priceHistory
@@ -356,14 +358,14 @@ export class PriceHistoryApi {
           // Silently return empty array - many cards don't have price files
           return [];
         }
-        
+
         // Check if response is actually JSON
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
           // Silently fail - price file doesn't exist or is not valid JSON
           return [];
         }
-        
+
         const data = await response.json();
         const normalizedData = (data || []).filter((point: PriceHistoryPoint) => {
           const pointVariant = normalizeVariantKey(point.subTypeName);
@@ -416,7 +418,7 @@ export class PriceHistoryApi {
       return await fetchHistory(variantKey);
     } catch (error) {
       if (import.meta.env.DEV && import.meta.env.VITE_DEBUG_API) {
-        console.log('History endpoint failed', error);
+        console.warn('History endpoint failed', error);
       }
     }
 
@@ -465,13 +467,13 @@ export class PriceHistoryApi {
   private static extractCardNumber(cardId: string): string {
     const parts = cardId.split('-');
     const lastPart = parts.length > 1 ? parts[parts.length - 1] : '';
-    
+
     // Handle various formats like "6", "006", "TG01", etc.
     // Pad single digits with leading zeros to match common formats
     if (lastPart && /^\d+$/.test(lastPart)) {
       return lastPart.padStart(3, '0'); // Convert "6" to "006"
     }
-    
+
     return lastPart;
   }
-} 
+}

@@ -24,16 +24,16 @@ class InvestmentService {
         throw new Error(`API request failed: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
-      
+
       // Transform backend data to PricePoint format
       const priceHistory: PricePoint[] = data.data.map((item: BackendPriceData) => ({
         date: item.date,
-        price: item.price
+        price: item.price,
       }));
-      
+
       // Sort by date to ensure chronological order
       priceHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      
+
       return priceHistory;
     } catch (error) {
       console.error('Error fetching price history:', error);
@@ -44,21 +44,23 @@ class InvestmentService {
   async getPriceHistoryByName(cardName: string): Promise<PricePoint[]> {
     try {
       // First, search for cards with similar names
-      const searchResponse = await fetch(buildApiUrl(`/api/prices/search/${encodeURIComponent(cardName)}`));
+      const searchResponse = await fetch(
+        buildApiUrl(`/api/prices/search/${encodeURIComponent(cardName)}`)
+      );
       if (!searchResponse.ok) {
-        throw new Error(`Search API request failed: ${searchResponse.status} ${searchResponse.statusText}`);
+        throw new Error(
+          `Search API request failed: ${searchResponse.status} ${searchResponse.statusText}`
+        );
       }
       const searchData = await searchResponse.json();
       const searchResults: BackendSearchResult[] = searchData.data;
-      
+
       if (searchResults.length === 0) {
         return [];
       }
-      
+
       // Use the first (highest priced) match
       const bestMatch = searchResults[0];
-      console.log(`Found price match for "${cardName}": ${bestMatch.productName} (${bestMatch.groupName})`);
-      
       // Get the full price history for this product
       return this.getPriceHistory(bestMatch.productId.toString());
     } catch (error) {
@@ -68,4 +70,4 @@ class InvestmentService {
   }
 }
 
-export const investmentService = new InvestmentService(); 
+export const investmentService = new InvestmentService();

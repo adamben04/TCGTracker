@@ -14,6 +14,7 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue>({ showToast: () => {} });
 
+// eslint-disable-next-line react-refresh/only-export-components -- provider-private context hook
 export const useToast = () => useContext(ToastContext);
 
 let nextId = 0;
@@ -38,7 +39,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2" role="status" aria-live="polite">
+      <div
+        className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
+        role="status"
+        aria-live="polite"
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}

@@ -18,7 +18,8 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
   const [editNotes, setEditNotes] = useState(vaultCard.notes || '');
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
-  const { card, purchasePrice, purchaseDate, quantity, condition, notes, gradingResult } = vaultCard;
+  const { card, purchasePrice, purchaseDate, quantity, condition, notes, gradingResult } =
+    vaultCard;
   const currentPrice = card.marketPrice || 0;
   const totalPurchaseValue = purchasePrice * quantity;
   const totalCurrentValue = currentPrice * quantity;
@@ -37,10 +38,14 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
       : null;
 
   const handleSaveEdit = () => {
-    vaultService.updateVaultCard(vaultCard.id, {
-      quantity: editQuantity,
-      notes: editNotes
-    });
+    vaultService.updateVaultCard(
+      vaultCard.id,
+      {
+        quantity: editQuantity,
+        notes: editNotes,
+      },
+      vaultCard.game
+    );
     setIsEditing(false);
     onUpdate();
   };
@@ -49,7 +54,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
     return new Date(isoDate).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -105,12 +110,14 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
         <div className="flex-1 p-6">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="text-xl font-bold text-white mb-1">{card.name}</h3>
+              <h3 className="mb-1 text-xl font-semibold text-ink-primary">{card.name}</h3>
               <p className="text-sm text-ink-muted">
                 {card.set.name} • #{card.number}
               </p>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getConditionBadgeColor(condition)}`}>
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-semibold ${getConditionBadgeColor(condition)}`}
+                >
                   {condition.replace('-', ' ')}
                 </span>
                 {card.rarity && (
@@ -119,7 +126,11 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
                   </span>
                 )}
                 {gradingResult && (
-                  <GradeBadge grade={gradingResult.grade} label={gradingResult.gradeLabel} size="sm" />
+                  <GradeBadge
+                    grade={gradingResult.grade}
+                    label={gradingResult.gradeLabel}
+                    size="sm"
+                  />
                 )}
               </div>
             </div>
@@ -148,28 +159,38 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
             <div className="mb-4 p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
               <div className="grid grid-cols-2 gap-4 mb-3">
                 <div>
-                  <label htmlFor="vault-card-qty" className="block text-sm font-medium text-ink-secondary mb-1">Quantity</label>
+                  <label
+                    htmlFor="vault-card-qty"
+                    className="block text-sm font-medium text-ink-secondary mb-1"
+                  >
+                    Quantity
+                  </label>
                   <input
                     id="vault-card-qty"
                     type="number"
                     min="1"
                     value={editQuantity}
                     onChange={(e) => setEditQuantity(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 border border-border-subtle bg-surface-hover rounded-lg text-white focus:ring-2 focus:ring-accent focus:border-accent"
+                    className="w-full rounded-lg border border-border-subtle bg-surface-hover px-3 py-2 text-ink-primary focus:border-accent focus:ring-2 focus:ring-accent"
                     aria-label="Card quantity"
                   />
                 </div>
               </div>
               <div className="mb-3">
-                <label htmlFor="vault-card-notes" className="block text-sm font-medium text-ink-secondary mb-1">Notes</label>
+                <label
+                  htmlFor="vault-card-notes"
+                  className="block text-sm font-medium text-ink-secondary mb-1"
+                >
+                  Notes
+                </label>
                 <textarea
                   id="vault-card-notes"
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 border border-border-subtle bg-surface-hover rounded-lg text-white focus:ring-2 focus:ring-accent focus:border-accent"
-                    placeholder="Add notes about this card..."
-                    aria-label="Card notes"
+                  className="w-full rounded-lg border border-border-subtle bg-surface-hover px-3 py-2 text-ink-primary focus:border-accent focus:ring-2 focus:ring-accent"
+                  placeholder="Add notes about this card..."
+                  aria-label="Card notes"
                 />
               </div>
               <div className="flex gap-2">
@@ -197,12 +218,12 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div>
               <p className="text-xs text-ink-muted mb-1">Purchase Price</p>
-              <p className="text-lg font-bold text-white">${purchasePrice.toFixed(2)}</p>
+              <p className="text-lg font-semibold text-ink-primary">${purchasePrice.toFixed(2)}</p>
               <p className="text-xs text-ink-muted">per card</p>
             </div>
             <div>
               <p className="text-xs text-ink-muted mb-1">Current Price</p>
-              <p className="text-lg font-bold text-white">${currentPrice.toFixed(2)}</p>
+              <p className="text-lg font-semibold text-ink-primary">${currentPrice.toFixed(2)}</p>
               <p className="text-xs text-ink-muted">per card</p>
             </div>
             <div>
@@ -241,7 +262,9 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
           )}
 
           {/* Profit/Loss */}
-          <div className={`p-4 rounded-lg ${profit >= 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+          <div
+            className={`p-4 rounded-lg ${profit >= 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {profit >= 0 ? (
@@ -254,11 +277,16 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
                 </span>
               </div>
               <div className="text-right">
-                <p className={`text-xl font-bold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <p
+                  className={`text-xl font-bold ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                >
                   {profit >= 0 ? '+' : ''}${profit.toFixed(2)}
                 </p>
-                <p className={`text-sm font-medium ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {profitPercentage >= 0 ? '+' : ''}{profitPercentage.toFixed(1)}%
+                <p
+                  className={`text-sm font-medium ${profit >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                >
+                  {profitPercentage >= 0 ? '+' : ''}
+                  {profitPercentage.toFixed(1)}%
                 </p>
               </div>
             </div>
@@ -266,19 +294,18 @@ export const VaultCard: React.FC<VaultCardProps> = ({ vaultCard, onRemove, onUpd
 
           {/* Purchase Date & Notes */}
           <div className="mt-4 pt-4 border-t border-border-subtle">
-            <p className="text-xs text-ink-muted">
-              Purchased on {formatDate(purchaseDate)}
-            </p>
-            {notes && !isEditing && (
-              <p className="text-sm text-ink-muted mt-2 italic">"{notes}"</p>
-            )}
+            <p className="text-xs text-ink-muted">Purchased on {formatDate(purchaseDate)}</p>
+            {notes && !isEditing && <p className="text-sm text-ink-muted mt-2 italic">"{notes}"</p>}
           </div>
         </div>
       </div>
 
       <ConfirmDialog
         isOpen={showRemoveConfirm}
-        onConfirm={() => { onRemove(vaultCard.id); setShowRemoveConfirm(false); }}
+        onConfirm={() => {
+          onRemove(vaultCard.id);
+          setShowRemoveConfirm(false);
+        }}
         onCancel={() => setShowRemoveConfirm(false)}
         title={`Remove ${card.name}?`}
         message={`Remove ${card.name} from your vault? This action can be undone by re-adding the card.`}

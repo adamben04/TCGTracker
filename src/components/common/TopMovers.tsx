@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, TrendingUp } from 'lucide-react';
 import { PokemonCard } from '../../types/pokemon';
 import { PriceHistoryApi, TopMoverEntry } from '../../services/priceHistoryApi';
 import { formatCurrency, proxyImageUrl } from '../../utils/cardDisplay';
+import { SegmentedControl } from '../ui/SegmentedControl';
 
 interface MoverDisplay {
   productName: string;
@@ -75,12 +76,16 @@ const moverKey = (e: TopMoverEntry): string =>
   e.uniqueIdentifier || `${e.cardId || 'prod'}-${e.subTypeName || e.productId}`;
 
 const toPokemonCard = (entry: TopMoverEntry): PokemonCard => {
-  let parsedPrices: Record<string, { market?: number; mid?: number; high?: number; low?: number }> | undefined;
+  let parsedPrices:
+    | Record<string, { market?: number; mid?: number; high?: number; low?: number }>
+    | undefined;
   try {
     if (entry.tcgplayerPrices) {
       parsedPrices = JSON.parse(entry.tcgplayerPrices);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   const preferredVariant = toVariantKey(entry.subTypeName);
   if (!parsedPrices) parsedPrices = {};
@@ -188,7 +193,9 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
       }
     };
     load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [period]);
 
   const switchPeriod = useCallback((newPeriod: Period) => {
@@ -206,7 +213,11 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
   );
 
   const gainers: MoverDisplay[] = useMemo(
-    () => sorted.filter((e) => e.changePercent > 0 && hasArt(e)).slice(0, 6).map(toDisplay),
+    () =>
+      sorted
+        .filter((e) => e.changePercent > 0 && hasArt(e))
+        .slice(0, 6)
+        .map(toDisplay),
     [sorted]
   );
 
@@ -220,9 +231,12 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
     [sorted]
   );
 
-  const handleCardClick = useCallback((entry: TopMoverEntry) => {
-    onCardClick(toPokemonCard(entry));
-  }, [onCardClick]);
+  const handleCardClick = useCallback(
+    (entry: TopMoverEntry) => {
+      onCardClick(toPokemonCard(entry));
+    },
+    [onCardClick]
+  );
 
   if (loading) {
     return (
@@ -248,40 +262,30 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
     );
   }
 
-  const renderRow = (rowEntries: MoverDisplay[], isGainers: boolean) => (
+  const renderRow = (rowEntries: MoverDisplay[]) => (
     <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
       {rowEntries.map(({ productName, subtitle, currentPrice, changePct, imageSmall, raw }) => (
         <button
           key={moverKey(raw)}
           type="button"
           onClick={() => handleCardClick(raw)}
-          className={`group relative w-32 shrink-0 overflow-hidden rounded-xl border text-left transition-all duration-200 hover:-translate-y-1 ${
-            isGainers && changePct > 15 ? 'hot-border' : ''
-          }`}
-          style={{
-            borderColor: 'var(--border-default)',
-            background: 'var(--gradient-surface)',
-          }}
+          className="group flex w-56 shrink-0 items-center gap-3 rounded-xl border border-border-default bg-surface-inset p-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-hover"
         >
-          <div className="absolute inset-0 holo-sweep pointer-events-none" />
-          <div className="absolute inset-0 holo-texture pointer-events-none" />
           <img
             src={proxyImageUrl(imageSmall)}
             alt={productName}
-            className="h-24 w-full object-cover object-top"
+            className="h-20 w-14 shrink-0 rounded-md bg-surface-base object-contain"
             loading="lazy"
           />
-          <div className="space-y-1 p-2">
-            <p className="truncate text-[11px] font-medium leading-tight" style={{ color: 'var(--ink-primary)' }}>
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="line-clamp-2 text-xs font-semibold leading-4 text-ink-primary">
               {productName}
             </p>
             {subtitle ? (
-              <p className="truncate text-[9px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
-                {subtitle}
-              </p>
+              <p className="line-clamp-2 text-[11px] leading-4 text-ink-muted">{subtitle}</p>
             ) : null}
-            <div className="flex flex-col gap-0.5">
-              <span className="font-mono text-xs tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="font-mono text-xs font-medium tabular-nums text-ink-secondary">
                 {currentPrice > 0 ? formatCurrency(currentPrice) : '—'}
               </span>
               <span
@@ -289,7 +293,11 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
                   changePct >= 0 ? 'text-gain' : 'text-loss'
                 }`}
               >
-                {changePct >= 0 ? <ArrowUp className="h-2.5 w-2.5 shrink-0" /> : <ArrowDown className="h-2.5 w-2.5 shrink-0" />}
+                {changePct >= 0 ? (
+                  <ArrowUp className="h-3 w-3 shrink-0" />
+                ) : (
+                  <ArrowDown className="h-3 w-3 shrink-0" />
+                )}
                 {Number.isFinite(changePct) ? `${Math.abs(changePct).toFixed(1)}%` : '—'}
               </span>
             </div>
@@ -301,24 +309,13 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
 
   return (
     <div className="flex w-full flex-col gap-5">
-      <div className="flex items-center gap-3">
-        <h3 className="text-lg font-display font-bold">Top movers</h3>
-        <div className="flex gap-1 rounded-lg border p-0.5" style={{ borderColor: 'var(--border-subtle)' }}>
-          {PERIODS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => switchPeriod(key)}
-              className="rounded-md px-3 py-1 text-xs font-medium transition-all duration-200"
-              style={{
-                backgroundColor: period === key ? 'var(--accent)' : 'transparent',
-                color: period === key ? '#fff' : 'var(--ink-secondary)',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="flex justify-end">
+        <SegmentedControl
+          label="Market movement timeframe"
+          value={period}
+          options={PERIODS.map(({ key, label }) => ({ value: key, label }))}
+          onChange={switchPeriod}
+        />
       </div>
 
       {gainers.length > 0 && (
@@ -327,7 +324,7 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
             <ArrowUp className="h-3.5 w-3.5 text-gain" />
             <span className="text-xs font-medium text-gain">Top gainers</span>
           </div>
-          {renderRow(gainers, true)}
+          {renderRow(gainers)}
         </div>
       )}
 
@@ -337,7 +334,7 @@ export const TopMovers: React.FC<TopMoversProps> = ({ onCardClick }) => {
             <ArrowDown className="h-3.5 w-3.5 text-loss" />
             <span className="text-xs font-medium text-loss">Top losers</span>
           </div>
-          {renderRow(losers, false)}
+          {renderRow(losers)}
         </div>
       )}
     </div>

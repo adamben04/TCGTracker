@@ -2,6 +2,9 @@ import { useState, FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { Surface } from '../components/ui/Surface';
+import { navigationItems } from '../config/navigation';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -12,6 +15,10 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const from = (location.state as { from?: string } | null)?.from;
+  const destination = from
+    ? navigationItems.find((item) => from === item.path || from.startsWith(`${item.path}/`))
+    : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -23,7 +30,6 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       await login(email, password);
-      const from = (location.state as { from?: string } | null)?.from;
       navigate(from ?? '/', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');
@@ -33,26 +39,35 @@ export function LoginPage() {
   };
 
   return (
-    <div className="mx-auto max-w-md px-4 py-16">
-      <div className="rounded-xl border border-border-default bg-surface-raised p-8 shadow-sm">
+    <div className="mx-auto max-w-md px-4 py-12 sm:py-16">
+      <Surface className="p-6 sm:p-8">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-accent/10">
-            <LogIn className="h-7 w-7 text-accent" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-accent/25 bg-accent-muted">
+            <LogIn className="h-6 w-6 text-accent" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl font-bold text-ink-primary">Welcome back</h1>
-          <p className="mt-1 text-sm text-ink-muted">Sign in to your account</p>
+          <h1 className="text-2xl font-semibold text-ink-primary">Welcome back</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-secondary">
+            {destination
+              ? `Sign in to continue to ${destination.label}.`
+              : 'Sign in to sync account-backed collections and tools.'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-loss/30 bg-loss/10 px-3 py-2 text-sm text-loss">
+            <div
+              className="flex items-center gap-2 rounded-lg border border-loss/30 bg-loss-muted px-3 py-2 text-sm text-loss"
+              role="alert"
+            >
               <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink-secondary">Email</label>
+            <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink-secondary">
+              Email
+            </label>
             <input
               id="email"
               type="email"
@@ -60,12 +75,14 @@ export function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
-              className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2.5 text-sm text-ink-primary placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              className="input"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink-secondary">Password</label>
+            <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink-secondary">
+              Password
+            </label>
             <div className="relative">
               <input
                 id="password"
@@ -74,29 +91,39 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 autoComplete="current-password"
-                className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2.5 pr-10 text-sm text-ink-primary placeholder:text-ink-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                className="input pr-11"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-ink-muted hover:text-ink-primary"
+                className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-ink-muted hover:bg-surface-hover hover:text-ink-primary"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="h-4 w-4" aria-hidden="true" />
+                )}
               </button>
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={isSubmitting}
-            className="btn-primary w-full justify-center py-2.5"
+            variant="primary"
+            size="lg"
+            className="w-full"
           >
             {isSubmitting ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-[color:var(--accent-foreground)] border-r-transparent" />
+                Signing in…
+              </>
             ) : (
               'Sign in'
             )}
-          </button>
+          </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-ink-muted">
@@ -105,7 +132,7 @@ export function LoginPage() {
             Create one
           </Link>
         </p>
-      </div>
+      </Surface>
     </div>
   );
 }

@@ -12,7 +12,7 @@ const ONE_PIECE_PACKS: Pack[] = [
     name: 'One Piece Booster Pack',
     tier: 'common',
     price: 4.99,
-    averageValue: 5.50,
+    averageValue: 5.5,
     cardsPerPack: 5,
     imageUrl: '',
     description: 'Standard One Piece TCG booster pack. 5 random cards.',
@@ -30,7 +30,7 @@ const ONE_PIECE_PACKS: Pack[] = [
     name: 'One Piece Premium Pack',
     tier: 'rare',
     price: 14.99,
-    averageValue: 16.00,
+    averageValue: 16.0,
     cardsPerPack: 8,
     imageUrl: '',
     description: 'Premium One Piece pack with 8 cards including guaranteed rare.',
@@ -48,7 +48,7 @@ const ONE_PIECE_PACKS: Pack[] = [
     name: 'One Piece Starter Deck',
     tier: 'uncommon',
     price: 9.99,
-    averageValue: 11.00,
+    averageValue: 11.0,
     cardsPerPack: 6,
     imageUrl: '',
     description: 'One Piece starter deck cards. Guaranteed leader card.',
@@ -66,7 +66,7 @@ const ONE_PIECE_PACKS: Pack[] = [
     name: 'One Piece Secret Rare Hunt',
     tier: 'secret-rare',
     price: 29.99,
-    averageValue: 35.00,
+    averageValue: 35.0,
     cardsPerPack: 10,
     imageUrl: '',
     description: 'High-value One Piece pack. 10 cards with boosted SR/SEC odds.',
@@ -107,7 +107,7 @@ class TieredPackService {
         { min: 25, max: 50, probability: 25.4, label: '$25-50' },
         { min: 50, max: 100, probability: 3, label: '$50-100' },
         { min: 100, max: 250, probability: 0.3, label: '$100-250' },
-        { min: 250, max: 500, probability: 0.1, label: '$250-500' }
+        { min: 250, max: 500, probability: 0.1, label: '$250-500' },
       ],
       boostedValueRanges: [
         { min: 0.5, max: 5, probability: 42, label: '$0.50-5' },
@@ -116,8 +116,8 @@ class TieredPackService {
         { min: 75, max: 150, probability: 10, label: '$75-150' },
         { min: 150, max: 350, probability: 8, label: '$150-350' },
         { min: 350, max: 500, probability: 5, label: '$350-500' },
-        { min: 500, max: 1250, probability: 2, label: '$500-1250 (5x+)' }
-      ]
+        { min: 500, max: 1250, probability: 2, label: '$500-1250 (5x+)' },
+      ],
     },
     {
       id: 'bronze-50',
@@ -134,7 +134,7 @@ class TieredPackService {
         { min: 50, max: 100, probability: 25, label: '$50-100' },
         { min: 100, max: 200, probability: 4, label: '$100-200' },
         { min: 200, max: 500, probability: 0.8, label: '$200-500' },
-        { min: 500, max: 1000, probability: 0.2, label: '$500-1000' }
+        { min: 500, max: 1000, probability: 0.2, label: '$500-1000' },
       ],
       boostedValueRanges: [
         { min: 1, max: 10, probability: 40, label: '$1-10' },
@@ -143,8 +143,8 @@ class TieredPackService {
         { min: 125, max: 250, probability: 10, label: '$125-250' },
         { min: 250, max: 500, probability: 8, label: '$250-500' },
         { min: 500, max: 1000, probability: 5, label: '$500-1000' },
-        { min: 1000, max: 2500, probability: 3, label: '$1000-2500 (5x+)' }
-      ]
+        { min: 1000, max: 2500, probability: 3, label: '$1000-2500 (5x+)' },
+      ],
     },
     {
       id: 'silver-100',
@@ -161,7 +161,7 @@ class TieredPackService {
         { min: 100, max: 200, probability: 25, label: '$100-200' },
         { min: 200, max: 400, probability: 4, label: '$200-400' },
         { min: 400, max: 1000, probability: 0.8, label: '$400-1000' },
-        { min: 1000, max: 2000, probability: 0.2, label: '$1000-2000' }
+        { min: 1000, max: 2000, probability: 0.2, label: '$1000-2000' },
       ],
       boostedValueRanges: [
         { min: 3, max: 20, probability: 38, label: '$3-20' },
@@ -170,8 +170,8 @@ class TieredPackService {
         { min: 200, max: 400, probability: 10, label: '$200-400' },
         { min: 400, max: 800, probability: 8, label: '$400-800' },
         { min: 800, max: 1500, probability: 6, label: '$800-1500' },
-        { min: 1500, max: 5000, probability: 5, label: '$1500-5000 (5x+)' }
-      ]
+        { min: 1500, max: 5000, probability: 5, label: '$1500-5000 (5x+)' },
+      ],
     },
     {
       id: 'gold-500',
@@ -188,7 +188,7 @@ class TieredPackService {
         { min: 500, max: 1000, probability: 25, label: '$500-1000' },
         { min: 1000, max: 2000, probability: 4, label: '$1000-2000' },
         { min: 2000, max: 5000, probability: 0.8, label: '$2000-5000' },
-        { min: 5000, max: 10000, probability: 0.2, label: '$5000-10000' }
+        { min: 5000, max: 10000, probability: 0.2, label: '$5000-10000' },
       ],
       boostedValueRanges: [
         { min: 10, max: 100, probability: 35, label: '$10-100' },
@@ -197,8 +197,8 @@ class TieredPackService {
         { min: 750, max: 1500, probability: 10, label: '$750-1500' },
         { min: 1500, max: 3500, probability: 9, label: '$1500-3500' },
         { min: 3500, max: 7500, probability: 8, label: '$3500-7500' },
-        { min: 7500, max: 25000, probability: 5, label: '$7500-25000 (5x+)' }
-      ]
+        { min: 7500, max: 25000, probability: 5, label: '$7500-25000 (5x+)' },
+      ],
     },
     {
       id: 'platinum-1000',
@@ -215,7 +215,7 @@ class TieredPackService {
         { min: 800, max: 1000, probability: 20, label: '$800-1000' },
         { min: 1000, max: 1500, probability: 8, label: '$1000-1500' },
         { min: 1500, max: 2500, probability: 1.5, label: '$1500-2500' },
-        { min: 2500, max: 5000, probability: 0.5, label: '$2500-5000' }
+        { min: 2500, max: 5000, probability: 0.5, label: '$2500-5000' },
       ],
       boostedValueRanges: [
         { min: 25, max: 200, probability: 30, label: '$25-200' },
@@ -224,17 +224,16 @@ class TieredPackService {
         { min: 1200, max: 2500, probability: 12, label: '$1200-2500' },
         { min: 2500, max: 5000, probability: 10, label: '$2500-5000' },
         { min: 5000, max: 10000, probability: 8, label: '$5000-10000' },
-        { min: 10000, max: 50000, probability: 8, label: '$10000-50000 (5x+)' }
-      ]
-    }
+        { min: 10000, max: 50000, probability: 8, label: '$10000-50000 (5x+)' },
+      ],
+    },
   ];
-
 
   // Get all available tiered packs
   getAvailablePacks(tcg?: 'pokemon' | 'onepiece'): Pack[] {
     const allPacks = [...this.tieredPacks, ...ONE_PIECE_PACKS];
     if (tcg) {
-      return allPacks.filter(pack => {
+      return allPacks.filter((pack) => {
         if (tcg === 'pokemon') return !pack.tcg || pack.tcg === 'pokemon';
         return pack.tcg === tcg;
       });
@@ -248,7 +247,11 @@ class TieredPackService {
   }
 
   // Open a tiered pack
-  async openPack(pack: Pack, boosted = false, game: 'pokemon' | 'onepiece' = 'pokemon'): Promise<PackPull> {
+  async openPack(
+    pack: Pack,
+    boosted = false,
+    game: 'pokemon' | 'onepiece' = 'pokemon'
+  ): Promise<PackPull> {
     try {
       let cardPool =
         game === 'onepiece' ? await this.fetchOnePieceCardPool() : await this.fetchCardPool();
@@ -264,7 +267,8 @@ class TieredPackService {
           game === 'onepiece' ? await this.fetchOnePieceCardPool() : await this.fetchCardPool();
       }
 
-      const ranges = boosted && pack.boostedValueRanges ? pack.boostedValueRanges : pack.valueRanges;
+      const ranges =
+        boosted && pack.boostedValueRanges ? pack.boostedValueRanges : pack.valueRanges;
       const selectedCard = this.selectCardFromRange(cardPool, ranges);
       if (!selectedCard) {
         throw new Error('No suitable card found in the pool for this value range.');
@@ -277,10 +281,6 @@ class TieredPackService {
       // the active game — `pack.tcg` is unreliable on the Pack type, so trust
       // the `game` arg the caller passed in.
       const isOnePiece = game === 'onepiece';
-      const cardPrice =
-        selectedCard.marketPrice ??
-        (isOnePiece ? onepieceApi.extractCardPrice(selectedCard) : pokemonApi.extractCardPrice(selectedCard)) ??
-        0;
       const selectedCards = [selectedCard];
       const totalValue = selectedCards.reduce((sum, card) => {
         const price =
@@ -314,7 +314,11 @@ class TieredPackService {
     const sets = await onePieceApi.getSets();
     const sample = sets.slice(0, 8);
     const batches = await Promise.all(
-      sample.map((s) => onePieceApi.getSetCards(s.id).catch(() => [] as Awaited<ReturnType<typeof onePieceApi.getSetCards>>))
+      sample.map((s) =>
+        onePieceApi
+          .getSetCards(s.id)
+          .catch(() => [] as Awaited<ReturnType<typeof onePieceApi.getSetCards>>)
+      )
     );
     const all = batches.flat();
     const withPrices = all.filter((c) => (c.marketPrice ?? 0) > 0 && (c.marketPrice ?? 0) < 100000);
@@ -334,9 +338,11 @@ class TieredPackService {
 
   // Get a unique identifier for a card (used for deduplication)
   private getCardIdentifier(card: PokemonCard): string {
-    return card.id ||
+    return (
+      card.id ||
       (card as PokemonCard & { uniqueIdentifier?: string }).uniqueIdentifier ||
-      `${card.set?.id || 'unknown'}-${card.number || 'unknown'}-${card.name || 'unknown'}`;
+      `${card.set?.id || 'unknown'}-${card.number || 'unknown'}-${card.name || 'unknown'}`
+    );
   }
 
   // Select which VALUE RANGE bracket based on probabilities
@@ -361,40 +367,45 @@ class TieredPackService {
     }
 
     const resp = await fetch(`${env.apiUrl}/api/cards/pool?limit=10000`);
-    
+
     if (!resp.ok) {
       throw new Error(`Failed to fetch card pool: ${resp.status}`);
     }
-    
+
     const json = await resp.json();
     const allCards = json.data || [];
-    
+
     if (allCards.length === 0) {
       throw new Error('No cards returned from database');
     }
-    
+
     const cardsWithPrices = allCards.filter((card: PokemonCard) => {
       const price = card.marketPrice || pokemonApi.extractCardPrice(card);
       return price > 0 && price < 100000;
     });
-    
+
     if (cardsWithPrices.length === 0) {
       throw new Error('No cards with valid prices found');
     }
 
-    const prices = cardsWithPrices.map((card: PokemonCard) => card.marketPrice || pokemonApi.extractCardPrice(card));
+    const prices = cardsWithPrices.map(
+      (card: PokemonCard) => card.marketPrice || pokemonApi.extractCardPrice(card)
+    );
     const maxPrice = Math.max(...prices);
     const minPrice = Math.min(...prices);
-    void minPrice; void maxPrice;
+    void minPrice;
+    void maxPrice;
 
     // Rewrite image URLs to use the Vite proxy
     const rewritten = cardsWithPrices.map((card: PokemonCard) => ({
       ...card,
-      images: card.images ? {
-        ...card.images,
-        small: proxyImageUrl(card.images.small),
-        large: proxyImageUrl(card.images.large),
-      } : card.images,
+      images: card.images
+        ? {
+            ...card.images,
+            small: proxyImageUrl(card.images.small),
+            large: proxyImageUrl(card.images.large),
+          }
+        : card.images,
     }));
 
     this.cardPoolCache = this.shuffleArray([...rewritten]);
@@ -412,13 +423,9 @@ class TieredPackService {
   }
 
   // Select a random card from the pool based on rolled value range
-  private selectCardFromRange(
-    cardPool: PokemonCard[],
-    ranges: ValueRange[],
-    excludeIds: Set<string> = new Set()
-  ): PokemonCard | null {
+  private selectCardFromRange(cardPool: PokemonCard[], ranges: ValueRange[]): PokemonCard | null {
     const rolledRange = this.selectValueRange(ranges);
-    
+
     // Try exact range first, then progressively widen
     let candidates: PokemonCard[] = [];
     let expand = 0;
@@ -428,15 +435,16 @@ class TieredPackService {
       const min = rolledRange.min - expand * rolledRange.min * 0.3;
       const max = rolledRange.max + expand * rolledRange.max * 0.5;
 
-      candidates = cardPool.filter(card => {
+      candidates = cardPool.filter((card) => {
         const price = card.marketPrice || pokemonApi.extractCardPrice(card);
         return price >= min && price <= max;
       });
 
       // Remove duplicates
       const seenIds = new Set<string>();
-      candidates = candidates.filter(card => {
-        const cardId = card.id ||
+      candidates = candidates.filter((card) => {
+        const cardId =
+          card.id ||
           (card as PokemonCard & { uniqueIdentifier?: string }).uniqueIdentifier ||
           `${card.set?.id || 'unknown'}-${card.number || 'unknown'}-${card.name || 'unknown'}`;
 
@@ -455,10 +463,11 @@ class TieredPackService {
     // Shuffle candidates to avoid any ordering bias, then pick uniformly at random
     const shuffled = this.shuffleArray(candidates);
 
-    const randomIndex = typeof crypto !== 'undefined' && crypto.getRandomValues
-      ? crypto.getRandomValues(new Uint32Array(1))[0] % shuffled.length
-      : Math.floor(Math.random() * shuffled.length);
-    
+    const randomIndex =
+      typeof crypto !== 'undefined' && crypto.getRandomValues
+        ? crypto.getRandomValues(new Uint32Array(1))[0] % shuffled.length
+        : Math.floor(Math.random() * shuffled.length);
+
     return shuffled[randomIndex];
   }
 
@@ -533,4 +542,3 @@ class TieredPackService {
 }
 
 export const tieredPackService = new TieredPackService();
-

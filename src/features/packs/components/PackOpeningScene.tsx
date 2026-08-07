@@ -38,10 +38,10 @@ export interface PackOpeningSceneProps {
    ═══════════════════════════════════════════════ */
 
 const TIER_COLORS: Record<string, { base: string; glow: string; ambient: string }> = {
-  starter:  { base: '#64748b', glow: '#94a3b8', ambient: '#1e293b' },
-  bronze:   { base: '#c2681e', glow: '#f59e0b', ambient: '#1a0f00' },
-  silver:   { base: '#94a3b8', glow: '#e2e8f0', ambient: '#0f172a' },
-  gold:     { base: '#d9a514', glow: '#fde047', ambient: '#1a1200' },
+  starter: { base: '#64748b', glow: '#94a3b8', ambient: '#1e293b' },
+  bronze: { base: '#c2681e', glow: '#f59e0b', ambient: '#1a0f00' },
+  silver: { base: '#94a3b8', glow: '#e2e8f0', ambient: '#0f172a' },
+  gold: { base: '#d9a514', glow: '#fde047', ambient: '#1a1200' },
   platinum: { base: '#8b5cf6', glow: '#e879f9', ambient: '#0f0326' },
 };
 
@@ -56,29 +56,44 @@ interface TierTheme {
 
 const TIER_THEMES: Record<string, TierTheme> = {
   starter: {
-    bgTop: '#0f172a', bgBottom: '#020617',
-    ambientParticles: 0, particleColors: ['#94a3b8', '#cbd5e1'],
-    shockwaveCount: 2, flashColor: '#ffffff',
+    bgTop: '#0f172a',
+    bgBottom: '#020617',
+    ambientParticles: 0,
+    particleColors: ['#94a3b8', '#cbd5e1'],
+    shockwaveCount: 2,
+    flashColor: '#ffffff',
   },
   bronze: {
-    bgTop: '#1a0f00', bgBottom: '#0c0500',
-    ambientParticles: 30, particleColors: ['#f59e0b', '#fbbf24', '#d97706'],
-    shockwaveCount: 3, flashColor: '#f59e0b',
+    bgTop: '#1a0f00',
+    bgBottom: '#0c0500',
+    ambientParticles: 30,
+    particleColors: ['#f59e0b', '#fbbf24', '#d97706'],
+    shockwaveCount: 3,
+    flashColor: '#f59e0b',
   },
   silver: {
-    bgTop: '#0f172a', bgBottom: '#020617',
-    ambientParticles: 40, particleColors: ['#e2e8f0', '#f1f5f9', '#cbd5e1'],
-    shockwaveCount: 3, flashColor: '#e2e8f0',
+    bgTop: '#0f172a',
+    bgBottom: '#020617',
+    ambientParticles: 40,
+    particleColors: ['#e2e8f0', '#f1f5f9', '#cbd5e1'],
+    shockwaveCount: 3,
+    flashColor: '#e2e8f0',
   },
   gold: {
-    bgTop: '#1a1200', bgBottom: '#0a0800',
-    ambientParticles: 60, particleColors: ['#fde047', '#facc15', '#eab308'],
-    shockwaveCount: 4, flashColor: '#fde047',
+    bgTop: '#1a1200',
+    bgBottom: '#0a0800',
+    ambientParticles: 60,
+    particleColors: ['#fde047', '#facc15', '#eab308'],
+    shockwaveCount: 4,
+    flashColor: '#fde047',
   },
   platinum: {
-    bgTop: '#0f0326', bgBottom: '#050014',
-    ambientParticles: 80, particleColors: ['#e879f9', '#d946ef', '#a855f7', '#c084fc'],
-    shockwaveCount: 5, flashColor: '#e879f9',
+    bgTop: '#0f0326',
+    bgBottom: '#050014',
+    ambientParticles: 80,
+    particleColors: ['#e879f9', '#d946ef', '#a855f7', '#c084fc'],
+    shockwaveCount: 5,
+    flashColor: '#e879f9',
   },
 };
 
@@ -103,39 +118,84 @@ interface TierAnimConfig {
 
 const TIER_ANIM: Record<string, TierAnimConfig> = {
   starter: {
-    orbitDuration: 0.3, zoomDuration: 0.2, ripDuration: 0.3, shakeDuration: 0.2,
-    packBehavior: 'tear', shatterPieces: 0,
-    particleShape: 'spark', particleSpeed: 2.5, particleLifetime: 0.8,
-    orbitRadius: 1.0, orbitSpeed: 0.5, zoomDepth: 1.0,
-    bgPulseSpeed: 0.3, bgPulseIntensity: 0.1,
+    orbitDuration: 0.3,
+    zoomDuration: 0.2,
+    ripDuration: 0.3,
+    shakeDuration: 0.2,
+    packBehavior: 'tear',
+    shatterPieces: 0,
+    particleShape: 'spark',
+    particleSpeed: 2.5,
+    particleLifetime: 0.8,
+    orbitRadius: 1.0,
+    orbitSpeed: 0.5,
+    zoomDepth: 1.0,
+    bgPulseSpeed: 0.3,
+    bgPulseIntensity: 0.1,
   },
   bronze: {
-    orbitDuration: 0.5, zoomDuration: 0.3, ripDuration: 0.4, shakeDuration: 0.3,
-    packBehavior: 'spin-tear', shatterPieces: 0,
-    particleShape: 'spark', particleSpeed: 3.5, particleLifetime: 1.0,
-    orbitRadius: 1.5, orbitSpeed: 1.0, zoomDepth: 1.5,
-    bgPulseSpeed: 0.5, bgPulseIntensity: 0.2,
+    orbitDuration: 0.5,
+    zoomDuration: 0.3,
+    ripDuration: 0.4,
+    shakeDuration: 0.3,
+    packBehavior: 'spin-tear',
+    shatterPieces: 0,
+    particleShape: 'spark',
+    particleSpeed: 3.5,
+    particleLifetime: 1.0,
+    orbitRadius: 1.5,
+    orbitSpeed: 1.0,
+    zoomDepth: 1.5,
+    bgPulseSpeed: 0.5,
+    bgPulseIntensity: 0.2,
   },
   silver: {
-    orbitDuration: 0.6, zoomDuration: 0.4, ripDuration: 0.5, shakeDuration: 0.3,
-    packBehavior: 'shatter', shatterPieces: 12,
-    particleShape: 'confetti', particleSpeed: 3.0, particleLifetime: 1.4,
-    orbitRadius: 1.8, orbitSpeed: 1.5, zoomDepth: 2.0,
-    bgPulseSpeed: 0.7, bgPulseIntensity: 0.3,
+    orbitDuration: 0.6,
+    zoomDuration: 0.4,
+    ripDuration: 0.5,
+    shakeDuration: 0.3,
+    packBehavior: 'shatter',
+    shatterPieces: 12,
+    particleShape: 'confetti',
+    particleSpeed: 3.0,
+    particleLifetime: 1.4,
+    orbitRadius: 1.8,
+    orbitSpeed: 1.5,
+    zoomDepth: 2.0,
+    bgPulseSpeed: 0.7,
+    bgPulseIntensity: 0.3,
   },
   gold: {
-    orbitDuration: 0.8, zoomDuration: 0.4, ripDuration: 0.6, shakeDuration: 0.3,
-    packBehavior: 'explode', shatterPieces: 0,
-    particleShape: 'confetti', particleSpeed: 4.0, particleLifetime: 1.2,
-    orbitRadius: 2.0, orbitSpeed: 2.0, zoomDepth: 2.5,
-    bgPulseSpeed: 0.9, bgPulseIntensity: 0.4,
+    orbitDuration: 0.8,
+    zoomDuration: 0.4,
+    ripDuration: 0.6,
+    shakeDuration: 0.3,
+    packBehavior: 'explode',
+    shatterPieces: 0,
+    particleShape: 'confetti',
+    particleSpeed: 4.0,
+    particleLifetime: 1.2,
+    orbitRadius: 2.0,
+    orbitSpeed: 2.0,
+    zoomDepth: 2.5,
+    bgPulseSpeed: 0.9,
+    bgPulseIntensity: 0.4,
   },
   platinum: {
-    orbitDuration: 1.0, zoomDuration: 0.5, ripDuration: 0.7, shakeDuration: 0.3,
-    packBehavior: 'levitate', shatterPieces: 0,
-    particleShape: 'prismatic', particleSpeed: 5.0, particleLifetime: 2.5,
-    orbitRadius: 2.2, orbitSpeed: 3.0, zoomDepth: 3.0,
-    bgPulseSpeed: 1.2, bgPulseIntensity: 0.5,
+    orbitDuration: 1.0,
+    zoomDuration: 0.5,
+    ripDuration: 0.7,
+    shakeDuration: 0.3,
+    packBehavior: 'levitate',
+    shatterPieces: 0,
+    particleShape: 'prismatic',
+    particleSpeed: 5.0,
+    particleLifetime: 2.5,
+    orbitRadius: 2.2,
+    orbitSpeed: 3.0,
+    zoomDepth: 3.0,
+    bgPulseSpeed: 1.2,
+    bgPulseIntensity: 0.5,
   },
 };
 
@@ -149,11 +209,11 @@ function cardStart(tier: string): number {
 }
 
 const GLAMOUR_CONFIG = {
-  normal:  { particles: 200, cameraZ: 5.4, lightIntensity: 2.1, bloom: false, bloomStrength: 0 },
-  good:    { particles: 320, cameraZ: 5.2, lightIntensity: 2.5, bloom: true, bloomStrength: 0.7 },
+  normal: { particles: 200, cameraZ: 5.4, lightIntensity: 2.1, bloom: false, bloomStrength: 0 },
+  good: { particles: 320, cameraZ: 5.2, lightIntensity: 2.5, bloom: true, bloomStrength: 0.7 },
   amazing: { particles: 440, cameraZ: 5.0, lightIntensity: 3.0, bloom: true, bloomStrength: 1.0 },
   legendary: { particles: 600, cameraZ: 4.8, lightIntensity: 3.5, bloom: true, bloomStrength: 1.4 },
-  god:     { particles: 850, cameraZ: 4.5, lightIntensity: 4.0, bloom: true, bloomStrength: 2.0 },
+  god: { particles: 850, cameraZ: 4.5, lightIntensity: 4.0, bloom: true, bloomStrength: 2.0 },
 };
 
 /* ─────────── Constants ─────────── */
@@ -166,22 +226,34 @@ const CARD_H = 1.76;
 
 /* ─────────── Easing Functions ─────────── */
 
-function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
+}
 function easeOutBack(t: number) {
-  const c1 = 1.35; const c3 = c1 + 1;
+  const c1 = 1.35;
+  const c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
-function clamp01(t: number) { return Math.min(1, Math.max(0, t)); }
-function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
+function clamp01(t: number) {
+  return Math.min(1, Math.max(0, t));
+}
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
 
 function fanSlot(i: number, n: number) {
   const center = (n - 1) / 2;
   const offset = i - center;
   const spreadX = Math.min(1.05, 3.9 / Math.max(n, 1));
-  return { x: offset * spreadX, y: 0.05 - Math.abs(offset) * 0.07, z: 0.4 + i * 0.02, rotZ: -offset * 0.09 };
+  return {
+    x: offset * spreadX,
+    y: 0.05 - Math.abs(offset) * 0.07,
+    z: 0.4 + i * 0.02,
+    rotZ: -offset * 0.09,
+  };
 }
 
 /* ─────────── Rarity Helpers ─────────── */
@@ -214,7 +286,7 @@ const CameraRig: React.FC<{
   useFrame(() => {
     const t = timeRef.current;
     const g = glamour as keyof typeof GLAMOUR_CONFIG;
-    const shakeIntensity = g === 'god' ? 0.14 : g === 'legendary' ? 0.10 : 0.06;
+    const shakeIntensity = g === 'god' ? 0.14 : g === 'legendary' ? 0.1 : 0.06;
 
     const orbitEnd = anim.orbitDuration;
     const zoomEnd = orbitEnd + anim.zoomDuration;
@@ -419,18 +491,21 @@ const EnergyBuildup: React.FC<{
   const materialRef = useRef<THREE.MeshBasicMaterial>(null);
 
   const material = useMemo(
-    () => new THREE.MeshBasicMaterial({
-      color: colors.glow,
-      transparent: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }),
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: colors.glow,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
     [colors.glow]
   );
 
-  useEffect(() => { materialRef.current = material; }, [material]);
+  useEffect(() => {
+    materialRef.current = material;
+  }, [material]);
   useEffect(() => () => material.dispose(), [material]);
 
   useFrame(() => {
@@ -498,13 +573,14 @@ const OrbitEnergy: React.FC<{
   }, [count]);
 
   const material = useMemo(
-    () => new THREE.MeshBasicMaterial({
-      color: colors.glow,
-      transparent: true,
-      opacity: 0.7,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: colors.glow,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
     [colors.glow]
   );
 
@@ -565,7 +641,7 @@ const ShockwaveRipple: React.FC<{
   useEffect(() => {
     const mats = cleanupRefs.current;
     return () => {
-      mats.forEach(m => m?.dispose());
+      mats.forEach((m) => m?.dispose());
     };
   }, []);
 
@@ -595,7 +671,9 @@ const ShockwaveRippleRing: React.FC<{
 
   useEffect(() => {
     const mat = matRef.current;
-    return () => { mat?.dispose(); };
+    return () => {
+      mat?.dispose();
+    };
   }, []);
 
   useFrame(() => {
@@ -605,7 +683,10 @@ const ShockwaveRippleRing: React.FC<{
     if (!ring || !mat) return;
 
     const age = t - ripStart - delay;
-    if (age < 0 || age > 0.8) { ring.visible = false; return; }
+    if (age < 0 || age > 0.8) {
+      ring.visible = false;
+      return;
+    }
     ring.visible = true;
 
     const prog = easeOutCubic(age / 0.8);
@@ -652,14 +733,28 @@ const ShatterFragments: React.FC<{
         Math.random() * 3.5 + 1,
         (Math.random() - 0.5) * 5
       ),
-      rot: new THREE.Vector3(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2),
-      rotSpeed: new THREE.Vector3((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12),
+      rot: new THREE.Vector3(
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2,
+        Math.random() * Math.PI * 2
+      ),
+      rotSpeed: new THREE.Vector3(
+        (Math.random() - 0.5) * 12,
+        (Math.random() - 0.5) * 12,
+        (Math.random() - 0.5) * 12
+      ),
       scale: 0.08 + Math.random() * 0.15,
     }));
   }, [count]);
 
   const material = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: colors.base, metalness: 0.8, roughness: 0.3, transparent: true }),
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: colors.base,
+        metalness: 0.8,
+        roughness: 0.3,
+        transparent: true,
+      }),
     [colors.base]
   );
 
@@ -673,7 +768,10 @@ const ShatterFragments: React.FC<{
     const ripStart = anim.orbitDuration + anim.zoomDuration;
     const age = t - ripStart;
 
-    if (age < 0 || age > 1.8) { mesh.visible = false; return; }
+    if (age < 0 || age > 1.8) {
+      mesh.visible = false;
+      return;
+    }
     mesh.visible = true;
 
     const fadeOut = 1 - easeOutCubic(clamp01(age / 1.5));
@@ -726,36 +824,64 @@ const PackMesh: React.FC<{
   const flashFired = useRef(false);
 
   const bodyMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({
-      color: colors.base, metalness: 0.75, roughness: 0.25, transparent: true,
-    }), [colors.base]
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: colors.base,
+        metalness: 0.75,
+        roughness: 0.25,
+        transparent: true,
+      }),
+    [colors.base]
   );
   const crimpMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({
-      color: colors.base, metalness: 0.85, roughness: 0.35, transparent: true,
-    }), [colors.base]
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: colors.base,
+        metalness: 0.85,
+        roughness: 0.35,
+        transparent: true,
+      }),
+    [colors.base]
   );
   const foilMaterial = useMemo(
     () => new HolographicMaterial({ tint: colors.base, intensity: 0.6 }),
     [colors.base]
   );
   const auraMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({
-      color: colors.glow, transparent: true, opacity: 0, side: THREE.DoubleSide,
-      depthWrite: false, blending: THREE.AdditiveBlending,
-    }), [colors.glow]
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: colors.glow,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    [colors.glow]
   );
   const flashMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({
-      color: theme.flashColor, transparent: true, opacity: 0,
-      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
-    }), [theme.flashColor]
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: theme.flashColor,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    [theme.flashColor]
   );
 
-  useEffect(() => () => {
-    bodyMaterial.dispose(); crimpMaterial.dispose(); foilMaterial.dispose();
-    auraMaterial.dispose(); flashMaterial.dispose();
-  }, [bodyMaterial, crimpMaterial, foilMaterial, auraMaterial, flashMaterial]);
+  useEffect(
+    () => () => {
+      bodyMaterial.dispose();
+      crimpMaterial.dispose();
+      foilMaterial.dispose();
+      auraMaterial.dispose();
+      flashMaterial.dispose();
+    },
+    [bodyMaterial, crimpMaterial, foilMaterial, auraMaterial, flashMaterial]
+  );
 
   useFrame(() => {
     const t = timeRef.current;
@@ -877,9 +1003,7 @@ const PackMesh: React.FC<{
         }
         case 'explode': {
           // Gold: pack pulses/grows then vanishes
-          const pulse = rip < 0.6
-            ? 1 + Math.sin(rip * Math.PI * 8) * 0.15 * (1 - rip)
-            : 1;
+          const pulse = rip < 0.6 ? 1 + Math.sin(rip * Math.PI * 8) * 0.15 * (1 - rip) : 1;
           const explodePhase = clamp01((rip - 0.6) / 0.4);
           const shrink = 1 - easeOutCubic(explodePhase);
           group.scale.setScalar(pulse * Math.max(0.01, shrink));
@@ -1006,7 +1130,10 @@ const ShockwaveRing: React.FC<{
     if (!ring || !mat) return;
 
     const age = t - ripStart - delay;
-    if (age < 0 || age > 1.2) { ring.visible = false; return; }
+    if (age < 0 || age > 1.2) {
+      ring.visible = false;
+      return;
+    }
     ring.visible = true;
     const prog = easeOutCubic(age / 1.2);
     ring.scale.setScalar(0.2 + prog * 5);
@@ -1047,7 +1174,7 @@ const BurstParticles: React.FC<{
     const vels: THREE.Vector3[] = [];
     const szs: number[] = [];
     const cols: THREE.Color[] = [];
-    const colorPool = theme.particleColors.map(c => new THREE.Color(c));
+    const colorPool = theme.particleColors.map((c) => new THREE.Color(c));
 
     for (let i = 0; i < count; i++) {
       const theta = Math.random() * Math.PI * 2;
@@ -1056,27 +1183,33 @@ const BurstParticles: React.FC<{
 
       if (anim.particleShape === 'spark') {
         // Sparks: fast outward burst, gravity
-        vels.push(new THREE.Vector3(
-          Math.sin(phi) * Math.cos(theta) * speed,
-          Math.abs(Math.cos(phi)) * speed * 1.3,
-          Math.sin(phi) * Math.sin(theta) * speed * 0.6
-        ));
+        vels.push(
+          new THREE.Vector3(
+            Math.sin(phi) * Math.cos(theta) * speed,
+            Math.abs(Math.cos(phi)) * speed * 1.3,
+            Math.sin(phi) * Math.sin(theta) * speed * 0.6
+          )
+        );
         szs.push(0.03 + Math.random() * 0.04);
       } else if (anim.particleShape === 'confetti') {
         // Confetti: wider spread, moderate upward
-        vels.push(new THREE.Vector3(
-          Math.sin(phi) * Math.cos(theta) * speed * 0.8,
-          Math.abs(Math.cos(phi)) * speed * 0.9 + 1.0,
-          Math.sin(phi) * Math.sin(theta) * speed * 0.8
-        ));
+        vels.push(
+          new THREE.Vector3(
+            Math.sin(phi) * Math.cos(theta) * speed * 0.8,
+            Math.abs(Math.cos(phi)) * speed * 0.9 + 1.0,
+            Math.sin(phi) * Math.sin(theta) * speed * 0.8
+          )
+        );
         szs.push(0.06 + Math.random() * 0.08);
       } else {
         // Prismatic: rise upward, slower horizontal
-        vels.push(new THREE.Vector3(
-          Math.sin(phi) * Math.cos(theta) * speed * 0.5,
-          Math.abs(Math.cos(phi)) * speed * 1.5 + 2.0,
-          Math.sin(phi) * Math.sin(theta) * speed * 0.5
-        ));
+        vels.push(
+          new THREE.Vector3(
+            Math.sin(phi) * Math.cos(theta) * speed * 0.5,
+            Math.abs(Math.cos(phi)) * speed * 1.5 + 2.0,
+            Math.sin(phi) * Math.sin(theta) * speed * 0.5
+          )
+        );
         szs.push(0.04 + Math.random() * 0.07);
       }
 
@@ -1090,9 +1223,18 @@ const BurstParticles: React.FC<{
     const baseGeo = new THREE.PlaneGeometry(1, 1);
     geo.index = baseGeo.index;
     geo.attributes = baseGeo.attributes;
-    geo.setAttribute('instancePosition', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
-    geo.setAttribute('instanceSize', new THREE.InstancedBufferAttribute(new Float32Array(count), 1));
-    geo.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
+    geo.setAttribute(
+      'instancePosition',
+      new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3)
+    );
+    geo.setAttribute(
+      'instanceSize',
+      new THREE.InstancedBufferAttribute(new Float32Array(count), 1)
+    );
+    geo.setAttribute(
+      'instanceColor',
+      new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3)
+    );
     return geo;
   }, [count]);
 
@@ -1128,10 +1270,13 @@ const BurstParticles: React.FC<{
     });
   }, []);
 
-  useEffect(() => () => {
-    geometry.dispose();
-    material.dispose();
-  }, [geometry, material]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material]
+  );
 
   useFrame(() => {
     const t = timeRef.current;
@@ -1140,7 +1285,10 @@ const BurstParticles: React.FC<{
 
     const ripStart = anim.orbitDuration + anim.zoomDuration;
     const life = (t - ripStart) / anim.particleLifetime;
-    if (life <= 0 || life >= 1) { mesh.visible = false; return; }
+    if (life <= 0 || life >= 1) {
+      mesh.visible = false;
+      return;
+    }
     mesh.visible = true;
 
     const dt = t - ripStart;
@@ -1219,30 +1367,94 @@ const RevealCard: React.FC<{
     let cancelled = false;
     const loader = new THREE.TextureLoader();
     loader.setCrossOrigin('anonymous');
-    loader.load(imageUrl, (tex) => {
-      if (cancelled) { tex.dispose(); return; }
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
-      setTexture(tex);
-    }, undefined, () => {});
-    return () => { cancelled = true; };
+    loader.load(
+      imageUrl,
+      (tex) => {
+        if (cancelled) {
+          tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        setTexture(tex);
+      },
+      undefined,
+      () => {}
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [imageUrl]);
 
   // Rarity-specific reveal parameters
   const revealConfig = useMemo(() => {
     switch (rank) {
       case 0: // Common — simple fade-in
-        return { spinCount: 0, arcHeight: 0, arcX: 0, hasSpotlight: false, hasSparkles: false, hasAura: false, fadeIn: true, levitate: false };
+        return {
+          spinCount: 0,
+          arcHeight: 0,
+          arcX: 0,
+          hasSpotlight: false,
+          hasSparkles: false,
+          hasAura: false,
+          fadeIn: true,
+          levitate: false,
+        };
       case 1: // Uncommon — single flip
-        return { spinCount: 1, arcHeight: 0.3, arcX: 0.2, hasSpotlight: false, hasSparkles: false, hasAura: false, fadeIn: false, levitate: false };
+        return {
+          spinCount: 1,
+          arcHeight: 0.3,
+          arcX: 0.2,
+          hasSpotlight: false,
+          hasSparkles: false,
+          hasAura: false,
+          fadeIn: false,
+          levitate: false,
+        };
       case 2: // Holo — double spin + glow
-        return { spinCount: 2, arcHeight: 0.5, arcX: 0.3, hasSpotlight: false, hasSparkles: glamour === 'legendary' || glamour === 'god', hasAura: false, fadeIn: false, levitate: false };
+        return {
+          spinCount: 2,
+          arcHeight: 0.5,
+          arcX: 0.3,
+          hasSpotlight: false,
+          hasSparkles: glamour === 'legendary' || glamour === 'god',
+          hasAura: false,
+          fadeIn: false,
+          levitate: false,
+        };
       case 3: // Ultra — triple spin + spotlight + flash
-        return { spinCount: 3, arcHeight: 0.7, arcX: 0.4, hasSpotlight: true, hasSparkles: true, hasAura: false, fadeIn: false, levitate: false };
+        return {
+          spinCount: 3,
+          arcHeight: 0.7,
+          arcX: 0.4,
+          hasSpotlight: true,
+          hasSparkles: true,
+          hasAura: false,
+          fadeIn: false,
+          levitate: false,
+        };
       case 4: // Secret — levitate + bounce + aura + sparkles
-        return { spinCount: 4, arcHeight: 1.0, arcX: 0.5, hasSpotlight: true, hasSparkles: true, hasAura: true, fadeIn: false, levitate: true };
+        return {
+          spinCount: 4,
+          arcHeight: 1.0,
+          arcX: 0.5,
+          hasSpotlight: true,
+          hasSparkles: true,
+          hasAura: true,
+          fadeIn: false,
+          levitate: true,
+        };
       default:
-        return { spinCount: 1, arcHeight: 0.3, arcX: 0.2, hasSpotlight: false, hasSparkles: false, hasAura: false, fadeIn: false, levitate: false };
+        return {
+          spinCount: 1,
+          arcHeight: 0.3,
+          arcX: 0.2,
+          hasSpotlight: false,
+          hasSparkles: false,
+          hasAura: false,
+          fadeIn: false,
+          levitate: false,
+        };
     }
   }, [rank, glamour]);
 
@@ -1257,10 +1469,17 @@ const RevealCard: React.FC<{
     []
   );
 
-  useEffect(() => { frontMaterial.setMap(texture); }, [texture, frontMaterial]);
-  useEffect(() => () => {
-    frontMaterial.dispose(); backMaterial.dispose(); texture?.dispose();
-  }, [frontMaterial, backMaterial, texture]);
+  useEffect(() => {
+    frontMaterial.setMap(texture);
+  }, [texture, frontMaterial]);
+  useEffect(
+    () => () => {
+      frontMaterial.dispose();
+      backMaterial.dispose();
+      texture?.dispose();
+    },
+    [frontMaterial, backMaterial, texture]
+  );
 
   const slot = useMemo(() => fanSlot(index, total), [index, total]);
 
@@ -1292,7 +1511,12 @@ const RevealCard: React.FC<{
     });
   }, [revealConfig.hasAura, colors.glow]);
 
-  useEffect(() => () => { auraMaterial?.dispose(); }, [auraMaterial]);
+  useEffect(
+    () => () => {
+      auraMaterial?.dispose();
+    },
+    [auraMaterial]
+  );
 
   useFrame(() => {
     const t = timeRef.current;
@@ -1352,7 +1576,12 @@ const RevealCard: React.FC<{
       group.rotation.y = currentRotation;
       group.rotation.z = lerp(0, slot.rotZ, clamp01(progress * 1.5));
 
-      const scale = progress < 0.4 ? lerp(0.3, 0.8, phase1) : progress < 0.7 ? 0.8 : lerp(0.8, 1, easeOutBack(phase3));
+      const scale =
+        progress < 0.4
+          ? lerp(0.3, 0.8, phase1)
+          : progress < 0.7
+            ? 0.8
+            : lerp(0.8, 1, easeOutBack(phase3));
       group.scale.setScalar(scale);
     } else {
       // Standard flip reveal (uncommon, holo, ultra)
@@ -1504,7 +1733,13 @@ const SceneContents: React.FC<PackOpeningSceneProps> = ({
 
   return (
     <>
-      <CameraRig timeRef={timeRef} baseZ={config.cameraZ} glamour={glamourLevel} tier={tier} cardRarities={cardRarities} />
+      <CameraRig
+        timeRef={timeRef}
+        baseZ={config.cameraZ}
+        glamour={glamourLevel}
+        tier={tier}
+        cardRarities={cardRarities}
+      />
       <EnvironmentScene tier={tier} glamourLevel={glamourLevel} timeRef={timeRef} />
 
       <ambientLight intensity={0.3 + (config.lightIntensity - 2.1) * 0.1} />
@@ -1514,11 +1749,13 @@ const SceneContents: React.FC<PackOpeningSceneProps> = ({
 
       <PackMesh tier={tier} timeRef={timeRef} />
       <EnergyBuildup tier={tier} timeRef={timeRef} />
-      <OrbitEnergy tier={tier} timeRef={timeRef} count={anim.packBehavior === 'levitate' ? 24 : 12} />
+      <OrbitEnergy
+        tier={tier}
+        timeRef={timeRef}
+        count={anim.packBehavior === 'levitate' ? 24 : 12}
+      />
 
-      {anim.packBehavior === 'shatter' && (
-        <ShatterFragments tier={tier} timeRef={timeRef} />
-      )}
+      {anim.packBehavior === 'shatter' && <ShatterFragments tier={tier} timeRef={timeRef} />}
 
       <ShockwaveRings tier={tier} timeRef={timeRef} count={theme.shockwaveCount} />
       <ShockwaveRipple tier={tier} timeRef={timeRef} />

@@ -70,11 +70,7 @@ export class SealedProductService {
     return row;
   }
 
-  async update(
-    id: number,
-    userId: number,
-    updates: Partial<SealedProductInput>
-  ): Promise<void> {
+  async update(id: number, userId: number, updates: Partial<SealedProductInput>): Promise<void> {
     const fieldMap: Record<string, string> = {
       name: 'name',
       game: 'game',

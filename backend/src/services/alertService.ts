@@ -156,7 +156,7 @@ export class AlertService {
         [cardId, currentPrice, currentPrice],
         (err: Error | null, rows: PriceAlert[]) => {
           if (err) return reject(err);
-          
+
           // Trigger all matched alerts
           rows.forEach((alert) => {
             this.triggerAlert(alert.id)

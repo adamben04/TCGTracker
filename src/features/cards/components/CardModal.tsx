@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { PokemonCard } from '../../../types/pokemon';
 import { pokemonApi } from '../../../services/pokemonApi';
 import { Modal } from '../../../components/common/Modal';
@@ -10,17 +10,19 @@ interface CardModalProps {
 }
 
 export const CardModal: React.FC<CardModalProps> = ({ card, isOpen, onClose }) => {
+  const titleId = useId();
+
   if (!card) return null;
 
   const price = pokemonApi.extractCardPrice(card);
   const formattedDate = new Date(card.set.releaseDate).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
+    <Modal isOpen={isOpen} onClose={onClose} titleId={titleId}>
       <div className="space-y-6">
         <img
           src={card.images.large}
@@ -34,10 +36,12 @@ export const CardModal: React.FC<CardModalProps> = ({ card, isOpen, onClose }) =
             }
           }}
         />
-        
+
         <div className="space-y-4">
           <div className="text-center">
-            <h2 className="text-xl font-bold text-white">{card.name}</h2>
+            <h2 id={titleId} className="text-xl font-semibold text-ink-primary">
+              {card.name}
+            </h2>
             {card.types && card.types.length > 0 && (
               <div className="mt-2 flex justify-center gap-2">
                 {card.types.map((type) => (
@@ -57,17 +61,17 @@ export const CardModal: React.FC<CardModalProps> = ({ card, isOpen, onClose }) =
               <p className="section-label mb-0.5">Set</p>
               <p className="font-medium text-ink-secondary">{card.set.name}</p>
             </div>
-            
+
             <div>
               <p className="section-label mb-0.5">Rarity</p>
               <p className="font-medium text-ink-secondary">{card.rarity || 'N/A'}</p>
             </div>
-            
+
             <div>
               <p className="section-label mb-0.5">Release Date</p>
               <p className="font-medium text-ink-secondary">{formattedDate}</p>
             </div>
-            
+
             <div>
               <p className="section-label mb-0.5">Price</p>
               <p className="font-semibold text-emerald-300">

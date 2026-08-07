@@ -1,9 +1,29 @@
-import { PokemonCard, SortOption } from '../types/pokemon';
+import { SortOption } from '../types/pokemon';
 import { OnePieceSortOption } from '../types/onepiece';
 import { AnyCard, getCardPrice, isPokemonCard } from './cardPrice';
 
-const ONE_PIECE_RARITY_ORDER = ['C', 'UC', 'R', 'SR', 'SEC', 'L', 'SP', 'P', 'AAA', 'AA', 'SA', 'TR'];
-const POKEMON_RARITY_ORDER = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret'];
+const ONE_PIECE_RARITY_ORDER = [
+  'C',
+  'UC',
+  'R',
+  'SR',
+  'SEC',
+  'L',
+  'SP',
+  'P',
+  'AAA',
+  'AA',
+  'SA',
+  'TR',
+];
+const POKEMON_RARITY_ORDER = [
+  'Common',
+  'Uncommon',
+  'Rare',
+  'Rare Holo',
+  'Rare Ultra',
+  'Rare Secret',
+];
 
 export type GameSortOption = SortOption | OnePieceSortOption;
 
@@ -67,8 +87,12 @@ export const sortCards = (
 
     case 'psa-pop-low':
       return sorted.sort((a, b) => {
-        const aPop = isPokemonCard(a) ? a.investmentData?.psaData.population.grade10 || Infinity : Infinity;
-        const bPop = isPokemonCard(b) ? b.investmentData?.psaData.population.grade10 || Infinity : Infinity;
+        const aPop = isPokemonCard(a)
+          ? a.investmentData?.psaData.population.grade10 || Infinity
+          : Infinity;
+        const bPop = isPokemonCard(b)
+          ? b.investmentData?.psaData.population.grade10 || Infinity
+          : Infinity;
         return aPop - bPop;
       });
 
@@ -81,8 +105,10 @@ export const sortCards = (
 
     case 'undervalued':
       return sorted.sort((a, b) => {
-        const aUndervalued = isPokemonCard(a) && a.investmentData?.marketAnalysis.isUndervalued ? 1 : 0;
-        const bUndervalued = isPokemonCard(b) && b.investmentData?.marketAnalysis.isUndervalued ? 1 : 0;
+        const aUndervalued =
+          isPokemonCard(a) && a.investmentData?.marketAnalysis.isUndervalued ? 1 : 0;
+        const bUndervalued =
+          isPokemonCard(b) && b.investmentData?.marketAnalysis.isUndervalued ? 1 : 0;
         if (aUndervalued !== bUndervalued) return bUndervalued - aUndervalued;
 
         const aScore = isPokemonCard(a) ? a.investmentData?.investmentScore || 0 : 0;

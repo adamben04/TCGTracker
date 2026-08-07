@@ -6,7 +6,7 @@ export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction
   const bypassEnabled =
     env.authBypassEnabled === true && env.isDevelopment === true && env.isProduction === false;
 
-  if (req.user?.username === env.admin.username) {
+  if (req.user?.role === 'admin') {
     next();
     return;
   }

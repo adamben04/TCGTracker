@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId, useCallback } from 'react';
 import { PokemonCard } from '../../../types/pokemon';
 import { Modal } from '../../../components/common/Modal';
 import { PriceChart } from './PriceChart';
@@ -12,7 +12,11 @@ import { cardWishlistService } from '../../../services/cardWishlistService';
 import { useGame } from '../../../contexts/GameContext';
 import { useToast } from '../../../components/common/Toast';
 import { fetchCardPopulation, PopulationLookupResponse } from '../../../services/populationApi';
-import { fetchGradedPrices, GradedPriceResult, GradedPriceEntry } from '../../../services/gradedPricesApi';
+import {
+  fetchGradedPrices,
+  GradedPriceResult,
+  GradedPriceEntry,
+} from '../../../services/gradedPricesApi';
 import { formatCurrency } from '../../../utils/cardDisplay';
 import { toIsoDate } from '../../../utils/priceHistory';
 
@@ -48,6 +52,7 @@ function graderLabel(grader: string): string {
 export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, onClose }) => {
   const { game } = useGame();
   const { showToast } = useToast();
+  const titleId = useId();
   const [priceHistory, setPriceHistory] = useState<Array<{ date: string; price: number }>>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [hasRealData, setHasRealData] = useState(false);
@@ -107,47 +112,6 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     }));
   }, [gradedPrices]);
 
-  useEffect(() => {
-    if (card && isOpen) {
-      fetchPriceHistory();
-      setIsInVault(vaultService.isInVault(card.id, game));
-      setIsTracked(priceTrackingService.isTracked(card.id, game));
-      setIsWishlisted(cardWishlistService.isWishlisted(card.id, game));
-    }
-  }, [card, isOpen, selectedVariant, game]);
-
-  useEffect(() => {
-    if (card && isOpen) fetchPopulation();
-  }, [card, isOpen, selectedVariant]);
-
-  useEffect(() => {
-    if (card && isOpen) fetchGradedPricesData();
-  }, [card, isOpen]);
-
-  useEffect(() => {
-    if (!card || !isOpen) return;
-    const preferred = card.preferredVariant;
-    const match = preferred
-      ? variantOptions.find((option) => option.key.toLowerCase() === preferred.toLowerCase())
-      : undefined;
-    if (match) {
-      setSelectedVariant(match.key);
-      return;
-    }
-    // Default to the highest coherent listing so the modal matches browse.
-    let bestKey = variantOptions[0]?.key || 'normal';
-    let bestPrice = 0;
-    for (const option of variantOptions) {
-      const price = pokemonApi.extractCardPrice(card, option.key);
-      if (price > bestPrice) {
-        bestPrice = price;
-        bestKey = option.key;
-      }
-    }
-    setSelectedVariant(bestKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card?.id, card?.preferredVariant, isOpen]);
-
   const handleTrack = async () => {
     if (card) {
       priceTrackingService.trackCard(card, game);
@@ -163,7 +127,7 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     showToast(nowOn ? 'Added to wishlist' : 'Removed from wishlist', nowOn ? 'success' : 'info');
   };
 
-  const fetchPriceHistory = async () => {
+  const fetchPriceHistory = useCallback(async () => {
     if (!card) return;
     setIsLoadingHistory(true);
     try {
@@ -189,9 +153,9 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     } finally {
       setIsLoadingHistory(false);
     }
-  };
+  }, [card, selectedVariant]);
 
-  const fetchPopulation = async () => {
+  const fetchPopulation = useCallback(async () => {
     if (!card) return;
     setIsLoadingPopulation(true);
     try {
@@ -207,9 +171,9 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     } finally {
       setIsLoadingPopulation(false);
     }
-  };
+  }, [card, selectedVariant]);
 
-  const fetchGradedPricesData = async () => {
+  const fetchGradedPricesData = useCallback(async () => {
     if (!card) return;
     setIsLoadingGradedPrices(true);
     try {
@@ -224,7 +188,46 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     } finally {
       setIsLoadingGradedPrices(false);
     }
-  };
+  }, [card]);
+
+  useEffect(() => {
+    if (card && isOpen) {
+      void fetchPriceHistory();
+      setIsInVault(vaultService.isInVault(card.id, game));
+      setIsTracked(priceTrackingService.isTracked(card.id, game));
+      setIsWishlisted(cardWishlistService.isWishlisted(card.id, game));
+    }
+  }, [card, isOpen, game, fetchPriceHistory]);
+
+  useEffect(() => {
+    if (card && isOpen) void fetchPopulation();
+  }, [card, isOpen, fetchPopulation]);
+
+  useEffect(() => {
+    if (card && isOpen) void fetchGradedPricesData();
+  }, [card, isOpen, fetchGradedPricesData]);
+
+  useEffect(() => {
+    if (!card || !isOpen) return;
+    const preferred = card.preferredVariant;
+    const match = preferred
+      ? variantOptions.find((option) => option.key.toLowerCase() === preferred.toLowerCase())
+      : undefined;
+    if (match) {
+      setSelectedVariant(match.key);
+      return;
+    }
+    let bestKey = variantOptions[0]?.key || 'normal';
+    let bestPrice = 0;
+    for (const option of variantOptions) {
+      const price = pokemonApi.extractCardPrice(card, option.key);
+      if (price > bestPrice) {
+        bestPrice = price;
+        bestKey = option.key;
+      }
+    }
+    setSelectedVariant(bestKey);
+  }, [card, isOpen, variantOptions]);
 
   if (!card) return null;
 
@@ -238,7 +241,8 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
     0;
   // Headline = backend snapshot (latest history point). Listing is fallback before history loads.
   const actualCardPrice = lastHistoryPrice || listingFallback;
-  const priceChange = lastHistoryPrice > 0 && firstHistoryPrice > 0 ? lastHistoryPrice - firstHistoryPrice : 0;
+  const priceChange =
+    lastHistoryPrice > 0 && firstHistoryPrice > 0 ? lastHistoryPrice - firstHistoryPrice : 0;
   const priceChangePercent = firstHistoryPrice > 0 ? (priceChange / firstHistoryPrice) * 100 : 0;
   const isPositiveChange = priceChange >= 0;
 
@@ -250,7 +254,7 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} size="detail">
+      <Modal isOpen={isOpen} onClose={onClose} size="detail" titleId={titleId}>
         <div className="min-w-0">
           <div className="flex gap-4 sm:gap-5">
             {card.images?.large || card.images?.small ? (
@@ -273,34 +277,38 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
             )}
 
             <div className="min-w-0 flex-1">
-              <h2 className="text-xl font-bold leading-tight text-ink-primary sm:text-2xl">{card.name}</h2>
+              <h2
+                id={titleId}
+                className="text-xl font-bold leading-tight text-ink-primary sm:text-2xl"
+              >
+                {card.name}
+              </h2>
               <p className="mt-1 text-sm text-ink-muted">
                 {card.set.name}
                 {card.number ? ` · #${card.number}` : ''}
               </p>
-              {card.rarity && (
-                <p className="mt-0.5 text-sm text-ink-muted">{card.rarity}</p>
-              )}
+              {card.rarity && <p className="mt-0.5 text-sm text-ink-muted">{card.rarity}</p>}
 
               <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-3xl font-bold tabular-nums text-ink-primary">
                   {formatCurrency(actualCardPrice)}
                 </span>
-                {isWishlisted && (() => {
-                  const wish = cardWishlistService.getItem(card.id, game);
-                  if (
-                    wish?.targetPrice != null &&
-                    actualCardPrice > 0 &&
-                    actualCardPrice <= wish.targetPrice
-                  ) {
-                    return (
-                      <span className="rounded-full bg-gain/15 px-2.5 py-0.5 text-xs font-semibold text-gain">
-                        At buy target
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
+                {isWishlisted &&
+                  (() => {
+                    const wish = cardWishlistService.getItem(card.id, game);
+                    if (
+                      wish?.targetPrice != null &&
+                      actualCardPrice > 0 &&
+                      actualCardPrice <= wish.targetPrice
+                    ) {
+                      return (
+                        <span className="rounded-full bg-gain/15 px-2.5 py-0.5 text-xs font-semibold text-gain">
+                          At buy target
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 {priceHistory.length > 1 && (
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums ${
@@ -308,11 +316,15 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
                     }`}
                   >
                     {isPositiveChange ? '+' : ''}
-                    {formatCurrency(priceChange, { signed: false })} ({priceChangePercent.toFixed(1)}%)
+                    {formatCurrency(priceChange, { signed: false })} (
+                    {priceChangePercent.toFixed(1)}%)
                   </span>
                 )}
                 {isLoadingHistory && (
-                  <Loader2 className="h-4 w-4 animate-spin text-ink-muted" aria-label="Loading price" />
+                  <Loader2
+                    className="h-4 w-4 animate-spin text-ink-muted"
+                    aria-label="Loading price"
+                  />
                 )}
               </div>
 
@@ -368,12 +380,7 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
 
           <div className="mt-5 border-t border-border-subtle pt-5">
             {priceHistory.length > 0 ? (
-              <PriceChart
-                priceHistory={priceHistory}
-                variant="dark"
-                height={300}
-                compact
-              />
+              <PriceChart priceHistory={priceHistory} variant="dark" height={300} compact />
             ) : isLoadingHistory ? (
               <div className="flex h-[300px] items-center justify-center rounded-xl border border-border-default bg-surface-inset">
                 <Loader2 className="h-6 w-6 animate-spin text-accent" />
@@ -405,9 +412,12 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
                   <span className="ml-2 font-normal tabular-nums text-ink-muted">
                     {groupedGradedPrices
                       .flatMap((g) =>
-                        g.entries.slice(0, 3).map(
-                          (e) => `${g.label ? `${g.label} ` : ''}${e.grade} ${e.price != null ? formatCurrency(e.price) : '—'}`
-                        )
+                        g.entries
+                          .slice(0, 3)
+                          .map(
+                            (e) =>
+                              `${g.label ? `${g.label} ` : ''}${e.grade} ${e.price != null ? formatCurrency(e.price) : '—'}`
+                          )
                       )
                       .join(' · ')}
                   </span>
@@ -422,7 +432,9 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
                     <Loader2 className="h-5 w-5 animate-spin text-accent" />
                   </div>
                 ) : groupedGradedPrices.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-ink-muted">No graded prices available</p>
+                  <p className="py-4 text-center text-sm text-ink-muted">
+                    No graded prices available
+                  </p>
                 ) : (
                   groupedGradedPrices.map((group) => (
                     <div key={group.grader}>
@@ -492,9 +504,7 @@ export const InvestmentModal: React.FC<InvestmentModalProps> = ({ card, isOpen, 
               <div className="mt-3 grid grid-cols-3 gap-3">
                 {popCompanies.map(({ key, label }) => {
                   const data =
-                    populationData?.companies?.[
-                      key as keyof PopulationLookupResponse['companies']
-                    ];
+                    populationData?.companies?.[key as keyof PopulationLookupResponse['companies']];
                   const value = data?.total;
                   return (
                     <div

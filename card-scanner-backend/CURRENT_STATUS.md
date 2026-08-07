@@ -7,7 +7,7 @@ The Flask backend is now **fully operational** and running on **http://localhost
 ### What's Working:
 - ✅ Flask server starts successfully
 - ✅ Health check endpoint (`/health`)
-- ✅ CORS enabled for React frontend  
+- ✅ Explicit production CORS allowlist (permissive only during local development)
 - ✅ Image upload handling
 - ✅ Base64 image processing
 - ✅ Lazy initialization of card recognizer
@@ -92,7 +92,7 @@ pip install -e .
 **Port**: 5001
 **Host**: 0.0.0.0 (accessible from network)
 **Mode**: Development
-**CORS**: Enabled (all origins)
+**CORS**: Set `SCANNER_CORS_ORIGIN` in production; no origin is allowed when it is unset
 
 ## 🎯 Summary
 

@@ -1,11 +1,20 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Camera, Upload, X, AlertCircle, CheckCircle, RefreshCw, Scan,
-  ChevronRight, Minus, Plus, Flashlight
+  Camera,
+  Upload,
+  X,
+  AlertCircle,
+  CheckCircle,
+  RefreshCw,
+  Scan,
+  ChevronRight,
+  Minus,
+  Plus,
+  Flashlight,
 } from 'lucide-react';
 import { scanCardFromFile, checkBackendHealth, ScanResult } from '../../../services/cardScannerApi';
 import { ScanResultActions } from './ScanResultActions';
-import { markOnboardingStep } from '../../../components/common/OnboardingChecklist';
+import { markOnboardingStep } from '../../../components/common/onboarding';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 
 type Mode = 'idle' | 'upload' | 'camera';
@@ -19,7 +28,9 @@ function ConfidenceBadge({ value }: { value: number }) {
         ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
         : 'text-loss bg-loss/10 border-loss/30';
   return (
-    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}
+    >
       {pct}% match
     </span>
   );
@@ -59,20 +70,28 @@ function ScanResultSheet({ result }: { result: ScanResult }) {
         )}
         <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border-subtle bg-surface-inset p-3">
           <div>
-            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">Name</dt>
+            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+              Name
+            </dt>
             <dd className="text-sm font-semibold text-ink-primary">{name}</dd>
           </div>
           <div>
-            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">Set</dt>
+            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+              Set
+            </dt>
             <dd className="text-sm font-semibold text-ink-primary">{set}</dd>
           </div>
           <div>
-            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">Number</dt>
+            <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+              Number
+            </dt>
             <dd className="text-sm font-semibold tabular-nums text-ink-primary">{number || '—'}</dd>
           </div>
           {id && (
             <div>
-              <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">ID</dt>
+              <dt className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-ink-muted">
+                ID
+              </dt>
               <dd className="truncate text-sm font-mono text-ink-secondary">{id}</dd>
             </div>
           )}
@@ -135,7 +154,7 @@ export function CardScanner() {
   useEffect(() => () => stopCamera(), []);
 
   const stopCamera = () => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setIsCameraActive(false);
@@ -304,14 +323,14 @@ export function CardScanner() {
           </div>
           <h2 className="text-xl font-semibold text-ink-primary">Card Scanner Offline</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-ink-muted">
-            The card recognition service is not running. This feature requires the Python backend
-            to be started separately.
+            The card recognition service is not running. This feature requires the Python backend to
+            be started separately.
           </p>
 
           {retryProgress < 100 && (
             <div className="mx-auto mt-6 max-w-xs">
               <div className="mb-1 flex justify-between text-[10px] uppercase tracking-wider text-ink-muted">
-                <span>Auto-retry ({Math.round(retryProgress / 100 * 12)}/12)</span>
+                <span>Auto-retry ({Math.round((retryProgress / 100) * 12)}/12)</span>
                 <span>{retryProgress}%</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -330,7 +349,9 @@ export function CardScanner() {
           )}
 
           <div className="mt-6 rounded-lg border border-border-subtle bg-black/40 p-4 text-left">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-ink-muted">Quick start</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-ink-muted">
+              Quick start
+            </p>
             <div className="font-mono text-xs space-y-1">
               <p className="text-emerald-400">$ cd card-scanner-backend</p>
               <p className="text-emerald-400">$ python -m venv venv</p>
@@ -338,9 +359,7 @@ export function CardScanner() {
               <p className="text-emerald-400">$ pip install -r requirements.txt</p>
               <p className="text-emerald-400">$ python app.py</p>
             </div>
-            <p className="mt-2 text-[10px] text-ink-muted">
-              Server runs on http://localhost:5001
-            </p>
+            <p className="mt-2 text-[10px] text-ink-muted">Server runs on http://localhost:5001</p>
           </div>
 
           <button type="button" onClick={recheckBackend} className="btn-primary mt-6">
@@ -387,7 +406,9 @@ export function CardScanner() {
               <Camera className="h-5 w-5 text-accent" />
             </div>
             <h3 className="mb-1 font-semibold text-ink-primary">Camera scan</h3>
-            <p className="text-sm text-ink-muted">Use your device camera to scan a physical card in real time.</p>
+            <p className="text-sm text-ink-muted">
+              Use your device camera to scan a physical card in real time.
+            </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-medium text-accent">
               <span>Open camera</span>
               <ChevronRight className="h-3.5 w-3.5" />
@@ -402,7 +423,9 @@ export function CardScanner() {
               <Upload className="h-5 w-5 text-accent" />
             </div>
             <h3 className="mb-1 font-semibold text-ink-primary">Upload image</h3>
-            <p className="text-sm text-ink-muted">Upload a photo from your device or drag and drop.</p>
+            <p className="text-sm text-ink-muted">
+              Upload a photo from your device or drag and drop.
+            </p>
             <div className="mt-3 flex items-center gap-1 text-xs font-medium text-accent">
               <span>Choose file</span>
               <ChevronRight className="h-3.5 w-3.5" />
@@ -546,7 +569,16 @@ export function CardScanner() {
             {/* Drop zone */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
               className={`relative cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-colors ${
@@ -554,6 +586,8 @@ export function CardScanner() {
                   ? 'border-accent bg-accent/10'
                   : 'border-border-default hover:border-border-strong hover:bg-surface-inset'
               }`}
+              role="button"
+              tabIndex={0}
             >
               {previewUrl ? (
                 <img

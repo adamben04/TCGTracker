@@ -30,9 +30,7 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
   });
 
   if (visible.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-ink-muted">No cards in this view.</p>
-    );
+    return <p className="py-8 text-center text-sm text-ink-muted">No cards in this view.</p>;
   }
 
   return (
@@ -40,9 +38,20 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
       {visible.map((card) => {
         const wish = wishlistIds.has(card.id);
         return (
-          <article
+          <div
             key={card.id}
             onClick={() => onCardClick(card)}
+            onKeyDown={(event) => {
+              if (
+                event.currentTarget === event.target &&
+                (event.key === 'Enter' || event.key === ' ')
+              ) {
+                event.preventDefault();
+                onCardClick(card);
+              }
+            }}
+            role="button"
+            tabIndex={0}
             className={`group relative flex cursor-pointer flex-col rounded-xl border p-2 transition-all hover:border-border-strong ${
               card.owned
                 ? 'border-gain/30 bg-gain/[0.06]'
@@ -59,15 +68,15 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
                 <Check className="h-3.5 w-3.5" />
               </span>
             )}
-            <div
-              className="aspect-[245/342] w-full overflow-hidden rounded-lg bg-surface-inset"
-            >
+            <div className="aspect-[245/342] w-full overflow-hidden rounded-lg bg-surface-inset">
               {card.images?.small || card.images?.large ? (
                 <img
                   src={card.images.small || card.images.large}
                   alt={card.name}
                   className={`h-full w-full object-contain transition-all duration-300 group-hover:scale-[1.03] ${
-                    card.owned ? '' : 'opacity-50 saturate-[0.35] group-hover:opacity-90 group-hover:saturate-100'
+                    card.owned
+                      ? ''
+                      : 'opacity-50 saturate-[0.35] group-hover:opacity-90 group-hover:saturate-100'
                   }`}
                   loading="lazy"
                 />
@@ -77,7 +86,7 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
                 </div>
               )}
             </div>
-            <p className="mt-2 truncate text-xs font-medium text-white">
+            <p className="mt-2 truncate text-xs font-medium text-ink-primary">
               #{card.number} {card.name}
             </p>
             <div className="mt-0.5 flex items-center justify-between gap-1">
@@ -89,7 +98,10 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
                 <p className="text-xs text-ink-muted">No price</p>
               )}
               {card.priceSource === 'market_sync' && (
-                <span className="text-[10px] text-ink-muted" title={card.priceDate ? `As of ${card.priceDate}` : 'Synced market price'}>
+                <span
+                  className="text-[10px] text-ink-muted"
+                  title={card.priceDate ? `As of ${card.priceDate}` : 'Synced market price'}
+                >
                   Live
                 </span>
               )}
@@ -131,7 +143,7 @@ export const SetBinderGrid: React.FC<SetBinderGridProps> = ({
                 </>
               )}
             </div>
-          </article>
+          </div>
         );
       })}
     </div>

@@ -1,5 +1,3 @@
-import axios from 'axios';
-import { buildApiUrl } from '../config/env';
 import { PokemonCard } from '../types/pokemon';
 import { OnePieceCard } from '../types/onepiece';
 import { getCardPrice } from '../utils/cardPrice';

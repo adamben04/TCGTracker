@@ -80,10 +80,10 @@ export async function updateActualResults(): Promise<{ updated: number }> {
       const actual7d = await fetchActualPrice(pred.card_id, pred.prediction_date, 7);
       const actual30d = await fetchActualPrice(pred.card_id, pred.prediction_date, 30);
       const actual90d = await fetchActualPrice(pred.card_id, pred.prediction_date, 90);
-      const actual180d = daysSince >= 180
-        ? await fetchActualPrice(pred.card_id, pred.prediction_date, 180) : null;
-      const actual365d = daysSince >= 365
-        ? await fetchActualPrice(pred.card_id, pred.prediction_date, 365) : null;
+      const actual180d =
+        daysSince >= 180 ? await fetchActualPrice(pred.card_id, pred.prediction_date, 180) : null;
+      const actual365d =
+        daysSince >= 365 ? await fetchActualPrice(pred.card_id, pred.prediction_date, 365) : null;
 
       const currentPrice = pred.current_price || 0;
 
@@ -96,8 +96,10 @@ export async function updateActualResults(): Promise<{ updated: number }> {
       const actual180dReturn = computeReturn(actual180d);
       const actual365dReturn = computeReturn(actual365d);
 
-      const computeError = (expected: number | null | undefined, actualReturn: number | null): number | null =>
-        actualReturn !== null ? Math.abs((expected || 0) - actualReturn) : null;
+      const computeError = (
+        expected: number | null | undefined,
+        actualReturn: number | null
+      ): number | null => (actualReturn !== null ? Math.abs((expected || 0) - actualReturn) : null);
 
       const error7d = computeError(pred.expected_7d_return, actual7dReturn);
       const error30d = computeError(pred.expected_30d_return, actual30dReturn);
@@ -105,10 +107,11 @@ export async function updateActualResults(): Promise<{ updated: number }> {
       const error180d = computeError(pred.expected_180d_return, actual180dReturn);
       const error365d = computeError(pred.expected_365d_return, actual365dReturn);
 
-      const computeDirection = (expected: number | null | undefined, actualReturn: number | null): number =>
-        expected != null && actualReturn != null
-          ? (expected > 0) === (actualReturn > 0) ? 1 : 0
-          : 0;
+      const computeDirection = (
+        expected: number | null | undefined,
+        actualReturn: number | null
+      ): number =>
+        expected != null && actualReturn != null ? (expected > 0 === actualReturn > 0 ? 1 : 0) : 0;
 
       const directionCorrect7d = computeDirection(pred.expected_7d_return, actual7dReturn);
       const directionCorrect30d = computeDirection(pred.expected_30d_return, actual30dReturn);
@@ -122,20 +125,27 @@ export async function updateActualResults(): Promise<{ updated: number }> {
 
       // Status resolves once the 90d window closes; 180d/365d actuals are
       // tracked for long-horizon accuracy without changing resolved statuses.
-      let status = pred.existing_status && pred.existing_status !== 'pending'
-        ? pred.existing_status : 'pending';
+      let status =
+        pred.existing_status && pred.existing_status !== 'pending'
+          ? pred.existing_status
+          : 'pending';
       if (status === 'pending') {
         if (has90d) {
           const hit7d = error7d !== null && error7d < 0.1;
           const hit30d = error30d !== null && error30d < 0.1;
           const hit90d = error90d !== null && error90d < 0.1;
-          status = (hit7d && hit30d && hit90d) ? 'hit' : (hit7d || hit30d || hit90d) ? 'partially_correct' : 'missed';
+          status =
+            hit7d && hit30d && hit90d
+              ? 'hit'
+              : hit7d || hit30d || hit90d
+                ? 'partially_correct'
+                : 'missed';
         } else if (has30d) {
           const hit7d = error7d !== null && error7d < 0.1;
           const hit30d = error30d !== null && error30d < 0.1;
-          status = (hit7d && hit30d) ? 'hit' : (hit7d || hit30d) ? 'partially_correct' : 'missed';
+          status = hit7d && hit30d ? 'hit' : hit7d || hit30d ? 'partially_correct' : 'missed';
         } else if (has7d) {
-          status = (error7d !== null && error7d < 0.1) ? 'hit' : 'missed';
+          status = error7d !== null && error7d < 0.1 ? 'hit' : 'missed';
         }
       }
 
@@ -153,13 +163,26 @@ export async function updateActualResults(): Promise<{ updated: number }> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             pred.id,
-            actual7d, actual30d, actual90d,
-            actual180d, actual365d,
-            actual7dReturn, actual30dReturn, actual90dReturn,
-            actual180dReturn, actual365dReturn,
-            error7d, error30d, error90d, error180d, error365d,
-            directionCorrect7d, directionCorrect30d, directionCorrect90d,
-            directionCorrect180d, directionCorrect365d,
+            actual7d,
+            actual30d,
+            actual90d,
+            actual180d,
+            actual365d,
+            actual7dReturn,
+            actual30dReturn,
+            actual90dReturn,
+            actual180dReturn,
+            actual365dReturn,
+            error7d,
+            error30d,
+            error90d,
+            error180d,
+            error365d,
+            directionCorrect7d,
+            directionCorrect30d,
+            directionCorrect90d,
+            directionCorrect180d,
+            directionCorrect365d,
             status,
           ],
           function (err) {
@@ -178,7 +201,11 @@ export async function updateActualResults(): Promise<{ updated: number }> {
   return { updated };
 }
 
-async function fetchActualPrice(cardId: string, predictionDate: string, daysAhead: number): Promise<number | null> {
+async function fetchActualPrice(
+  cardId: string,
+  predictionDate: string,
+  daysAhead: number
+): Promise<number | null> {
   const db = getDb();
   const targetDate = new Date(predictionDate + 'T00:00:00Z');
   targetDate.setDate(targetDate.getDate() + daysAhead);
@@ -293,7 +320,15 @@ export async function getForwardTestStatus(): Promise<ForwardTestStatus> {
   ]);
 
   const getCategoryStats = async (): Promise<CategoryAccuracy[]> => {
-    const categories = ['strong_buy', 'watch_dip', 'recovery', 'momentum', 'stagnant', 'avoid', 'downtrend'];
+    const categories = [
+      'strong_buy',
+      'watch_dip',
+      'recovery',
+      'momentum',
+      'stagnant',
+      'avoid',
+      'downtrend',
+    ];
     const results: CategoryAccuracy[] = [];
 
     for (const cat of categories) {
@@ -334,28 +369,35 @@ export async function getForwardTestStatus(): Promise<ForwardTestStatus> {
 
   const getPriceRangeStats = async () => {
     const getStatsForRange = (minPrice: number, maxPrice: number | null) => {
-      return new Promise<{ total: number; hit: number; accuracy: number | null }>((resolve, reject) => {
-        const priceClause = maxPrice !== null
-          ? 'AND cp.current_price >= ? AND cp.current_price < ?'
-          : 'AND cp.current_price >= ?';
-        const params = maxPrice !== null ? [minPrice, maxPrice] : [minPrice];
+      return new Promise<{ total: number; hit: number; accuracy: number | null }>(
+        (resolve, reject) => {
+          const priceClause =
+            maxPrice !== null
+              ? 'AND cp.current_price >= ? AND cp.current_price < ?'
+              : 'AND cp.current_price >= ?';
+          const params = maxPrice !== null ? [minPrice, maxPrice] : [minPrice];
 
-        db.get(
-          `SELECT
+          db.get(
+            `SELECT
             COUNT(*) as total,
             COUNT(CASE WHEN pr.status = 'hit' THEN 1 END) as hit
           FROM prediction_results pr
           JOIN card_predictions cp ON cp.id = pr.prediction_id
           WHERE cp.run_id = (SELECT MAX(id) FROM prediction_runs)
           ${priceClause}`,
-          params,
-          (err, row: any) => {
-            if (err) return reject(err);
-            const r = row || { total: 0, hit: 0 };
-            resolve({ total: r.total, hit: r.hit, accuracy: r.total > 0 ? r.hit / r.total : null });
-          }
-        );
-      });
+            params,
+            (err, row: any) => {
+              if (err) return reject(err);
+              const r = row || { total: 0, hit: 0 };
+              resolve({
+                total: r.total,
+                hit: r.hit,
+                accuracy: r.total > 0 ? r.hit / r.total : null,
+              });
+            }
+          );
+        }
+      );
     };
 
     const [under5, fiveToFifty, overFifty] = await Promise.all([
@@ -371,7 +413,10 @@ export async function getForwardTestStatus(): Promise<ForwardTestStatus> {
 
   return {
     totalPredictions,
-    pending, hit, missed, partiallyCorrect,
+    pending,
+    hit,
+    missed,
+    partiallyCorrect,
     overallAccuracy,
     byWindow: { _7d, _30d, _90d, _180d, _365d },
     byCategory,

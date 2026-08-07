@@ -1,14 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { priceTrackingService } from '../priceTrackingService';
+import type { PokemonCard } from '../../types/pokemon';
 
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
     getItem: (key: string) => store[key] || null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 })();
 
@@ -44,7 +51,7 @@ describe('PriceTrackingService', () => {
         set: { id: 'sv7', name: 'Obsidian Flames' },
         number: '223',
         marketPrice: 50,
-      } as any;
+      } as unknown as PokemonCard;
 
       await priceTrackingService.trackCard(mockCard);
       const cards = await priceTrackingService.getTrackedCards();
@@ -58,7 +65,7 @@ describe('PriceTrackingService', () => {
         id: 'sv7-1',
         name: 'Charizard ex',
         set: { id: 'sv7', name: 'Obsidian Flames' },
-      } as any;
+      } as unknown as PokemonCard;
 
       await priceTrackingService.trackCard(mockCard);
       await priceTrackingService.trackCard(mockCard);
@@ -71,7 +78,7 @@ describe('PriceTrackingService', () => {
         id: 'sv7-1',
         name: 'Charizard ex',
         set: { id: 'sv7', name: 'Obsidian Flames' },
-      } as any;
+      } as unknown as PokemonCard;
 
       await priceTrackingService.trackCard(mockCard);
       await priceTrackingService.untrackCard('sv7-1');
@@ -84,7 +91,7 @@ describe('PriceTrackingService', () => {
         id: 'sv7-1',
         name: 'Charizard ex',
         set: { id: 'sv7', name: 'Obsidian Flames' },
-      } as any;
+      } as unknown as PokemonCard;
 
       expect(priceTrackingService.isTracked('sv7-1')).toBe(false);
       await priceTrackingService.trackCard(mockCard);
@@ -97,7 +104,7 @@ describe('PriceTrackingService', () => {
         name: 'Charizard ex',
         set: { id: 'sv7', name: 'Obsidian Flames' },
         marketPrice: 50,
-      } as any;
+      } as unknown as PokemonCard;
 
       await priceTrackingService.trackCard(mockCard);
       priceTrackingService.updateCardPrice('sv7-1', 60);

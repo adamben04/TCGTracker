@@ -82,7 +82,7 @@ Supports **Pokemon** and **One Piece** via an in-app game switcher.
 | Frontend | React 18, TypeScript, Vite, Tailwind, Framer Motion, Recharts, React Three Fiber |
 | Backend | Node 20, Express, SQLite, JWT, Zod, Winston, Swagger |
 | Scanner | Python, Flask, EasyOCR / pokemon-card-recognizer |
-| Ops | Docker Compose, GitHub Actions, Vercel (frontend) |
+| Ops | Docker Compose, GitHub Actions, Cloudflare Pages, Render, Supabase Storage |
 
 ```
 TCGTracker/
@@ -108,7 +108,7 @@ TCGTracker/
 
 ### Prerequisites
 
-- Node.js **20+** and npm **10+**
+- Node.js **20.19+** (or 22.12+/24+) and npm **10+**
 - Python **3.8+** (optional — only for the card scanner)
 - Docker (optional)
 
@@ -200,7 +200,9 @@ npm run build        # Production frontend build
 npm run lint         # ESLint
 npm run format       # Prettier
 npm run type-check   # tsc --noEmit
-npm test             # Vitest
+npm run test:run     # Vitest once
+npm run test:e2e     # Playwright + axe smoke tests
+npm run check        # lint + types + unit tests + production build
 ```
 
 Backend:
@@ -208,7 +210,7 @@ Backend:
 ```bash
 cd backend
 npm run dev
-npm test
+npm run test:run
 npm run build
 ```
 
@@ -226,31 +228,44 @@ Interactive docs: `http://localhost:3001/api-docs`
 | Insights | Market prediction / backtest endpoints used by `/market-insights` |
 | Cloud backup | `POST /api/cloud-backup`, `GET /api/cloud-backup/status` (when enabled) |
 
-Protected routes expect:
+Non-browser API clients may send:
 
 ```http
 Authorization: Bearer <jwt>
 ```
 
+The browser client uses the `tcg_token` HttpOnly cookie instead. Cross-site
+production requests require `credentials: include`, `SameSite=None; Secure`,
+and an exact `CORS_ORIGIN`.
+
 ---
 
 ## Deploy
 
-- **Frontend** — [Vercel](https://vercel.com) (this repo includes `vercel.json`; live: [tcgtracker-pearl.vercel.app](https://tcgtracker-pearl.vercel.app))
-- **Backend** — Railway, Render, Fly.io, or any Node host with persistent disk for SQLite
+- **Frontend** — Cloudflare Pages: [tcgtracker-9oc.pages.dev](https://tcgtracker-9oc.pages.dev/)
+- **Node API + SQLite** — Render web service
+- **Card scanner** — separate Render web service
+- **Database backups** — private Supabase Storage bucket
 
 Production env highlights:
 
 ```env
 # Frontend
-VITE_API_URL=https://api.yourdomain.com
+VITE_API_URL=https://tcgtracker-api.onrender.com
+VITE_CARD_SCANNER_API_URL=https://tcgtracker-scanner.onrender.com
+VITE_ENABLE_AUTH=true
 
 # Backend
 NODE_ENV=production
 JWT_SECRET=<min-32-char-secret>
-CORS_ORIGIN=https://yourdomain.com
-CLOUD_SYNC_ENABLED=true   # optional Supabase DB backups
+DATABASE_PATH=/app/data/tcg-prices.db
+CORS_ORIGIN=https://tcgtracker-9oc.pages.dev
+CLOUD_SYNC_ENABLED=true
 ```
+
+Cloudflare Pages and Render are connected to Git, so pushes to `main` trigger
+their production deployments. See [DEPLOY.md](DEPLOY.md) for exact settings,
+backup safety, cookie/CORS requirements, and smoke tests.
 
 ---
 

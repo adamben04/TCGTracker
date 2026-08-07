@@ -1,12 +1,12 @@
 /**
  * Script to manually add images for promo cards not in Pokemon TCG API
- * 
+ *
  * This script provides image URLs for common promo sets that aren't available
  * in the Pokemon TCG API (like McDonald's promos, GameStop promos, etc.)
- * 
+ *
  * Usage:
  *   npm run add-promo-images
- * 
+ *
  * To add more images:
  *   1. Find the card on a site like TCGPlayer, Bulbapedia, or PokemonDB
  *   2. Get the image URL (or host it yourself)
@@ -27,11 +27,11 @@ interface PromoImageMapping {
 
 /**
  * IMAGE MAPPINGS FOR PROMO CARDS
- * 
+ *
  * Add your custom image URLs here for cards not in the Pokemon API.
- * 
+ *
  * IMPORTANT: These are example URLs - you'll need to replace them with real ones!
- * 
+ *
  * Good sources for images:
  * - TCGPlayer: https://www.tcgplayer.com
  * - Bulbapedia: https://bulbapedia.bulbagarden.net
@@ -48,7 +48,7 @@ const PROMO_IMAGE_MAPPINGS: PromoImageMapping[] = [
     cardName: 'Pikachu',
     imageSmall: 'https://example.com/mcdonalds-2014-pikachu-small.png', // REPLACE WITH REAL URL
     imageLarge: 'https://example.com/mcdonalds-2014-pikachu-large.png', // REPLACE WITH REAL URL
-    source: 'manual_mcdonalds_2014'
+    source: 'manual_mcdonalds_2014',
   },
   {
     setId: 'mcdonaldspromos2014',
@@ -56,10 +56,10 @@ const PROMO_IMAGE_MAPPINGS: PromoImageMapping[] = [
     cardName: 'Chespin',
     imageSmall: 'https://example.com/mcdonalds-2014-chespin-small.png', // REPLACE WITH REAL URL
     imageLarge: 'https://example.com/mcdonalds-2014-chespin-large.png', // REPLACE WITH REAL URL
-    source: 'manual_mcdonalds_2014'
+    source: 'manual_mcdonalds_2014',
   },
   // Add more McDonald's 2014 cards here...
-  
+
   // McDonald's 2015 Promos
   // {
   //   setId: 'mcdonaldspromos2015',
@@ -69,7 +69,7 @@ const PROMO_IMAGE_MAPPINGS: PromoImageMapping[] = [
   //   imageLarge: 'https://example.com/url-to-large-image.png',
   //   source: 'manual_mcdonalds_2015'
   // },
-  
+
   // GameStop Promos
   // {
   //   setId: 'gamestoppromos',
@@ -83,12 +83,12 @@ const PROMO_IMAGE_MAPPINGS: PromoImageMapping[] = [
 
 /**
  * ALTERNATIVE: Use locally hosted images
- * 
+ *
  * If you want to host images yourself:
  * 1. Create folder: /public/assets/cards/mcdonalds2014/
  * 2. Add image files: 1.png, 2.png, etc.
  * 3. Use URLs like: /assets/cards/mcdonalds2014/5.png
- * 
+ *
  * Then update the mappings above to use relative URLs:
  *   imageSmall: '/assets/cards/mcdonalds2014/5.png',
  *   imageLarge: '/assets/cards/mcdonalds2014/5_hires.png',
@@ -131,7 +131,9 @@ async function applyPromoImages(): Promise<void> {
       });
 
       if (!card) {
-        logger.warn(`⚠️  Card not found in DB: ${mapping.cardName} (${mapping.setId} #${mapping.cardNumber})`);
+        logger.warn(
+          `⚠️  Card not found in DB: ${mapping.cardName} (${mapping.setId} #${mapping.cardNumber})`
+        );
         notFoundCount++;
         continue;
       }
@@ -174,7 +176,7 @@ async function showCardsNeedingImages(setId: string): Promise<void> {
 
   // First check if image columns exist
   const hasImageColumns = await new Promise<boolean>((resolve) => {
-    db.all("PRAGMA table_info(card_mappings)", [], (err, rows: any[]) => {
+    db.all('PRAGMA table_info(card_mappings)', [], (err, rows: any[]) => {
       if (err || !rows) {
         resolve(false);
       } else {
@@ -222,19 +224,6 @@ async function showCardsNeedingImages(setId: string): Promise<void> {
   logger.info(`Total: ${cards.length} cards need images`);
 }
 
-/**
- * Helper: Fetch image from TCGPlayer API (if you have an API key)
- * 
- * This is an advanced option - you'd need a TCGPlayer seller account
- * and API access. Most users will use manual image URLs instead.
- */
-async function fetchFromTCGPlayer(productId: string): Promise<{ small: string; large: string } | null> {
-  // Placeholder for TCGPlayer API integration
-  // You would implement this if you have TCGPlayer API access
-  logger.warn('TCGPlayer API integration not yet implemented');
-  return null;
-}
-
 // CLI interface
 if (require.main === module) {
   const args = process.argv.slice(2);
@@ -245,23 +234,23 @@ if (require.main === module) {
       // Initialize database and run migrations first
       const { initializeDatabase } = await import('../db/database');
       const { runMigrations } = await import('../db/migrations');
-      
+
       logger.info('🔧 Initializing database...');
       initializeDatabase();
-      
+
       // Wait for database initialization to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       const db = getDb();
-      
+
       logger.info('🔧 Running migrations...');
       await runMigrations(db);
-      
+
       // Wait for migrations to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       logger.info('✅ Database ready!\n');
-      
+
       if (command === 'apply') {
         await applyPromoImages();
       } else if (command === 'list') {
@@ -292,4 +281,3 @@ if (require.main === module) {
 }
 
 export { applyPromoImages, showCardsNeedingImages };
-

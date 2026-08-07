@@ -54,7 +54,11 @@ export interface SlotInput {
 export class BinderService {
   constructor(private db: Database) {}
 
-  async createBinder(userId: number, input: CreateBinderInput, slots?: SlotInput[]): Promise<BinderWithSlots> {
+  async createBinder(
+    userId: number,
+    input: CreateBinderInput,
+    slots?: SlotInput[]
+  ): Promise<BinderWithSlots> {
     const { lastID } = await runDb(
       this.db,
       `INSERT INTO binders (user_id, name, game, pages, slots_per_page, theme_description, budget_cents, constraints_json)
@@ -94,11 +98,10 @@ export class BinderService {
   }
 
   async getBinder(binderId: number, userId: number): Promise<BinderRow | undefined> {
-    return getDbRow<BinderRow>(
-      this.db,
-      'SELECT * FROM binders WHERE id = ? AND user_id = ?',
-      [binderId, userId]
-    );
+    return getDbRow<BinderRow>(this.db, 'SELECT * FROM binders WHERE id = ? AND user_id = ?', [
+      binderId,
+      userId,
+    ]);
   }
 
   async getBinderWithSlots(binderId: number, userId: number): Promise<BinderWithSlots | undefined> {
@@ -122,15 +125,20 @@ export class BinderService {
     );
   }
 
-  async updateBinder(
-    binderId: number,
-    userId: number,
-    updates: Partial<BinderRow>
-  ): Promise<void> {
+  async updateBinder(binderId: number, userId: number, updates: Partial<BinderRow>): Promise<void> {
     const fields: string[] = [];
     const values: unknown[] = [];
 
-    const allowedFields = ['name', 'game', 'pages', 'slots_per_page', 'theme_description', 'budget_cents', 'constraints_json', 'total_cost_cents'];
+    const allowedFields = [
+      'name',
+      'game',
+      'pages',
+      'slots_per_page',
+      'theme_description',
+      'budget_cents',
+      'constraints_json',
+      'total_cost_cents',
+    ];
 
     for (const [key, value] of Object.entries(updates)) {
       if (value !== undefined && allowedFields.includes(key)) {
@@ -195,29 +203,64 @@ export class BinderService {
     if (!binder) throw new Error('Binder not found');
 
     let added = 0;
-    for (const slot of binder.slots) {
-      if (!slot.card_id) continue;
-      const snapshot = slot.card_snapshot ? JSON.parse(slot.card_snapshot) : {};
-      const cardName = snapshot.cardName || snapshot.name || slot.card_id;
+    await runDb(this.db, 'BEGIN IMMEDIATE');
+    try {
+      for (const slot of binder.slots) {
+        if (!slot.card_id) continue;
+        const snapshot = slot.card_snapshot ? JSON.parse(slot.card_snapshot) : {};
+        const cardName = snapshot.cardName || snapshot.name || slot.card_id;
+        const existing = await getDbRow<{ id: number }>(
+          this.db,
+          `SELECT id FROM user_collections
+            WHERE user_id = ? AND card_id = ? AND condition = 'NM'
+              AND client_vault_id IS NULL
+            ORDER BY id LIMIT 1`,
+          [userId, slot.card_id]
+        );
 
-      await runDb(
-        this.db,
-        `INSERT INTO user_collections
-           (user_id, card_id, card_name, quantity, purchase_price, condition, notes, card_data)
-         VALUES (?, ?, ?, 1, ?, 'NM', ?, ?)
-         ON CONFLICT(user_id, card_id, condition) DO UPDATE SET
-           quantity = quantity + 1,
-           updated_at = CURRENT_TIMESTAMP`,
-        [
-          userId,
-          slot.card_id,
-          cardName,
-          slot.market_price_cents ? slot.market_price_cents / 100 : null,
-          `Added from binder: ${binder.name}`,
-          slot.card_snapshot ?? null,
-        ]
-      );
-      added++;
+        if (existing) {
+          await runDb(
+            this.db,
+            `UPDATE user_collections
+               SET quantity = quantity + 1,
+                   purchase_price = COALESCE(?, purchase_price),
+                   notes = ?,
+                   card_data = COALESCE(?, card_data),
+                   game = ?,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND user_id = ?`,
+            [
+              slot.market_price_cents ? slot.market_price_cents / 100 : null,
+              `Added from binder: ${binder.name}`,
+              slot.card_snapshot ?? null,
+              binder.game || 'pokemon',
+              existing.id,
+              userId,
+            ]
+          );
+        } else {
+          await runDb(
+            this.db,
+            `INSERT INTO user_collections
+               (user_id, card_id, card_name, quantity, purchase_price, condition, notes, card_data, game)
+             VALUES (?, ?, ?, 1, ?, 'NM', ?, ?, ?)`,
+            [
+              userId,
+              slot.card_id,
+              cardName,
+              slot.market_price_cents ? slot.market_price_cents / 100 : null,
+              `Added from binder: ${binder.name}`,
+              slot.card_snapshot ?? null,
+              binder.game || 'pokemon',
+            ]
+          );
+        }
+        added++;
+      }
+      await runDb(this.db, 'COMMIT');
+    } catch (error) {
+      await runDb(this.db, 'ROLLBACK');
+      throw error;
     }
 
     return added;
@@ -226,14 +269,10 @@ export class BinderService {
   async commitToWishlist(binderId: number, userId: number): Promise<BinderSlotRow[]> {
     const binder = await this.getBinderWithSlots(binderId, userId);
     if (!binder) throw new Error('Binder not found');
-    return binder.slots.filter(s => s.card_id);
+    return binder.slots.filter((s) => s.card_id);
   }
 
   async getSlot(slotId: number): Promise<BinderSlotRow | undefined> {
-    return getDbRow<BinderSlotRow>(
-      this.db,
-      'SELECT * FROM binder_slots WHERE id = ?',
-      [slotId]
-    );
+    return getDbRow<BinderSlotRow>(this.db, 'SELECT * FROM binder_slots WHERE id = ?', [slotId]);
   }
 }

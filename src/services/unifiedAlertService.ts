@@ -95,16 +95,23 @@ class UnifiedAlertService {
   ): Promise<UnifiedAlert> {
     if (this.isServerMode()) {
       try {
-        const alert = await alertServiceFrontend.createAlert(cardId, cardName, targetPrice, condition);
+        const alert = await alertServiceFrontend.createAlert(
+          cardId,
+          cardName,
+          targetPrice,
+          condition
+        );
         return mapServer(alert);
       } catch (err) {
         console.warn('Server alert create failed, using local:', err);
       }
     }
     priceTrackingService.createAlert(cardId, cardName, targetPrice, condition);
-    const local = priceTrackingService.getAlerts().find(
-      (a) => a.cardId === cardId && a.targetPrice === targetPrice && a.alertType === condition
-    );
+    const local = priceTrackingService
+      .getAlerts()
+      .find(
+        (a) => a.cardId === cardId && a.targetPrice === targetPrice && a.alertType === condition
+      );
     return local
       ? mapLocal(local)
       : {
@@ -144,9 +151,7 @@ class UnifiedAlertService {
   }
 
   markDigestRead(id?: string): void {
-    const entries = readDigest().map((e) =>
-      id == null || e.id === id ? { ...e, read: true } : e
-    );
+    const entries = readDigest().map((e) => (id == null || e.id === id ? { ...e, read: true } : e));
     writeDigest(entries);
   }
 
@@ -158,13 +163,13 @@ class UnifiedAlertService {
    * Evaluate active alerts against current prices and append to the in-app digest.
    * Returns newly triggered entries.
    */
-  async evaluateDigest(
-    priceByCardId: Record<string, number>
-  ): Promise<AlertDigestEntry[]> {
+  async evaluateDigest(priceByCardId: Record<string, number>): Promise<AlertDigestEntry[]> {
     const alerts = await this.getAlerts();
     const existing = readDigest();
     const existingKeys = new Set(
-      existing.map((e) => `${e.cardId}:${e.condition}:${e.targetPrice}:${e.triggeredAt.slice(0, 10)}`)
+      existing.map(
+        (e) => `${e.cardId}:${e.condition}:${e.targetPrice}:${e.triggeredAt.slice(0, 10)}`
+      )
     );
     const today = new Date().toISOString().slice(0, 10);
     const newly: AlertDigestEntry[] = [];
@@ -175,9 +180,7 @@ class UnifiedAlertService {
       if (current == null || current <= 0) continue;
 
       const hit =
-        alert.condition === 'above'
-          ? current >= alert.targetPrice
-          : current <= alert.targetPrice;
+        alert.condition === 'above' ? current >= alert.targetPrice : current <= alert.targetPrice;
       if (!hit) continue;
 
       const key = `${alert.cardId}:${alert.condition}:${alert.targetPrice}:${today}`;

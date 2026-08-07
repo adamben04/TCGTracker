@@ -120,7 +120,12 @@ function SidebarPanel({
       </FilterGroup>
 
       <FilterGroup title="Set">
-        <select value={filters.setName} onChange={(e) => setFilter('setName', e.target.value)} className={selectClass} aria-label="Filter by set">
+        <select
+          value={filters.setName}
+          onChange={(e) => setFilter('setName', e.target.value)}
+          className={selectClass}
+          aria-label="Filter by set"
+        >
           <option value="all">All Sets</option>
           {setOptions.map((setName) => (
             <option key={setName} value={setName}>
@@ -131,7 +136,12 @@ function SidebarPanel({
       </FilterGroup>
 
       <FilterGroup title="Rarity">
-        <select value={filters.rarity} onChange={(e) => setFilter('rarity', e.target.value)} className={selectClass} aria-label="Filter by rarity">
+        <select
+          value={filters.rarity}
+          onChange={(e) => setFilter('rarity', e.target.value)}
+          className={selectClass}
+          aria-label="Filter by rarity"
+        >
           <option value="all">All Rarities</option>
           {rarityOptions.map((rarity) => (
             <option key={rarity} value={rarity}>
@@ -157,7 +167,12 @@ function SidebarPanel({
       </FilterGroup>
 
       <FilterGroup title={isOnePiece ? 'Color' : 'Type'} defaultOpen={true}>
-        <select value={filters.cardType} onChange={(e) => setFilter('cardType', e.target.value)} className={selectClass} aria-label={`Filter by ${isOnePiece ? 'color' : 'type'}`}>
+        <select
+          value={filters.cardType}
+          onChange={(e) => setFilter('cardType', e.target.value)}
+          className={selectClass}
+          aria-label={`Filter by ${isOnePiece ? 'color' : 'type'}`}
+        >
           <option value="all">All Types</option>
           {typeOptions.map((type) => (
             <option key={type} value={type}>

@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, Eye, AlertTriangle } from 'lucide-react';
-import { GradingResult, SideGrading, CategoryDetails, CropImage, CornerDetail } from '../../../types/grading';
+import {
+  GradingResult,
+  SideGrading,
+  CategoryDetails,
+  CropImage,
+  CornerDetail,
+} from '../../../types/grading';
 import { ZoomModal } from './ZoomModal';
 
 interface GradingReportProps {
@@ -69,13 +75,19 @@ function CornerDetailTable({ corners }: { corners: CategoryDetails }) {
                 <td className="px-2 py-1.5 font-medium text-ink-secondary capitalize">
                   {c.name.replace(/-/g, ' ')}
                 </td>
-                <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.fray >= 9.5 ? 'text-emerald-300' : c.fray >= 8.0 ? 'text-sky-300' : c.fray >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}>
+                <td
+                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.fray >= 9.5 ? 'text-emerald-300' : c.fray >= 8.0 ? 'text-sky-300' : c.fray >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}
+                >
                   {c.fray}
                 </td>
-                <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.fill >= 9.5 ? 'text-emerald-300' : c.fill >= 8.0 ? 'text-sky-300' : c.fill >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}>
+                <td
+                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.fill >= 9.5 ? 'text-emerald-300' : c.fill >= 8.0 ? 'text-sky-300' : c.fill >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}
+                >
                   {c.fill}
                 </td>
-                <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.angle >= 9.5 ? 'text-emerald-300' : c.angle >= 8.0 ? 'text-sky-300' : c.angle >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}>
+                <td
+                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${c.angle >= 9.5 ? 'text-emerald-300' : c.angle >= 8.0 ? 'text-sky-300' : c.angle >= 6.0 ? 'text-amber-300' : 'text-red-300'}`}
+                >
                   {c.angle}
                 </td>
               </tr>
@@ -116,7 +128,9 @@ function CategorySection({
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
             {side} {config.label}
           </span>
-          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${config.color} bg-surface-overlay`}>
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${config.color} bg-surface-overlay`}
+          >
             {data.score}/10
           </span>
           {data.defects.length > 0 && (
@@ -293,22 +307,10 @@ export const GradingReport: React.FC<GradingReportProps> = ({ result }) => {
 
       {/* Active side */}
       {activeTab === 'front' && frontData && (
-        <SideSection
-          label="Front"
-          icon="F"
-          side="front"
-          data={frontData}
-          onZoom={handleZoom}
-        />
+        <SideSection label="Front" icon="F" side="front" data={frontData} onZoom={handleZoom} />
       )}
       {activeTab === 'back' && backData && (
-        <SideSection
-          label="Back"
-          icon="B"
-          side="back"
-          data={backData}
-          onZoom={handleZoom}
-        />
+        <SideSection label="Back" icon="B" side="back" data={backData} onZoom={handleZoom} />
       )}
 
       {/* Zoom modal */}

@@ -58,10 +58,13 @@ export class TcgdexMarketProvider implements MarketPriceProvider {
 
   async getSnapshotForCard(
     cardId: string,
-    _cardName?: string,
-    _setId?: string,
-    _setName?: string,
+    cardName?: string,
+    setId?: string,
+    setName?: string
   ): Promise<MarketPriceSnapshot | null> {
+    void cardName;
+    void setId;
+    void setName;
     try {
       const card = await this.fetchCard(cardId);
       this.fetchFailureCount = 0;

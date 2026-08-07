@@ -1,81 +1,76 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { Moon, Search, Sun } from 'lucide-react';
+import { Database, Moon, Search, Sun } from 'lucide-react';
 import { UserMenu } from './UserMenu';
-import { openCommandPalette } from '../common/CommandPalette';
+import { openCommandPalette } from '../common/commandPaletteEvents';
 import { useTheme } from '../../hooks/useTheme';
+import { Button } from '../ui/Button';
+import { Badge } from '../ui/Badge';
 
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const isMac =
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad/.test(
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+      navigator.userAgent
+  );
 
 export const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   return (
-    <header
-      className={`sticky top-0 z-40 border-b-2 transition-shadow duration-300 ${
-        scrolled ? 'border-accent/30 shadow-[0_4px_20px_var(--ring-accent)]' : 'border-border-subtle'
-      } bg-surface-base`}
-    >
-      {scrolled && (
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent"
-          aria-hidden="true"
-        />
-      )}
-      <div className="flex h-14 items-center justify-between gap-4 px-4 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border-subtle bg-surface-base/95 backdrop-blur-md">
+      <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
         <Link
           to="/"
-          className="flex shrink-0 items-center gap-2 transition-opacity duration-200 md:hidden"
+          className="flex shrink-0 items-center gap-2.5 transition-opacity duration-150 md:hidden"
         >
-          <div className="flex h-8 w-8 items-center justify-center border border-accent bg-surface-base shadow-[0_0_12px_var(--ring-accent)]">
-            <span className="font-display text-sm tracking-tight text-accent">T</span>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-accent/40 bg-accent-muted">
+            <span className="text-sm font-semibold tracking-tight text-accent">T</span>
           </div>
-          <span className="font-display text-base tracking-tight text-ink-primary">TCGTracker</span>
+          <span className="text-base font-semibold tracking-tight text-ink-primary">
+            TCGTracker
+          </span>
         </Link>
 
-        <div className="hidden flex-1 md:block" />
+        <Badge tone="neutral" className="hidden gap-1.5 md:inline-flex">
+          <Database className="h-3.5 w-3.5" aria-hidden="true" />
+          Local-first
+        </Badge>
 
         <div className="flex flex-1 items-center justify-end gap-2 sm:gap-3 md:flex-none">
           <button
             type="button"
             onClick={openCommandPalette}
-            className="hidden h-10 w-64 items-center gap-2 border border-border-default bg-surface-inset px-3 text-sm text-ink-muted transition-all duration-200 hover:border-accent hover:text-ink-secondary focus-visible:border-accent lg:flex"
+            className="hidden h-10 w-72 items-center gap-2 rounded-lg border border-border-default bg-surface-inset px-3 text-sm text-ink-muted transition-colors duration-150 hover:border-border-strong hover:text-ink-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:flex"
             aria-label="Open command palette"
           >
-            <Search className="h-3.5 w-3.5" />
-            <span className="flex-1 text-left font-semibold">Search cards…</span>
-            <kbd className="border border-border-subtle bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] font-bold text-accent">
+            <Search className="h-4 w-4" aria-hidden="true" />
+            <span className="flex-1 text-left font-medium">Search cards and tools</span>
+            <kbd className="rounded border border-border-subtle bg-surface-raised px-1.5 py-0.5 font-mono text-[11px] font-medium text-ink-secondary">
               {isMac ? '⌘K' : 'Ctrl K'}
             </kbd>
           </button>
 
-          <button
-            type="button"
+          <Button
             onClick={openCommandPalette}
-            className="btn-icon lg:hidden"
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
             aria-label="Search"
           >
             <Search className="h-[18px] w-[18px]" />
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
             onClick={toggleTheme}
-            className="btn-icon"
+            variant="ghost"
+            size="icon"
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             <span key={theme} className="flex">
               {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </span>
-          </button>
+          </Button>
 
           <UserMenu />
         </div>

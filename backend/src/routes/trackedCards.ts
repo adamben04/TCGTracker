@@ -13,11 +13,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       db.all(
         'SELECT card_id, card_data, initial_price, added_at FROM user_tracked_cards WHERE user_id = ? ORDER BY added_at DESC',
         [req.user!.id],
-        (err, rows) => err ? reject(err) : resolve(rows)
+        (err, rows) => (err ? reject(err) : resolve(rows))
       );
     });
 
-    const trackedCards = rows.map(row => ({
+    const trackedCards = rows.map((row) => ({
       id: row.card_id,
       card: JSON.parse(row.card_data),
       addedAt: row.added_at,
@@ -50,7 +50,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
            card_data = excluded.card_data,
            initial_price = excluded.initial_price`,
         [req.user!.id, cardId, JSON.stringify(cardData), initialPrice || 0],
-        (err) => err ? reject(err) : resolve()
+        (err) => (err ? reject(err) : resolve())
       );
     });
 
@@ -71,7 +71,7 @@ router.delete('/:cardId', authenticate, async (req: AuthRequest, res: Response) 
       db.run(
         'DELETE FROM user_tracked_cards WHERE user_id = ? AND card_id = ?',
         [req.user!.id, cardId],
-        (err) => err ? reject(err) : resolve()
+        (err) => (err ? reject(err) : resolve())
       );
     });
 

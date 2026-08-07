@@ -1,4 +1,12 @@
-import { useState, useEffect, createContext, useContext, useCallback, useMemo, type ReactNode } from 'react';
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from 'react';
 import { authService, User } from '../services/authService';
 import { syncVaultOnLogin } from '../services/vaultSyncService';
 
@@ -40,7 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     initAuth();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -89,13 +99,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [user, isLoading, login, register, logout, refreshUser]
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- provider-private context hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

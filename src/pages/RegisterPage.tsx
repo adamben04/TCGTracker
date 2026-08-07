@@ -66,7 +66,9 @@ export function RegisterPage() {
           )}
 
           <div>
-            <label htmlFor="username" className="mb-1 block text-sm font-medium text-ink-secondary">Username</label>
+            <label htmlFor="username" className="mb-1 block text-sm font-medium text-ink-secondary">
+              Username
+            </label>
             <input
               id="username"
               type="text"
@@ -79,7 +81,9 @@ export function RegisterPage() {
           </div>
 
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink-secondary">Email</label>
+            <label htmlFor="email" className="mb-1 block text-sm font-medium text-ink-secondary">
+              Email
+            </label>
             <input
               id="email"
               type="email"
@@ -92,7 +96,9 @@ export function RegisterPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink-secondary">Password</label>
+            <label htmlFor="password" className="mb-1 block text-sm font-medium text-ink-secondary">
+              Password
+            </label>
             <div className="relative">
               <input
                 id="password"
@@ -114,7 +120,12 @@ export function RegisterPage() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-ink-secondary">Confirm password</label>
+            <label
+              htmlFor="confirmPassword"
+              className="mb-1 block text-sm font-medium text-ink-secondary"
+            >
+              Confirm password
+            </label>
             <input
               id="confirmPassword"
               type={showPassword ? 'text' : 'password'}

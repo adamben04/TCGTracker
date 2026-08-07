@@ -118,9 +118,7 @@ export async function scanCardFromBase64(base64Image: string): Promise<ScanResul
 
 export async function getAvailableSets(): Promise<AvailableSets> {
   try {
-    const response = await scannerAxios.get<AvailableSets>(
-      `${API_BASE_URL}/api/available-sets`
-    );
+    const response = await scannerAxios.get<AvailableSets>(`${API_BASE_URL}/api/available-sets`);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {

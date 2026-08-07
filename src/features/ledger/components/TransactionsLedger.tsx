@@ -12,6 +12,7 @@ import {
 } from '../../../services/collectionToolsApi';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
+import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { formatCurrency } from '../../../utils/cardDisplay';
 
 const TYPE_LABELS: Record<TransactionType, string> = {
@@ -57,14 +58,17 @@ export const TransactionsLedger: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<number | null>(null);
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
 
   const load = useCallback(async () => {
     try {
       const data = await fetchTransactions();
       setItems(data.items);
       setSummary(data.summary);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to load ledger');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load ledger'));
     } finally {
       setLoading(false);
     }
@@ -93,21 +97,26 @@ export const TransactionsLedger: React.FC = () => {
       setSummary(result.summary);
       setForm(EMPTY_FORM);
       setShowForm(false);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save transaction');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to save transaction'));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Delete this transaction?')) return;
+  const handleDelete = (id: number) => {
+    setPendingDeletion(id);
+  };
+
+  const confirmDelete = async () => {
+    if (pendingDeletion === null) return;
     try {
-      const updatedSummary = await deleteTransaction(id);
-      setItems((prev) => prev.filter((t) => t.id !== id));
+      const updatedSummary = await deleteTransaction(pendingDeletion);
+      setItems((prev) => prev.filter((t) => t.id !== pendingDeletion));
       setSummary(updatedSummary);
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to delete transaction');
+      setPendingDeletion(null);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to delete transaction'));
     }
   };
 
@@ -138,7 +147,11 @@ export const TransactionsLedger: React.FC = () => {
             <Download className="h-4 w-4" />
             Export CSV
           </a>
-          <button type="button" onClick={() => setShowForm((v) => !v)} className="btn-primary gap-2">
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="btn-primary gap-2"
+          >
             <Plus className="h-4 w-4" />
             {showForm ? 'Close' : 'Add entry'}
           </button>
@@ -152,14 +165,21 @@ export const TransactionsLedger: React.FC = () => {
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-border-default bg-surface p-5">
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-2xl border border-border-default bg-surface p-5"
+        >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-type"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Type
               </label>
               <select
                 className={inputClass}
+                id="ledger-type"
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value as TransactionType })}
               >
@@ -171,11 +191,15 @@ export const TransactionsLedger: React.FC = () => {
               </select>
             </div>
             <div className="lg:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-card-name"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Card name *
               </label>
               <input
                 className={inputClass}
+                id="ledger-card-name"
                 value={form.cardName}
                 onChange={(e) => setForm({ ...form, cardName: e.target.value })}
                 placeholder="e.g. Charizard ex 151 #199"
@@ -183,11 +207,15 @@ export const TransactionsLedger: React.FC = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-date"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Date
               </label>
               <input
                 className={inputClass}
+                id="ledger-date"
                 type="date"
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
@@ -195,23 +223,33 @@ export const TransactionsLedger: React.FC = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-quantity"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Quantity
               </label>
               <input
                 className={inputClass}
+                id="ledger-quantity"
                 type="number"
                 min={1}
                 value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: Math.max(1, Number(e.target.value) || 1) })}
+                onChange={(e) =>
+                  setForm({ ...form, quantity: Math.max(1, Number(e.target.value) || 1) })
+                }
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-price-each"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Price each ($)
               </label>
               <input
                 className={inputClass}
+                id="ledger-price-each"
                 type="number"
                 min={0}
                 step="0.01"
@@ -222,11 +260,15 @@ export const TransactionsLedger: React.FC = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-fees"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Fees ($, optional)
               </label>
               <input
                 className={inputClass}
+                id="ledger-fees"
                 type="number"
                 min={0}
                 step="0.01"
@@ -236,11 +278,15 @@ export const TransactionsLedger: React.FC = () => {
               />
             </div>
             <div className="lg:col-span-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="ledger-notes"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Notes
               </label>
               <input
                 className={inputClass}
+                id="ledger-notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 placeholder="Optional - e.g. sold on TCGplayer after fees"
@@ -365,19 +411,25 @@ export const TransactionsLedger: React.FC = () => {
                         {t.transaction_date}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_COLORS[t.type]}`}>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${TYPE_COLORS[t.type]}`}
+                        >
                           {TYPE_LABELS[t.type]}
                         </span>
                       </td>
                       <td className="max-w-[260px] px-4 py-3">
                         <div className="truncate text-ink-primary">{t.card_name}</div>
-                        {t.notes && <div className="truncate text-xs text-ink-muted">{t.notes}</div>}
+                        {t.notes && (
+                          <div className="truncate text-xs text-ink-muted">{t.notes}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right text-ink-secondary">{t.quantity}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-ink-secondary">
                         {formatCurrency(t.price_each)}
                         {t.fees > 0 && (
-                          <div className="text-xs text-ink-muted">+{formatCurrency(t.fees)} fees</div>
+                          <div className="text-xs text-ink-muted">
+                            +{formatCurrency(t.fees)} fees
+                          </div>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink-primary">
@@ -401,6 +453,15 @@ export const TransactionsLedger: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={pendingDeletion !== null}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeletion(null)}
+        title="Delete transaction?"
+        message="This transaction will be permanently removed from your ledger."
+        confirmLabel="Delete"
+        variant="destructive"
+      />
     </div>
   );
 };

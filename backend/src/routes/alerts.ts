@@ -82,22 +82,27 @@ export const createAlertsRouter = (alertService: AlertService) => {
    *       401:
    *         description: Unauthorized
    */
-  router.post('/', authenticate, validate(createAlertSchema), async (req: AuthRequest, res: Response) => {
-    try {
-      const { cardId, cardName, targetPrice, condition } = req.body;
-      const alert = await alertService.createAlert(
-        req.user!.id,
-        cardId,
-        cardName,
-        targetPrice,
-        condition
-      );
-      res.status(201).json({ alert });
-    } catch (error: any) {
-      logger.error('Alerts route error', { error: error.message });
-      res.status(500).json({ error: 'An internal error occurred' });
+  router.post(
+    '/',
+    authenticate,
+    validate(createAlertSchema),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const { cardId, cardName, targetPrice, condition } = req.body;
+        const alert = await alertService.createAlert(
+          req.user!.id,
+          cardId,
+          cardName,
+          targetPrice,
+          condition
+        );
+        res.status(201).json({ alert });
+      } catch (error: any) {
+        logger.error('Alerts route error', { error: error.message });
+        res.status(500).json({ error: 'An internal error occurred' });
+      }
     }
-  });
+  );
 
   /**
    * @swagger
@@ -173,11 +178,10 @@ export const createAlertsRouter = (alertService: AlertService) => {
         res.json({ message: 'Alert status updated successfully' });
       } catch (error: any) {
         logger.error('Alerts route error', { error: error.message });
-      res.status(500).json({ error: 'An internal error occurred' });
+        res.status(500).json({ error: 'An internal error occurred' });
       }
     }
   );
 
   return router;
 };
-

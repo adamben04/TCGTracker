@@ -47,7 +47,14 @@ export type OnePieceFilterOption = 'all';
 
 export type OnePieceColor = 'Red' | 'Blue' | 'Green' | 'Purple' | 'Yellow' | 'Black';
 
-export const ONE_PIECE_COLORS: OnePieceColor[] = ['Red', 'Blue', 'Green', 'Purple', 'Yellow', 'Black'];
+export const ONE_PIECE_COLORS: OnePieceColor[] = [
+  'Red',
+  'Blue',
+  'Green',
+  'Purple',
+  'Yellow',
+  'Black',
+];
 
 export const ONE_PIECE_RARITIES = [
   'C',

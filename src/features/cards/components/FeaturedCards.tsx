@@ -10,14 +10,19 @@ export const FeaturedCards: React.FC<FeaturedCardsProps> = ({ onCardClick }) => 
   const [cards, setCards] = useState<PokemonCard[]>([]);
 
   useEffect(() => {
-    pokemonApi.searchCards('charizard', undefined, 5).then(setCards).catch(() => {});
+    pokemonApi
+      .searchCards('charizard', undefined, 5)
+      .then(setCards)
+      .catch(() => {});
   }, []);
 
   if (cards.length === 0) return null;
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">Featured Cards</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
+        Featured Cards
+      </h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map((card) => (
           <button
@@ -40,4 +45,3 @@ export const FeaturedCards: React.FC<FeaturedCardsProps> = ({ onCardClick }) => 
     </div>
   );
 };
-

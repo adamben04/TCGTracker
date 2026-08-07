@@ -20,6 +20,7 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
+  void next;
   let statusCode = 500;
   let message = 'Internal server error';
 
@@ -48,4 +49,3 @@ export const notFoundHandler = (req: Request, res: Response) => {
     path: req.url,
   });
 };
-

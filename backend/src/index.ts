@@ -13,8 +13,14 @@ import gradingRouter from './routes/grading';
 import analysisRouter from './routes/analysis';
 import { initializeDatabase, getDb } from './db/database';
 import { runMigrations } from './db/migrations';
+import { runDb } from './utils/dbAsync';
 import { updatePriceData, getRunDate, hasCompletedPriceUpdateFor } from './services/dataFetcher';
-import { backupDatabaseToCloud, getCloudBackupStatus, restoreDatabaseFromCloud } from './services/cloudBackupService';
+import {
+  backupDatabaseToCloud,
+  getCloudBackupStatus,
+  restoreDatabaseFromCloud,
+  validateSqliteDatabaseFile,
+} from './services/cloudBackupService';
 import { syncCatalogData } from './services/catalogSync';
 import { backfillCardMappingImages } from './services/cardImageBackfillService';
 import { env } from './config/env';
@@ -23,7 +29,7 @@ import { corsMiddleware, securityMiddleware } from './middleware/security';
 import { csrfProtection } from './middleware/csrf';
 import { apiLimiter } from './middleware/rateLimiter';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { authenticate, AuthRequest } from './middleware/auth';
+import { authenticate } from './middleware/auth';
 import { requireAdmin } from './middleware/admin';
 import { requestLogger, logger } from './utils/logger';
 import { AuthService } from './services/authService';
@@ -71,11 +77,6 @@ app.use('/api/', apiLimiter);
 
 let server: ReturnType<typeof app.listen> | null = null;
 
-// Whether we restored the DB from cloud on this boot. If true, the very first
-// scheduled backup is skipped (we just downloaded that exact file — no writes
-// have happened yet).
-let restoredFromCloudOnBoot = false;
-
 const BACKUP_INTERVAL_MS = 15 * 60 * 1000; // every 15 min
 let backupTimer: ReturnType<typeof setInterval> | null = null;
 let lastBackupAt = 0;
@@ -84,29 +85,40 @@ const BACKUP_MIN_GAP_MS = 5 * 60 * 1000;
 
 /**
  * Run on Render's free web service (no persistent disk): if cloud sync is
- * configured AND the local DB file is missing on boot, restore it from
+ * configured AND the local DB file is missing, undersized, or corrupt on boot,
+ * restore it from
  * Supabase Storage *before* initializeDatabase() opens the file. This makes
  * user data survive the container's 15-min sleep / redeploy cycle.
  *
  * Safe to call in dev/local too — only acts when the file is genuinely
- * missing and cloud creds are set.
+ * missing and cloud creds are set. A local database is skipped only after an
+ * integrity check succeeds.
  */
 async function restoreDatabaseOnBootIfMissing(): Promise<void> {
   if (!env.cloud.enabled) return;
   if (!env.cloud.supabaseUrl || !env.cloud.serviceRoleKey) return;
   const dbPath = env.databasePath;
-  if (fs.existsSync(dbPath) && fs.statSync(dbPath).size > 1024 * 1024) {
+  const databaseExists = fs.existsSync(dbPath);
+  const databaseSize = databaseExists ? fs.statSync(dbPath).size : 0;
+  const validation = databaseExists
+    ? await validateSqliteDatabaseFile(dbPath, 'quick')
+    : { healthy: false, message: 'Database file is missing' };
+  if (databaseSize > 1024 * 1024 && validation.healthy) {
     logger.info('Cloud restore skipped — local DB already present', {
       dbPath,
-      sizeMb: (fs.statSync(dbPath).size / 1024 / 1024).toFixed(1),
+      sizeMb: (databaseSize / 1024 / 1024).toFixed(1),
     });
     return;
   }
-  logger.info('Cloud sync enabled and local DB missing — restoring from Supabase...', { dbPath });
+  logger.info('Cloud sync enabled and local database needs restore — restoring from Supabase...', {
+    dbPath,
+    databaseExists,
+    databaseSize,
+    integrityError: validation.message,
+  });
   try {
     const result = await restoreDatabaseFromCloud();
     if (result.restored) {
-      restoredFromCloudOnBoot = true;
       logger.info('Cloud restore succeeded', { message: result.message });
     } else if (result.enabled) {
       logger.warn('Cloud restore failed (no backup found yet — continuing with fresh DB)', {
@@ -121,19 +133,12 @@ async function restoreDatabaseOnBootIfMissing(): Promise<void> {
 }
 
 /**
- * Push a backup to Supabase Storage. No-op if cloud sync is off, or if we just
- * restored on this boot and no writes have happened since.
+ * Push a backup to Supabase Storage. The service coalesces scheduled, manual,
+ * and post-update callers into one consistent snapshot.
  */
 async function backupDatabaseNow(reason: 'scheduled' | 'shutdown'): Promise<void> {
   if (!env.cloud.enabled) return;
   if (!env.cloud.supabaseUrl || !env.cloud.serviceRoleKey) return;
-  if (restoredFromCloudOnBoot && reason === 'scheduled') {
-    // First scheduled tick after a boot-restore: clear the flag and skip,
-    // since the file in memory is byte-identical to what's in Supabase.
-    restoredFromCloudOnBoot = false;
-    logger.info('Skipping first post-restore scheduled backup (no new writes).');
-    return;
-  }
   const now = Date.now();
   if (reason === 'shutdown' && now - lastBackupAt < BACKUP_MIN_GAP_MS) {
     // Don't double-backup if a scheduled backup just ran.
@@ -148,12 +153,14 @@ async function backupDatabaseNow(reason: 'scheduled' | 'shutdown'): Promise<void
   try {
     const result = await backupDatabaseToCloud(runDate);
     lastBackupAt = Date.now();
-    logger.info(`Cloud backup (${reason}) complete`, { uploaded: result.uploaded, message: result.message });
+    logger.info(`Cloud backup (${reason}) complete`, {
+      uploaded: result.uploaded,
+      message: result.message,
+    });
   } catch (error) {
     logger.error(`Cloud backup (${reason}) failed`, { error: (error as Error).message });
   }
 }
-
 
 async function initializeSetCodeService(retries = 3) {
   for (let i = 0; i < retries; i++) {
@@ -191,7 +198,9 @@ function setupRoutes(
       try {
         const result = await updatePriceData();
         if (result.skipped) {
-          logger.warn('Daily price data update skipped', { reason: (result as { reason?: string }).reason });
+          logger.warn('Daily price data update skipped', {
+            reason: (result as { reason?: string }).reason,
+          });
           return;
         }
         logger.info('Daily price data update completed', result);
@@ -213,16 +222,24 @@ function setupRoutes(
       const today = getRunDate();
       // Before 2 AM ET, today's run isn't due yet — leave it to the cron.
       const etHour = parseInt(
-        new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }).format(new Date()),
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          hour12: false,
+        }).format(new Date()),
         10
       );
       if (etHour < 2) return;
       if (await hasCompletedPriceUpdateFor(today)) return;
 
-      logger.warn('Price update for today has not completed — running catch-up', { runDate: today });
+      logger.warn('Price update for today has not completed — running catch-up', {
+        runDate: today,
+      });
       const result = await updatePriceData();
       if (result.skipped) {
-        logger.info('Price update catch-up skipped', { reason: (result as { reason?: string }).reason });
+        logger.info('Price update catch-up skipped', {
+          reason: (result as { reason?: string }).reason,
+        });
         return;
       }
       logger.info('Price update catch-up completed', result);
@@ -350,12 +367,16 @@ function setupRoutes(
       const result = await updatePriceData();
       if (result.skipped) {
         const skippedResult = result as { reason?: string };
-        res.status(409).json({ success: false, message: skippedResult.reason || 'Update already running' });
+        res
+          .status(409)
+          .json({ success: false, message: skippedResult.reason || 'Update already running' });
         return;
       }
       if (result.syncRunId == null) {
         const errorResult = result as { error?: string };
-        res.status(409).json({ success: false, message: errorResult.error || 'Update failed to start' });
+        res
+          .status(409)
+          .json({ success: false, message: errorResult.error || 'Update failed to start' });
         return;
       }
       logger.info('Manual update finished', result);
@@ -423,17 +444,14 @@ function setupRoutes(
   });
 
   app.post('/api/cloud-backup/restore', authenticate, requireAdmin, async (_req, res) => {
-    try {
-      const result = await restoreDatabaseFromCloud();
-      res.status(result.restored || !result.enabled ? 200 : 500).json(result);
-      if (result.restored) {
-        logger.warn('Database restored from cloud — server restart recommended');
-        setTimeout(() => process.exit(0), 1000);
-      }
-    } catch (error: any) {
-      logger.error('Cloud restore endpoint failed', { error: error.message });
-      res.status(500).json({ success: false, error: 'Cloud restore failed' });
-    }
+    // The application owns an open SQLite connection at this point. Replacing
+    // its backing file would leave a live process on the old inode/handle.
+    res.status(409).json({
+      enabled: env.cloud.enabled,
+      restored: false,
+      message:
+        'Online restore is unsafe. Stop the backend and run the restore command before restarting.',
+    });
   });
 
   app.post('/api/sync-catalog', authenticate, requireAdmin, async (_req, res) => {
@@ -572,25 +590,37 @@ async function bootstrap() {
     const db = getDb();
     await runMigrations(db);
 
+    if (env.admin.bootstrapEmail) {
+      const promotion = await runDb(
+        db,
+        "UPDATE users SET role = 'admin', updated_at = CURRENT_TIMESTAMP WHERE email = ?",
+        [env.admin.bootstrapEmail]
+      );
+      if (promotion.changes === 1) {
+        logger.info('Ensured bootstrap administrator role', {
+          email: env.admin.bootstrapEmail,
+        });
+      } else {
+        logger.warn('Bootstrap administrator email does not match exactly one user yet', {
+          email: env.admin.bootstrapEmail,
+          matches: promotion.changes,
+        });
+      }
+    }
+
     const authService = new AuthService(db);
     const alertService = new AlertService(db);
     const portfolioService = new PortfolioService(db);
     const binderService = new BinderService(db);
 
-    await Promise.all([
-      authService.init(),
-      alertService.init(),
-    ]);
+    await Promise.all([authService.init(), alertService.init()]);
 
     setupRoutes(
       authService,
       alertService,
       portfolioService,
       binderService,
-      createCollectionToolsRouter(
-        new SealedProductService(db),
-        new TransactionService(db)
-      )
+      createCollectionToolsRouter(new SealedProductService(db), new TransactionService(db))
     );
 
     void initializeSetCodeService().catch((error) => {
@@ -605,7 +635,9 @@ async function bootstrap() {
         const result = await backfillCardMappingImages();
         logger.info('Startup image backfill completed', result);
       } catch (error) {
-        logger.warn('Startup image backfill failed (non-fatal)', { error: (error as Error).message });
+        logger.warn('Startup image backfill failed (non-fatal)', {
+          error: (error as Error).message,
+        });
       }
     })();
 
@@ -619,7 +651,9 @@ async function bootstrap() {
           logger.info('One Piece sync completed', result);
         }
       } catch (error) {
-        logger.warn('One Piece catalog check / sync failed (non-fatal)', { error: (error as Error).message });
+        logger.warn('One Piece catalog check / sync failed (non-fatal)', {
+          error: (error as Error).message,
+        });
       }
     })();
   } catch (error) {

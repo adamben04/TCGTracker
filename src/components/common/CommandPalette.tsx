@@ -19,12 +19,7 @@ import { pokemonApi } from '../../services/pokemonApi';
 import { PokemonCard } from '../../types/pokemon';
 import { useCardModal } from '../../contexts/CardModalContext';
 import { browseSearchPath } from '../../utils/routes';
-
-const OPEN_EVENT = 'tcg:open-command-palette';
-
-export function openCommandPalette() {
-  window.dispatchEvent(new CustomEvent(OPEN_EVENT));
-}
+import { commandPaletteOpenEvent } from './commandPaletteEvents';
 
 interface NavCommand {
   label: string;
@@ -36,15 +31,55 @@ interface NavCommand {
 
 const NAV_COMMANDS: NavCommand[] = [
   { label: 'Home', to: '/', keywords: 'home start dashboard', icon: LayoutGrid, shortcut: 'G H' },
-  { label: 'Browse cards', to: '/browse', keywords: 'browse cards marketplace', icon: LayoutGrid, shortcut: 'G B' },
-  { label: 'Price tracker', to: '/prices', keywords: 'prices tracking watchlist alerts', icon: LineChart, shortcut: 'G P' },
-  { label: 'My vault', to: '/vault', keywords: 'vault collection portfolio', icon: BookOpen, shortcut: 'G V' },
-  { label: 'Wishlist', to: '/wishlist', keywords: 'wishlist want list buy targets', icon: Heart, shortcut: 'G W' },
-  { label: 'Sets', to: '/sets', keywords: 'sets eras binder completion', icon: Layers, shortcut: 'G S' },
-  { label: 'Binder planner', to: '/binders', keywords: 'binders plan planner page 3x3 organize collection', icon: Album },
+  {
+    label: 'Browse cards',
+    to: '/browse',
+    keywords: 'browse cards marketplace',
+    icon: LayoutGrid,
+    shortcut: 'G B',
+  },
+  {
+    label: 'Price tracker',
+    to: '/prices',
+    keywords: 'prices tracking watchlist alerts',
+    icon: LineChart,
+    shortcut: 'G P',
+  },
+  {
+    label: 'My vault',
+    to: '/vault',
+    keywords: 'vault collection portfolio',
+    icon: BookOpen,
+    shortcut: 'G V',
+  },
+  {
+    label: 'Wishlist',
+    to: '/wishlist',
+    keywords: 'wishlist want list buy targets',
+    icon: Heart,
+    shortcut: 'G W',
+  },
+  {
+    label: 'Sets',
+    to: '/sets',
+    keywords: 'sets eras binder completion',
+    icon: Layers,
+    shortcut: 'G S',
+  },
+  {
+    label: 'Binder planner',
+    to: '/binders',
+    keywords: 'binders plan planner page 3x3 organize collection',
+    icon: Album,
+  },
   { label: 'Open packs', to: '/packs', keywords: 'packs booster rip simulator', icon: Package },
   { label: 'Scan a card', to: '/scanner', keywords: 'scanner camera identify photo', icon: Camera },
-  { label: 'AI grade a card', to: '/grading', keywords: 'grade grading tag centering corners condition', icon: Award },
+  {
+    label: 'AI grade a card',
+    to: '/grading',
+    keywords: 'grade grading tag centering corners condition',
+    icon: Award,
+  },
 ];
 
 const GO_TARGETS: Record<string, string> = {
@@ -59,7 +94,10 @@ const GO_TARGETS: Record<string, string> = {
 const SHORTCUTS_HELP: { keys: string; action: string }[] = [
   { keys: '⌘K / Ctrl+K', action: 'Open command palette' },
   { keys: '/', action: 'Open palette (search)' },
-  { keys: 'G then B / P / V / W / S / H', action: 'Go to Browse / Prices / Vault / Wishlist / Sets / Home' },
+  {
+    keys: 'G then B / P / V / W / S / H',
+    action: 'Go to Browse / Prices / Vault / Wishlist / Sets / Home',
+  },
   { keys: '↑ ↓', action: 'Move selection' },
   { keys: 'Enter', action: 'Open selection' },
   { keys: 'Esc', action: 'Close palette or modal' },
@@ -171,8 +209,8 @@ export const CommandPalette: React.FC = () => {
 
   useEffect(() => {
     const onOpen = () => show();
-    window.addEventListener(OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+    window.addEventListener(commandPaletteOpenEvent, onOpen);
+    return () => window.removeEventListener(commandPaletteOpenEvent, onOpen);
   }, [show]);
 
   useEffect(() => {
@@ -293,21 +331,19 @@ export const CommandPalette: React.FC = () => {
   return (
     <div
       className="fixed inset-0 z-[90] flex items-start justify-center bg-black/50 p-4 pt-[12vh]"
-      onClick={close}
       role="presentation"
     >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        onClick={close}
+        aria-label="Close command palette"
+      />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={helpMode ? 'Keyboard shortcuts' : 'Command palette'}
-        className="w-full max-w-xl animate-scale-in overflow-hidden rounded-lg border border-border-default bg-surface-overlay shadow-popover"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            close();
-          }
-        }}
+        className="relative w-full max-w-xl animate-scale-in overflow-hidden rounded-lg border border-border-default bg-surface-overlay shadow-popover"
       >
         {helpMode ? (
           <div className="p-5">
@@ -322,7 +358,11 @@ export const CommandPalette: React.FC = () => {
                 </li>
               ))}
             </ul>
-            <button type="button" onClick={close} className="btn-secondary mt-5 w-full justify-center">
+            <button
+              type="button"
+              onClick={close}
+              className="btn-secondary mt-5 w-full justify-center"
+            >
               Close
             </button>
           </div>
@@ -378,7 +418,9 @@ export const CommandPalette: React.FC = () => {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{item.label}</span>
                       {item.sublabel && (
-                        <span className="block truncate text-xs text-ink-muted">{item.sublabel}</span>
+                        <span className="block truncate text-xs text-ink-muted">
+                          {item.sublabel}
+                        </span>
                       )}
                     </span>
                     {item.shortcut && (

@@ -49,12 +49,7 @@ async function assessClientQuality(src: string | File): Promise<string | null> {
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
         const i = y * width + x;
-        const v =
-          -4 * gray[i] +
-          gray[i - 1] +
-          gray[i + 1] +
-          gray[i - width] +
-          gray[i + width];
+        const v = -4 * gray[i] + gray[i - 1] + gray[i + 1] + gray[i - width] + gray[i + width];
         lap += v * v;
         count++;
       }
@@ -135,8 +130,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
         setError(qualityError);
         return;
       }
-      const preview =
-        typeof fileOrData === 'string' ? fileOrData : URL.createObjectURL(fileOrData);
+      const preview = typeof fileOrData === 'string' ? fileOrData : URL.createObjectURL(fileOrData);
       if (step === 'front') {
         setFrontPreview(preview);
         setFrontImage(fileOrData);
@@ -198,8 +192,8 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
           Capture front of card
         </div>
         <p className="mb-4 text-sm text-ink-muted">
-          Place the card flat on a solid contrasting background. Fill the frame, avoid glare,
-          and keep the camera parallel to the card.
+          Place the card flat on a solid contrasting background. Fill the frame, avoid glare, and
+          keep the camera parallel to the card.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <button
@@ -463,9 +457,7 @@ export const GradingCapture: React.FC<GradingCaptureProps> = ({
             if (file) processFile(file);
           }}
           className={`flex min-h-[220px] flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-8 transition-colors ${
-            isDragging
-              ? 'border-accent bg-accent/10'
-              : 'border-border-default bg-surface-inset/40'
+            isDragging ? 'border-accent bg-accent/10' : 'border-border-default bg-surface-inset/40'
           }`}
         >
           <Upload className="mb-3 h-8 w-8 text-ink-muted" />

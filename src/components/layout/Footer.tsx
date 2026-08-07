@@ -16,6 +16,9 @@ export const Footer: React.FC = () => {
           <Link to="/vault" className="transition-colors hover:text-ink-primary">
             Vault
           </Link>
+          <Link to="/methodology" className="transition-colors hover:text-ink-primary">
+            Data methodology
+          </Link>
           <a
             href="https://pokemontcg.io/"
             target="_blank"

@@ -1,5 +1,4 @@
 import { getDb } from '../db/database';
-import { logger } from '../utils/logger';
 import { dbGet } from '../db/promisified';
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 12;
@@ -102,12 +101,34 @@ const parseGradedPriceRow = (html: string): GradedPrice[] => {
   const prices: GradedPrice[] = [];
 
   const knownLabels = [
-    'Ungraded', 'PSA 10', 'PSA 9', 'PSA 8', 'PSA 7', 'PSA 6', 'PSA 5',
-    'CGC 10', 'CGC 9.5', 'CGC 9', 'CGC 8',
-    'BGS 10', 'BGS 9.5', 'BGS 9', 'BGS 8',
-    'SGC 10', 'SGC 9.5', 'SGC 9',
-    'Grade 10', 'Grade 9.5', 'Grade 9', 'Grade 8', 'Grade 7', 'Grade 6', 'Grade 5',
-    'BGS 10 Black', 'CGC 10 Pristine', 'CGC 10 Prist.',
+    'Ungraded',
+    'PSA 10',
+    'PSA 9',
+    'PSA 8',
+    'PSA 7',
+    'PSA 6',
+    'PSA 5',
+    'CGC 10',
+    'CGC 9.5',
+    'CGC 9',
+    'CGC 8',
+    'BGS 10',
+    'BGS 9.5',
+    'BGS 9',
+    'BGS 8',
+    'SGC 10',
+    'SGC 9.5',
+    'SGC 9',
+    'Grade 10',
+    'Grade 9.5',
+    'Grade 9',
+    'Grade 8',
+    'Grade 7',
+    'Grade 6',
+    'Grade 5',
+    'BGS 10 Black',
+    'CGC 10 Pristine',
+    'CGC 10 Prist.',
   ];
 
   const labelIndexes: Array<{ label: string; idx: number }> = [];
@@ -167,7 +188,8 @@ const parseGradedPriceRow = (html: string): GradedPrice[] => {
     }
   }
 
-  const filterRegex = /(PSA 10|CGC 10|BGS 10|SGC 10|BGS 10 Black|CGC 10 Prist\.?|Grade [\d.]+)\s*\((\d+)\)/g;
+  const filterRegex =
+    /(PSA 10|CGC 10|BGS 10|SGC 10|BGS 10 Black|CGC 10 Prist\.?|Grade [\d.]+)\s*\((\d+)\)/g;
   let fm: RegExpExecArray | null;
   while ((fm = filterRegex.exec(html)) !== null) {
     const label = fm[1];
@@ -181,9 +203,7 @@ const parseGradedPriceRow = (html: string): GradedPrice[] => {
       ? label.replace('Grade ', '')
       : label.split(' ').slice(1).join(' ');
 
-    const existing = prices.find(
-      (p) => p.grader === grader && p.grade === grade
-    );
+    const existing = prices.find((p) => p.grader === grader && p.grade === grade);
     if (existing) {
       existing.soldListings = count;
     }
@@ -203,8 +223,12 @@ export const getGradedPrices = async (
 ): Promise<GradedPriceResult> => {
   const db = getDb();
   const cached = await dbGet<{
-    cardId: string; cardName: string; setId: string; setName: string;
-    prices: string; fetchedAt: string;
+    cardId: string;
+    cardName: string;
+    setId: string;
+    setName: string;
+    prices: string;
+    fetchedAt: string;
   }>(
     `SELECT cardId, cardName, setId, setName,
             GROUP_CONCAT(grader || '::' || grade || '::' || COALESCE(price, '') || '::' || soldListings, '||') as prices,
@@ -245,7 +269,14 @@ export const getGradedPrices = async (
 
   const url = await searchBestProductUrl(cardName, setName, cardNumber);
   if (!url) {
-    return { cardId, cardName, setName: setName || '', prices: [], fetchedAt: new Date().toISOString(), cached: false };
+    return {
+      cardId,
+      cardName,
+      setName: setName || '',
+      prices: [],
+      fetchedAt: new Date().toISOString(),
+      cached: false,
+    };
   }
 
   const pageResponse = await withTimeout(
@@ -253,7 +284,14 @@ export const getGradedPrices = async (
     REQUEST_TIMEOUT_MS
   );
   if (!pageResponse.ok) {
-    return { cardId, cardName, setName: setName || '', prices: [], fetchedAt: new Date().toISOString(), cached: false };
+    return {
+      cardId,
+      cardName,
+      setName: setName || '',
+      prices: [],
+      fetchedAt: new Date().toISOString(),
+      cached: false,
+    };
   }
 
   const html = await pageResponse.text();
@@ -265,7 +303,16 @@ export const getGradedPrices = async (
   );
 
   for (const p of prices) {
-    stmt.run([cardId, cardName, setId || '', setName || '', p.grader, p.grade, p.price, p.soldListings]);
+    stmt.run([
+      cardId,
+      cardName,
+      setId || '',
+      setName || '',
+      p.grader,
+      p.grade,
+      p.price,
+      p.soldListings,
+    ]);
   }
   stmt.finalize();
 

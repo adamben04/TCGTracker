@@ -64,12 +64,16 @@ api.interceptors.request.use((config) => {
 // --- Sealed products ---
 
 export async function fetchSealedProducts(): Promise<SealedProduct[]> {
-  const response = await api.get<{ success: boolean; data: { items: SealedProduct[] } }>('/api/collection-tools/sealed');
+  const response = await api.get<{ success: boolean; data: { items: SealedProduct[] } }>(
+    '/api/collection-tools/sealed'
+  );
   return response.data?.data?.items ?? [];
 }
 
 export async function fetchSealedStats(): Promise<SealedStats> {
-  const response = await api.get<{ success: boolean; data: { stats: SealedStats } }>('/api/collection-tools/sealed/stats');
+  const response = await api.get<{ success: boolean; data: { stats: SealedStats } }>(
+    '/api/collection-tools/sealed/stats'
+  );
   return response.data?.data?.stats;
 }
 
@@ -83,7 +87,10 @@ export async function addSealedProduct(input: {
   currentValue?: number;
   notes?: string;
 }): Promise<SealedProduct> {
-  const response = await api.post<{ success: boolean; data: { item: SealedProduct } }>('/api/collection-tools/sealed', input);
+  const response = await api.post<{ success: boolean; data: { item: SealedProduct } }>(
+    '/api/collection-tools/sealed',
+    input
+  );
   return response.data?.data?.item;
 }
 
@@ -100,7 +107,10 @@ export async function updateSealedProduct(
     notes?: string;
   }>
 ): Promise<SealedProduct> {
-  const response = await api.put<{ success: boolean; data: { item: SealedProduct } }>(`/api/collection-tools/sealed/${id}`, input);
+  const response = await api.put<{ success: boolean; data: { item: SealedProduct } }>(
+    `/api/collection-tools/sealed/${id}`,
+    input
+  );
   return response.data?.data?.item;
 }
 
@@ -110,9 +120,29 @@ export async function deleteSealedProduct(id: number): Promise<void> {
 
 // --- Transactions ledger ---
 
-export async function fetchTransactions(): Promise<{ items: Transaction[]; summary: LedgerSummary }> {
-  const response = await api.get<{ success: boolean; data: { items: Transaction[]; summary: LedgerSummary } }>('/api/collection-tools/transactions');
-  return response.data?.data ?? { items: [], summary: { totalInvested: 0, totalRevenue: 0, totalFees: 0, realizedProfitLoss: 0, realizedProfitLossPercentage: 0, count: 0, buyCount: 0, sellCount: 0 } };
+export async function fetchTransactions(): Promise<{
+  items: Transaction[];
+  summary: LedgerSummary;
+}> {
+  const response = await api.get<{
+    success: boolean;
+    data: { items: Transaction[]; summary: LedgerSummary };
+  }>('/api/collection-tools/transactions');
+  return (
+    response.data?.data ?? {
+      items: [],
+      summary: {
+        totalInvested: 0,
+        totalRevenue: 0,
+        totalFees: 0,
+        realizedProfitLoss: 0,
+        realizedProfitLossPercentage: 0,
+        count: 0,
+        buyCount: 0,
+        sellCount: 0,
+      },
+    }
+  );
 }
 
 export async function addTransaction(input: {
@@ -126,12 +156,18 @@ export async function addTransaction(input: {
   transactionDate: string;
   notes?: string;
 }): Promise<{ item: Transaction; summary: LedgerSummary }> {
-  const response = await api.post<{ success: boolean; data: { item: Transaction; summary: LedgerSummary } }>('/api/collection-tools/transactions', input);
+  const response = await api.post<{
+    success: boolean;
+    data: { item: Transaction; summary: LedgerSummary };
+  }>('/api/collection-tools/transactions', input);
   return response.data?.data;
 }
 
 export async function deleteTransaction(id: number): Promise<LedgerSummary> {
-  const response = await api.delete<{ success: boolean; data: { removed: boolean; summary: LedgerSummary } }>(`/api/collection-tools/transactions/${id}`);
+  const response = await api.delete<{
+    success: boolean;
+    data: { removed: boolean; summary: LedgerSummary };
+  }>(`/api/collection-tools/transactions/${id}`);
   return response.data?.data?.summary;
 }
 

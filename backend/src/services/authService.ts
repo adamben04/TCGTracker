@@ -8,9 +8,12 @@ export interface User {
   username: string;
   email: string;
   password_hash: string;
+  role: 'user' | 'admin';
   created_at: string;
   updated_at: string;
 }
+
+type PublicUser = Omit<User, 'password_hash' | 'role'>;
 
 export class AuthService {
   private db: Database;
@@ -24,37 +27,59 @@ export class AuthService {
     if (this.initialized) return;
     this.initialized = true;
     await new Promise<void>((resolve, reject) => {
-      this.db.run(`
+      this.db.run(
+        `
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           username TEXT UNIQUE NOT NULL,
           email TEXT UNIQUE NOT NULL,
           password_hash TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-      `, (err) => (err ? reject(err) : resolve()));
+      `,
+        (err) => (err ? reject(err) : resolve())
+      );
     });
 
     await new Promise<void>((resolve, reject) => {
-      this.db.run(`
+      this.db.run(
+        `
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)
-      `, (err) => (err ? reject(err) : resolve()));
+      `,
+        (err) => (err ? reject(err) : resolve())
+      );
     });
 
     await new Promise<void>((resolve, reject) => {
-      this.db.run(`
+      this.db.run(
+        `
         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)
-      `, (err) => (err ? reject(err) : resolve()));
+      `,
+        (err) => (err ? reject(err) : resolve())
+      );
     });
   }
 
-  async register(username: string, email: string, password: string): Promise<{
-    user: Omit<User, 'password_hash'>;
+  async register(
+    username: string,
+    email: string,
+    password: string
+  ): Promise<{
+    user: PublicUser;
     token: string;
   }> {
     if (username.toLowerCase() === env.admin.username.toLowerCase()) {
       return Promise.reject(new Error('That username is not available'));
+    }
+    if (
+      env.admin.bootstrapEmail &&
+      email.toLowerCase() === env.admin.bootstrapEmail.toLowerCase()
+    ) {
+      return Promise.reject(
+        new Error('Register this account before configuring ADMIN_BOOTSTRAP_EMAIL')
+      );
     }
     return new Promise((resolve, reject) => {
       // Hash password
@@ -76,14 +101,18 @@ export class AuthService {
             const userId = this.lastID;
 
             // Generate JWT
-            const token = jwt.sign(
-              { id: userId, email, username },
-              env.jwt.secret,
-              { expiresIn: env.jwt.expiresIn } as SignOptions
-            );
+            const token = jwt.sign({ id: userId, email, username, role: 'user' }, env.jwt.secret, {
+              expiresIn: env.jwt.expiresIn,
+            } as SignOptions);
 
             resolve({
-              user: { id: userId, username, email, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+              user: {
+                id: userId,
+                username,
+                email,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
               token,
             });
           }
@@ -92,8 +121,11 @@ export class AuthService {
     });
   }
 
-  async login(email: string, password: string): Promise<{
-    user: Omit<User, 'password_hash'>;
+  async login(
+    email: string,
+    password: string
+  ): Promise<{
+    user: PublicUser;
     token: string;
   }> {
     return new Promise((resolve, reject) => {
@@ -111,12 +143,19 @@ export class AuthService {
 
             // Generate JWT
             const token = jwt.sign(
-              { id: user.id, email: user.email, username: user.username },
+              {
+                id: user.id,
+                email: user.email,
+                username: user.username,
+                role: user.role === 'admin' ? 'admin' : 'user',
+              },
               env.jwt.secret,
               { expiresIn: env.jwt.expiresIn } as SignOptions
             );
 
-            const { password_hash, ...userWithoutPassword } = user;
+            const { password_hash, role, ...userWithoutPassword } = user;
+            void password_hash;
+            void role;
 
             resolve({
               user: userWithoutPassword,
@@ -128,12 +167,12 @@ export class AuthService {
     });
   }
 
-  async getUserById(id: number): Promise<Omit<User, 'password_hash'> | null> {
+  async getUserById(id: number): Promise<PublicUser | null> {
     return new Promise((resolve, reject) => {
       this.db.get(
         'SELECT id, username, email, created_at, updated_at FROM users WHERE id = ?',
         [id],
-        (err: Error | null, user: Omit<User, 'password_hash'> | undefined) => {
+        (err: Error | null, user: PublicUser | undefined) => {
           if (err) return reject(err);
           resolve(user || null);
         }
@@ -144,7 +183,7 @@ export class AuthService {
   async updateUser(
     id: number,
     updates: { username?: string; email?: string }
-  ): Promise<Omit<User, 'password_hash'>> {
+  ): Promise<PublicUser> {
     return new Promise((resolve, reject) => {
       const fields: string[] = [];
       const values: any[] = [];
@@ -212,4 +251,3 @@ export class AuthService {
     });
   }
 }
-

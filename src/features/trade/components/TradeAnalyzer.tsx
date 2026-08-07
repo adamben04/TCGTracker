@@ -1,5 +1,14 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, Plus, Trash2, Search, Scale, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Plus,
+  Trash2,
+  Search,
+  Scale,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from 'lucide-react';
 import { PokemonCard } from '../../../types/pokemon';
 import { pokemonApi } from '../../../services/pokemonApi';
 import { PriceHistoryApi } from '../../../services/priceHistoryApi';
@@ -23,7 +32,7 @@ export const TradeAnalyzer: React.FC = () => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PokemonCard[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pricing, setPricing] = useState<Set<string>>(new Set());
+  const [, setPricing] = useState<Set<string>>(new Set());
   const searchTimer = useRef<number | undefined>(undefined);
 
   const runSearch = (q: string) => {
@@ -81,7 +90,9 @@ export const TradeAnalyzer: React.FC = () => {
   const updateQuantity = (side: Side, index: number, quantity: number) => {
     setSlots((prev) => {
       const next = { ...prev };
-      next[side] = next[side].map((s, i) => (i === index ? { ...s, quantity: Math.max(1, quantity) } : s));
+      next[side] = next[side].map((s, i) =>
+        i === index ? { ...s, quantity: Math.max(1, quantity) } : s
+      );
       return next;
     });
   };
@@ -94,8 +105,7 @@ export const TradeAnalyzer: React.FC = () => {
     });
   };
 
-  const sideTotal = (side: Side) =>
-    slots[side].reduce((sum, s) => sum + s.price * s.quantity, 0);
+  const sideTotal = (side: Side) => slots[side].reduce((sum, s) => sum + s.price * s.quantity, 0);
 
   const youTotal = sideTotal('you');
   const themTotal = sideTotal('them');
@@ -103,8 +113,7 @@ export const TradeAnalyzer: React.FC = () => {
 
   const verdict = useMemo(() => {
     if (youTotal === 0 && themTotal === 0) return null;
-    const ratio = youTotal === 0 ? Infinity : (themTotal - youTotal) / youTotal;
-    if (Math.abs(diff) < Math.max(youTotal, themTotal) * 0.05 || (youTotal === themTotal)) {
+    if (Math.abs(diff) < Math.max(youTotal, themTotal) * 0.05 || youTotal === themTotal) {
       return { label: 'Fair trade', tone: 'text-emerald-400', icon: Minus };
     }
     if (diff < 0) {
@@ -149,7 +158,9 @@ export const TradeAnalyzer: React.FC = () => {
                 loading="lazy"
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-ink-primary">{slot.card.name}</div>
+                <div className="truncate text-sm font-medium text-ink-primary">
+                  {slot.card.name}
+                </div>
                 <div className="text-xs text-ink-muted">
                   {slot.price > 0 ? formatCurrency(slot.price) : 'no price data'} each
                 </div>

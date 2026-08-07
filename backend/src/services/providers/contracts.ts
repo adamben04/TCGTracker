@@ -57,6 +57,6 @@ export interface MarketPriceProvider {
     cardId: string,
     cardName?: string,
     setId?: string,
-    setName?: string,
+    setName?: string
   ): Promise<MarketPriceSnapshot | null>;
 }

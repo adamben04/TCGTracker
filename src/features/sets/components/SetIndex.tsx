@@ -42,7 +42,11 @@ function SetCard({
 
   if (isPokemon) {
     const pokemonSet = set as PokemonSet;
-    completion = setTrackerService.getCompletionForSet(pokemonSet.id, pokemonSet.name, pokemonSet.total);
+    completion = setTrackerService.getCompletionForSet(
+      pokemonSet.id,
+      pokemonSet.name,
+      pokemonSet.total
+    );
     year = formatReleaseYear(pokemonSet.releaseDate);
   }
 
@@ -86,13 +90,7 @@ function SetCard({
   );
 }
 
-function OnePieceSetCard({
-  set,
-  onSelect,
-}: {
-  set: OnePieceSet;
-  onSelect: () => void;
-}) {
+function OnePieceSetCard({ set, onSelect }: { set: OnePieceSet; onSelect: () => void }) {
   return (
     <div
       role="button"
@@ -110,7 +108,7 @@ function OnePieceSetCard({
         {set.id}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-white">{set.name}</p>
+        <p className="font-semibold text-ink-primary">{set.name}</p>
         <p className="mt-0.5 text-xs text-ink-muted">{set.type}</p>
       </div>
     </div>
@@ -156,9 +154,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       let list = sets;
       if (q) {
         list = list.filter(
-          (s) =>
-            s.name.toLowerCase().includes(q) ||
-            s.id.toLowerCase().includes(q)
+          (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
         );
       }
       return list;
@@ -179,7 +175,7 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       list = list.filter((s) => pinned.has(s.id));
     }
     return list;
-  }, [game, sets, search, pinnedOnly]);
+  }, [game, sets, search, pinnedOnly, isPokemon]);
 
   const grouped = useMemo(() => {
     if (!isPokemon) return [{ era: 'All Sets', label: 'All Sets', sets: filtered }];
@@ -212,7 +208,11 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       <PageEmptyState
         icon={Layers}
         title="No sets in catalog"
-        message={isPokemon ? 'Run catalog sync on the backend to populate set checklists.' : 'Loading One Piece sets...'}
+        message={
+          isPokemon
+            ? 'Run catalog sync on the backend to populate set checklists.'
+            : 'Loading One Piece sets...'
+        }
       />
     );
   }
@@ -232,8 +232,18 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       <div className="flex items-center gap-2 mb-4">
         <span className="text-xs text-ink-muted font-medium">TCG:</span>
         <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
-          <button onClick={() => setGame('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
-          <button onClick={() => setGame('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
+          <button
+            onClick={() => setGame('pokemon')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'pokemon' ? 'bg-accent text-[color:var(--accent-foreground)]' : 'text-ink-muted'}`}
+          >
+            Pokémon
+          </button>
+          <button
+            onClick={() => setGame('onepiece')}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${game === 'onepiece' ? 'bg-accent text-[color:var(--accent-foreground)]' : 'text-ink-muted'}`}
+          >
+            One Piece
+          </button>
         </div>
       </div>
 
@@ -267,17 +277,16 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
       {game === 'onepiece' ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {(filtered as OnePieceSet[]).map((set) => (
-            <OnePieceSetCard
-              key={set.id}
-              set={set}
-              onSelect={() => onSelectSet(set.id)}
-            />
+            <OnePieceSetCard key={set.id} set={set} onSelect={() => onSelectSet(set.id)} />
           ))}
         </div>
       ) : showGrouped ? (
         <div className="space-y-8">
           {grouped.map((group) => (
-            <section key={group.era} className="relative space-y-3 border-l-2 border-border-default pl-5">
+            <section
+              key={group.era}
+              className="relative space-y-3 border-l-2 border-border-default pl-5"
+            >
               <div className="sticky top-[4.25rem] z-10 -ml-5 flex items-center gap-3 bg-surface-base/95 py-2 pl-5 ">
                 <span
                   className="absolute -left-[5px] h-2 w-2 rounded-full bg-accent"
@@ -286,7 +295,9 @@ export const SetIndex: React.FC<SetIndexProps> = ({ onSelectSet }) => {
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-secondary">
                   {group.label}
                 </h2>
-                <span className="text-xs tabular-nums text-ink-muted">{group.sets.length} sets</span>
+                <span className="text-xs tabular-nums text-ink-muted">
+                  {group.sets.length} sets
+                </span>
               </div>
               <div className="stagger-children grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {group.sets.map((set) => (

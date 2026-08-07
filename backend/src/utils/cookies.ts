@@ -1,35 +1,52 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { env } from '../config/env';
 
 export const AUTH_COOKIE_NAME = 'tcg_token';
 
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function setAuthCookie(res: Response, token: string): void {
-  const parts = [
-    `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+function isAllowedCrossOriginRequest(req?: Request): boolean {
+  if (!req || !env.isProduction) return false;
+
+  const origin = req.get('origin');
+  if (!origin) return false;
+
+  const allowedOrigins = env.cors.origin
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!allowedOrigins.includes(origin)) return false;
+
+  const host = req.get('x-forwarded-host') || req.get('host');
+  if (!host) return false;
+
+  const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0].trim();
+  const protocol = forwardedProtocol || req.protocol;
+  return origin !== `${protocol}://${host}`;
+}
+
+function authCookieParts(req?: Request): string[] {
+  const crossOrigin = isAllowedCrossOriginRequest(req);
+
+  return [
     'HttpOnly',
     'Path=/',
-    'SameSite=Lax',
+    `SameSite=${crossOrigin ? 'None' : 'Lax'}`,
+    ...(env.isProduction ? ['Secure'] : []),
+  ];
+}
+
+export function setAuthCookie(res: Response, token: string, req?: Request): void {
+  const parts = [
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    ...authCookieParts(req),
     `Max-Age=${Math.floor(MAX_AGE_MS / 1000)}`,
   ];
-  if (env.isProduction) {
-    parts.push('Secure');
-  }
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
-export function clearAuthCookie(res: Response): void {
-  const parts = [
-    `${AUTH_COOKIE_NAME}=`,
-    'HttpOnly',
-    'Path=/',
-    'SameSite=Lax',
-    'Max-Age=0',
-  ];
-  if (env.isProduction) {
-    parts.push('Secure');
-  }
+export function clearAuthCookie(res: Response, req?: Request): void {
+  const parts = [`${AUTH_COOKIE_NAME}=`, ...authCookieParts(req), 'Max-Age=0'];
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 

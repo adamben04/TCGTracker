@@ -6,7 +6,20 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', 'coverage', 'backend', '*.config.*'] },
+  {
+    ignores: [
+      'dist',
+      'node_modules',
+      'coverage',
+      'backend',
+      '*.config.*',
+      // Generated build artifacts / caches that should never be linted.
+      '.vite',
+      '.vite/**',
+      '**/.vite/**',
+      '**/*.tsbuildinfo',
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx,js,jsx}'],

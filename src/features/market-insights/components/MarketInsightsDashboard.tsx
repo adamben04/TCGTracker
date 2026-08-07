@@ -40,8 +40,19 @@ import { PredictionCard } from './PredictionCard';
 import { useResolvedPredictionCards } from '../hooks/useResolvedPredictionCards';
 import { useGame } from '../../../contexts/GameContext';
 import { Package, Brain } from 'lucide-react';
+import { Button } from '../../../components/ui/Button';
+import { DataProvenance } from '../../../components/ui/DataProvenance';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
-type SectionType = 'gainers' | 'recovery' | 'momentum' | 'stagnant' | 'overheated' | 'downtrend' | 'backtest' | 'forward';
+type SectionType =
+  | 'gainers'
+  | 'recovery'
+  | 'momentum'
+  | 'stagnant'
+  | 'overheated'
+  | 'downtrend'
+  | 'backtest'
+  | 'forward';
 
 const SECTION_ICONS: Record<SectionType, React.ReactNode> = {
   gainers: <TrendingUp className="h-4 w-4 text-emerald-400" />,
@@ -92,15 +103,18 @@ export function MarketInsightsDashboard() {
     return d.toISOString().split('T')[0];
   });
   const [message, setMessage] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [predictionWindow, setPredictionWindow] = useState<PredictionWindow>('90d');
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
 
   const defaultFilters = (): PredictionFilters => ({
     minPrice: 2,
     maxPrice: 10000,
     minConfidence: 30,
     rarities: [...AVAILABLE_RARITIES],
-    eras: [...AVAILABLE_ERAS.map(e => e.id)],
+    eras: [...AVAILABLE_ERAS.map((e) => e.id)],
     releaseDateFrom: undefined,
     releaseDateTo: undefined,
   });
@@ -116,28 +130,35 @@ export function MarketInsightsDashboard() {
     timeoutRef.current = setTimeout(() => setMessage(null), 5000);
   }, []);
 
-  const loadData = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [predData, btData, ftStatus] = await Promise.all([
-        marketInsightsApi.getPredictions({ limit: 250, window: predictionWindow, filters: appliedFilters }),
-        marketInsightsApi.getBacktestResults().catch(() => ({ data: [] as BacktestResult[] })),
-        marketInsightsApi.getForwardTestStatus().catch(() => null),
-      ]);
-      if (signal?.aborted) return;
-      setPredictions(predData.data);
-      setBacktestResults(btData.data || []);
-      setForwardStatus(ftStatus);
-    } catch (err: any) {
-      if (signal?.aborted || err?.name === 'AbortError') return;
-      console.error('Failed to load market insights data:', err);
-      setLoadError(err?.message || 'Failed to load predictions');
-      setPredictions([]);
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [appliedFilters, predictionWindow]);
+  const loadData = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [predData, btData, ftStatus] = await Promise.all([
+          marketInsightsApi.getPredictions({
+            limit: 250,
+            window: predictionWindow,
+            filters: appliedFilters,
+          }),
+          marketInsightsApi.getBacktestResults().catch(() => ({ data: [] as BacktestResult[] })),
+          marketInsightsApi.getForwardTestStatus().catch(() => null),
+        ]);
+        if (signal?.aborted) return;
+        setPredictions(predData.data);
+        setBacktestResults(btData.data || []);
+        setForwardStatus(ftStatus);
+      } catch (err: unknown) {
+        if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+        console.error('Failed to load market insights data:', err);
+        setLoadError(getErrorMessage(err, 'Failed to load predictions'));
+        setPredictions([]);
+      } finally {
+        if (!signal?.aborted) setLoading(false);
+      }
+    },
+    [appliedFilters, predictionWindow]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,8 +183,8 @@ export function MarketInsightsDashboard() {
       const result = await marketInsightsApi.triggerPredictionRun();
       showMessage(`Prediction run ${result.runId}: ${result.message}`);
       await loadData();
-    } catch (err: any) {
-      showMessage(`Failed: ${err.message}`);
+    } catch (err: unknown) {
+      showMessage(`Failed: ${getErrorMessage(err, 'Unable to run predictions')}`);
     } finally {
       setRunningPrediction(false);
     }
@@ -177,28 +198,37 @@ export function MarketInsightsDashboard() {
       const btData = await marketInsightsApi.getBacktestResults();
       setBacktestResults(btData.data || []);
       setActiveSection('backtest');
-    } catch (err: any) {
-      showMessage(`Backtest failed: ${err.message}`);
+    } catch (err: unknown) {
+      showMessage(`Backtest failed: ${getErrorMessage(err, 'Unable to run backtest')}`);
     } finally {
       setRunningBacktest(false);
     }
   };
 
-  const sidebarSections: SectionType[] = ['gainers', 'recovery', 'momentum', 'stagnant', 'overheated', 'downtrend', 'backtest', 'forward'];
+  const sidebarSections: SectionType[] = [
+    'gainers',
+    'recovery',
+    'momentum',
+    'stagnant',
+    'overheated',
+    'downtrend',
+    'backtest',
+    'forward',
+  ];
 
   const filteredPredictions = (category?: PredictionCategory | 'all') => {
     if (!category || category === 'all') return predictions;
-    return predictions.filter(p => p.category === category);
+    return predictions.filter((p) => p.category === category);
   };
 
   const windowReturn = (p: CardPrediction) => expectedReturnForWindow(p, predictionWindow);
   const sortedByReturn = [...predictions].sort((a, b) => windowReturn(b) - windowReturn(a));
   const sortedByDowntrend = [...predictions].sort((a, b) => windowReturn(a) - windowReturn(b));
   const gainerPredictions = sortedByReturn
-    .filter(p => windowReturn(p) >= PREDICTION_THRESHOLDS.GAINERS_MIN_RETURN)
+    .filter((p) => windowReturn(p) >= PREDICTION_THRESHOLDS.GAINERS_MIN_RETURN)
     .slice(0, 20);
   const downtrendPredictions = sortedByDowntrend
-    .filter(p => windowReturn(p) < PREDICTION_THRESHOLDS.DOWNTREND_MAX_RETURN)
+    .filter((p) => windowReturn(p) < PREDICTION_THRESHOLDS.DOWNTREND_MAX_RETURN)
     .slice(0, 20);
   const { cardsById } = useResolvedPredictionCards(predictions);
 
@@ -225,7 +255,8 @@ export function MarketInsightsDashboard() {
           </div>
           <h3 className="mb-2 text-xl font-semibold text-ink-primary">Coming Soon</h3>
           <p className="mx-auto mb-6 max-w-md text-sm text-ink-muted">
-            One Piece market insights and AI predictions are under development. Browse One Piece cards to see market prices!
+            One Piece market insights and AI predictions are under development. Browse One Piece
+            cards to see market prices!
           </p>
           <a href="/browse" className="btn-secondary">
             <Package className="h-4 w-4" aria-hidden="true" />
@@ -238,32 +269,39 @@ export function MarketInsightsDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Card Market Insights</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            AI-powered price predictions for individual TCG cards
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRunPredictions}
-            disabled={runningPrediction}
-            title="Run a new prediction batch"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Play className={`h-3.5 w-3.5 ${runningPrediction ? 'animate-pulse' : ''}`} />
-            {runningPrediction ? 'Running...' : 'Run Predictions'}
-          </button>
-          <button
-            onClick={() => loadData()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-inset px-3 py-1.5 text-xs font-medium text-ink-secondary transition-colors hover:bg-surface-hover"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Research"
+        title="Card market insights"
+        description="Model-generated scenarios for research and watchlist discovery. Treat forecasts as estimates—not guaranteed returns."
+        actions={
+          <>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleRunPredictions}
+              disabled={runningPrediction}
+              title="Run a new prediction batch"
+            >
+              <Play
+                className={`h-3.5 w-3.5 ${runningPrediction ? 'animate-pulse' : ''}`}
+                aria-hidden="true"
+              />
+              {runningPrediction ? 'Running...' : 'Run Predictions'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => loadData()}>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Refresh
+            </Button>
+          </>
+        }
+        meta={
+          <DataProvenance
+            source="TCGTracker prediction models"
+            qualifier="Expected returns are model outputs and may be wrong."
+          />
+        }
+        className="mb-6"
+      />
 
       {message && (
         <motion.div
@@ -290,65 +328,100 @@ export function MarketInsightsDashboard() {
             <Filter className="h-4 w-4" />
             <span>Filters</span>
             <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-ink-muted">
-              ${appliedFilters.minPrice || 0} - ${appliedFilters.maxPrice || '∞'} | {appliedFilters.rarities?.length || 0} rarities | {appliedFilters.eras?.length || 0} eras
+              ${appliedFilters.minPrice || 0} - ${appliedFilters.maxPrice || '∞'} |{' '}
+              {appliedFilters.rarities?.length || 0} rarities | {appliedFilters.eras?.length || 0}{' '}
+              eras
             </span>
           </div>
           {showFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
-        
+
         {showFilters && (
           <div className="border-t border-border-default px-4 py-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Min Price ($)</label>
+                <label
+                  htmlFor="prediction-min-price"
+                  className="mb-1 block text-xs font-medium text-ink-muted"
+                >
+                  Min Price ($)
+                </label>
                 <input
                   type="number"
+                  id="prediction-min-price"
                   min="0"
                   step="0.5"
                   value={draftFilters.minPrice || ''}
-                  onChange={e => setDraftFilters(prev => ({ ...prev, minPrice: e.target.value ? parseFloat(e.target.value) : undefined }))}
-                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      minPrice: e.target.value ? parseFloat(e.target.value) : undefined,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary"
                   placeholder="2"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Max Price ($)</label>
+                <label
+                  htmlFor="prediction-max-price"
+                  className="mb-1 block text-xs font-medium text-ink-muted"
+                >
+                  Max Price ($)
+                </label>
                 <input
                   type="number"
+                  id="prediction-max-price"
                   min="0"
                   step="10"
                   value={draftFilters.maxPrice || ''}
-                  onChange={e => setDraftFilters(prev => ({ ...prev, maxPrice: e.target.value ? parseFloat(e.target.value) : undefined }))}
-                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      maxPrice: e.target.value ? parseFloat(e.target.value) : undefined,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary"
                   placeholder="10000"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Min Confidence</label>
+                <label
+                  htmlFor="prediction-min-confidence"
+                  className="mb-1 block text-xs font-medium text-ink-muted"
+                >
+                  Min Confidence
+                </label>
                 <input
                   type="range"
+                  id="prediction-min-confidence"
                   min="0"
                   max="100"
                   value={draftFilters.minConfidence || 0}
-                  onChange={e => setDraftFilters(prev => ({ ...prev, minConfidence: parseInt(e.target.value) }))}
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      minConfidence: parseInt(e.target.value),
+                    }))
+                  }
                   className="w-full"
                 />
                 <div className="text-xs text-ink-muted">{draftFilters.minConfidence || 0}%</div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Era</label>
+                <div className="mb-1 block text-xs font-medium text-ink-muted">Era</div>
                 <div className="max-h-32 overflow-y-auto rounded-lg border border-border-default bg-surface-inset p-2">
-                  {AVAILABLE_ERAS.map(era => (
+                  {AVAILABLE_ERAS.map((era) => (
                     <label key={era.id} className="flex items-center gap-2 py-1">
                       <input
                         type="checkbox"
                         checked={draftFilters.eras?.includes(era.id) || false}
-                        onChange={e => {
-                          setDraftFilters(prev => {
+                        onChange={(e) => {
+                          setDraftFilters((prev) => {
                             const current = prev.eras || [];
                             const newEras = e.target.checked
                               ? [...current, era.id]
-                              : current.filter(r => r !== era.id);
+                              : current.filter((r) => r !== era.id);
                             return { ...prev, eras: newEras };
                           });
                         }}
@@ -360,19 +433,19 @@ export function MarketInsightsDashboard() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Rarities</label>
+                <div className="mb-1 block text-xs font-medium text-ink-muted">Rarities</div>
                 <div className="max-h-32 overflow-y-auto rounded-lg border border-border-default bg-surface-inset p-2">
-                  {AVAILABLE_RARITIES.map(rarity => (
+                  {AVAILABLE_RARITIES.map((rarity) => (
                     <label key={rarity} className="flex items-center gap-2 py-1">
                       <input
                         type="checkbox"
                         checked={draftFilters.rarities?.includes(rarity) || false}
-                        onChange={e => {
-                          setDraftFilters(prev => {
+                        onChange={(e) => {
+                          setDraftFilters((prev) => {
                             const current = prev.rarities || [];
                             const newRarities = e.target.checked
                               ? [...current, rarity]
-                              : current.filter(r => r !== rarity);
+                              : current.filter((r) => r !== rarity);
                             return { ...prev, rarities: newRarities };
                           });
                         }}
@@ -384,21 +457,43 @@ export function MarketInsightsDashboard() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Release Date From</label>
+                <label
+                  htmlFor="prediction-release-date-from"
+                  className="mb-1 block text-xs font-medium text-ink-muted"
+                >
+                  Release Date From
+                </label>
                 <input
                   type="date"
+                  id="prediction-release-date-from"
                   value={draftFilters.releaseDateFrom || ''}
-                  onChange={e => setDraftFilters(prev => ({ ...prev, releaseDateFrom: e.target.value || undefined }))}
-                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      releaseDateFrom: e.target.value || undefined,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-ink-muted">Release Date To</label>
+                <label
+                  htmlFor="prediction-release-date-to"
+                  className="mb-1 block text-xs font-medium text-ink-muted"
+                >
+                  Release Date To
+                </label>
                 <input
                   type="date"
+                  id="prediction-release-date-to"
                   value={draftFilters.releaseDateTo || ''}
-                  onChange={e => setDraftFilters(prev => ({ ...prev, releaseDateTo: e.target.value || undefined }))}
-                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+                  onChange={(e) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      releaseDateTo: e.target.value || undefined,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary"
                 />
               </div>
             </div>
@@ -411,7 +506,7 @@ export function MarketInsightsDashboard() {
               </button>
               <button
                 onClick={handleApplyFilters}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-[color:var(--accent-foreground)] hover:bg-accent-hover"
               >
                 Apply Filters
               </button>
@@ -423,13 +518,13 @@ export function MarketInsightsDashboard() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="text-xs font-medium text-ink-muted">Prediction window:</span>
         <div className="inline-flex rounded-lg border border-border-default bg-surface-inset p-0.5">
-          {PREDICTION_WINDOWS.map(w => (
+          {PREDICTION_WINDOWS.map((w) => (
             <button
               key={w}
               onClick={() => setPredictionWindow(w)}
               className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
                 predictionWindow === w
-                  ? 'bg-accent text-white'
+                  ? 'bg-accent text-[color:var(--accent-foreground)]'
                   : 'text-ink-muted hover:bg-surface-hover hover:text-ink-secondary'
               }`}
             >
@@ -438,9 +533,7 @@ export function MarketInsightsDashboard() {
           ))}
         </div>
         {!loading && (
-          <span className="text-xs text-ink-muted">
-            {predictions.length} cards loaded
-          </span>
+          <span className="text-xs text-ink-muted">{predictions.length} cards loaded</span>
         )}
       </div>
 
@@ -448,24 +541,26 @@ export function MarketInsightsDashboard() {
       <div className="mb-4 lg:hidden">
         <select
           value={activeSection}
-          onChange={e => setActiveSection(e.target.value as SectionType)}
-          className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-white"
+          onChange={(e) => setActiveSection(e.target.value as SectionType)}
+          className="w-full rounded-lg border border-border-default bg-surface-inset px-3 py-2 text-sm text-ink-primary"
         >
-          {sidebarSections.map(section => (
-            <option key={section} value={section}>{SECTION_LABELS[section]}</option>
+          {sidebarSections.map((section) => (
+            <option key={section} value={section}>
+              {SECTION_LABELS[section]}
+            </option>
           ))}
         </select>
       </div>
 
       <div className="flex gap-6">
         <nav className="hidden w-48 shrink-0 space-y-1 lg:block">
-          {sidebarSections.map(section => (
+          {sidebarSections.map((section) => (
             <button
               key={section}
               onClick={() => setActiveSection(section)}
               className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
                 activeSection === section
-                  ? 'bg-surface-hover text-white'
+                  ? 'bg-surface-hover text-ink-primary'
                   : 'text-ink-muted hover:bg-surface-inset hover:text-ink-secondary'
               }`}
             >
@@ -519,7 +614,9 @@ export function MarketInsightsDashboard() {
                 <CardGridSection
                   title={SECTION_LABELS[activeSection]}
                   icon={SECTION_ICONS[activeSection]}
-                  predictions={filteredPredictions(CATEGORY_MAP[activeSection] as PredictionCategory)}
+                  predictions={filteredPredictions(
+                    CATEGORY_MAP[activeSection] as PredictionCategory
+                  )}
                   emptyMessage={emptyHint('category')}
                   cardsById={cardsById}
                   window={predictionWindow}
@@ -552,7 +649,7 @@ function CardGridSection({
     <div>
       <div className="mb-4 flex items-center gap-2">
         {icon}
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        <h2 className="text-lg font-semibold text-ink-primary">{title}</h2>
         <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-ink-muted">
           {predictions.length}
         </span>
@@ -597,7 +694,7 @@ function BacktestSection({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-cyan-400" />
-          <h2 className="text-lg font-semibold text-white">Backtesting Results</h2>
+          <h2 className="text-lg font-semibold text-ink-primary">Backtesting Results</h2>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-2 text-xs text-ink-muted">
@@ -605,8 +702,8 @@ function BacktestSection({
             <input
               type="date"
               value={backtestDate}
-              onChange={e => onBacktestDateChange(e.target.value)}
-              className="rounded-lg border border-border-default bg-surface-inset px-2 py-1 text-xs text-white"
+              onChange={(e) => onBacktestDateChange(e.target.value)}
+              className="rounded-lg border border-border-default bg-surface-inset px-2 py-1 text-xs text-ink-primary"
             />
           </label>
           <button
@@ -628,139 +725,212 @@ function BacktestSection({
         </div>
       ) : (
         <>
-      {latest && (
-        <div className="mb-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <MetricCard label="Test Date" value={latest.backtest_date} />
-            <MetricCard label="Cards Tested" value={latest.cards_tested.toString()} />
-            <MetricCard
-              label="Directional Accuracy"
-              value={latest.directional_accuracy != null ? `${(latest.directional_accuracy * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.directional_accuracy != null && latest.directional_accuracy > 0.5}
-            />
-            <MetricCard
-              label="MAPE"
-              value={latest.mape != null ? `${(latest.mape * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.mape != null && latest.mape < 0.2}
-            />
-            <MetricCard
-              label="Top 10 Gainers Avg"
-              value={latest.top10_avg_return != null ? `${(latest.top10_avg_return * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.top10_avg_return != null && latest.top10_avg_return > 0}
-            />
-          </div>
+          {latest && (
+            <div className="mb-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                <MetricCard label="Test Date" value={latest.backtest_date} />
+                <MetricCard label="Cards Tested" value={latest.cards_tested.toString()} />
+                <MetricCard
+                  label="Directional Accuracy"
+                  value={
+                    latest.directional_accuracy != null
+                      ? `${(latest.directional_accuracy * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={
+                    latest.directional_accuracy != null && latest.directional_accuracy > 0.5
+                  }
+                />
+                <MetricCard
+                  label="MAPE"
+                  value={latest.mape != null ? `${(latest.mape * 100).toFixed(1)}%` : 'N/A'}
+                  positive={latest.mape != null && latest.mape < 0.2}
+                />
+                <MetricCard
+                  label="Top 10 Gainers Avg"
+                  value={
+                    latest.top10_avg_return != null
+                      ? `${(latest.top10_avg_return * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={latest.top10_avg_return != null && latest.top10_avg_return > 0}
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <MetricCard
-              label="Market Avg Return"
-              value={latest.market_avg_return != null ? `${(latest.market_avg_return * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.market_avg_return != null && latest.market_avg_return > 0}
-            />
-            <MetricCard
-              label="Strong Buy FP Rate"
-              value={latest.strong_buy_false_positive_rate != null ? `${(latest.strong_buy_false_positive_rate * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.strong_buy_false_positive_rate != null && latest.strong_buy_false_positive_rate < 0.2}
-            />
-            <MetricCard
-              label="Avoid Avg Return"
-              value={latest.avoid_avg_return != null ? `${(latest.avoid_avg_return * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.avoid_avg_return != null && latest.avoid_avg_return < 0}
-            />
-            <MetricCard
-              label="Sharpe Ratio"
-              value={latest.sharpe_ratio != null ? latest.sharpe_ratio.toFixed(2) : 'N/A'}
-              positive={latest.sharpe_ratio != null && latest.sharpe_ratio > 1}
-            />
-            <MetricCard
-              label="Max Drawdown"
-              value={latest.max_drawdown != null ? `${(latest.max_drawdown * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.max_drawdown != null && latest.max_drawdown < 0.2}
-            />
-          </div>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                <MetricCard
+                  label="Market Avg Return"
+                  value={
+                    latest.market_avg_return != null
+                      ? `${(latest.market_avg_return * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={latest.market_avg_return != null && latest.market_avg_return > 0}
+                />
+                <MetricCard
+                  label="Strong Buy FP Rate"
+                  value={
+                    latest.strong_buy_false_positive_rate != null
+                      ? `${(latest.strong_buy_false_positive_rate * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={
+                    latest.strong_buy_false_positive_rate != null &&
+                    latest.strong_buy_false_positive_rate < 0.2
+                  }
+                />
+                <MetricCard
+                  label="Avoid Avg Return"
+                  value={
+                    latest.avoid_avg_return != null
+                      ? `${(latest.avoid_avg_return * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={latest.avoid_avg_return != null && latest.avoid_avg_return < 0}
+                />
+                <MetricCard
+                  label="Sharpe Ratio"
+                  value={latest.sharpe_ratio != null ? latest.sharpe_ratio.toFixed(2) : 'N/A'}
+                  positive={latest.sharpe_ratio != null && latest.sharpe_ratio > 1}
+                />
+                <MetricCard
+                  label="Max Drawdown"
+                  value={
+                    latest.max_drawdown != null
+                      ? `${(latest.max_drawdown * 100).toFixed(1)}%`
+                      : 'N/A'
+                  }
+                  positive={latest.max_drawdown != null && latest.max_drawdown < 0.2}
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <MetricCard
-              label="Win Rate"
-              value={latest.win_rate != null ? `${(latest.win_rate * 100).toFixed(1)}%` : 'N/A'}
-              positive={latest.win_rate != null && latest.win_rate > 0.5}
-            />
-            <MetricCard
-              label="Profit Factor"
-              value={latest.profit_factor != null ? latest.profit_factor.toFixed(2) : 'N/A'}
-              positive={latest.profit_factor != null && latest.profit_factor > 1}
-            />
-            <MetricCard label="Window" value={`${latest.window_days}d`} />
-          </div>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <MetricCard
+                  label="Win Rate"
+                  value={latest.win_rate != null ? `${(latest.win_rate * 100).toFixed(1)}%` : 'N/A'}
+                  positive={latest.win_rate != null && latest.win_rate > 0.5}
+                />
+                <MetricCard
+                  label="Profit Factor"
+                  value={latest.profit_factor != null ? latest.profit_factor.toFixed(2) : 'N/A'}
+                  positive={latest.profit_factor != null && latest.profit_factor > 1}
+                />
+                <MetricCard label="Window" value={`${latest.window_days}d`} />
+              </div>
 
-          {latest.category_performance && latest.category_performance.length > 0 && (
+              {latest.category_performance && latest.category_performance.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-sm font-medium text-ink-secondary">
+                    Category Performance
+                  </h3>
+                  <div className="overflow-x-auto rounded-xl border border-border-default">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-border-default bg-surface-inset">
+                          <th className="px-3 py-2 font-medium text-ink-muted">Category</th>
+                          <th className="px-3 py-2 font-medium text-ink-muted">Count</th>
+                          <th className="px-3 py-2 font-medium text-ink-muted">Avg Return</th>
+                          <th className="px-3 py-2 font-medium text-ink-muted">Avg Predicted</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {latest.category_performance.map((cp) => (
+                          <tr
+                            key={cp.category}
+                            className="border-b border-border-subtle last:border-0"
+                          >
+                            <td className="px-3 py-2">
+                              <span
+                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[cp.category as PredictionCategory] || ''}`}
+                              >
+                                {CATEGORY_LABELS[cp.category as PredictionCategory] || cp.category}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-ink-secondary">{cp.count}</td>
+                            <td
+                              className={`px-3 py-2 font-mono ${cp.avgReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                            >
+                              {(cp.avgReturn * 100).toFixed(1)}%
+                            </td>
+                            <td className="px-3 py-2 font-mono text-ink-muted">
+                              {(cp.avgPredictedReturn * 100).toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {results.length > 1 && (
             <div>
-              <h3 className="mb-2 text-sm font-medium text-ink-secondary">Category Performance</h3>
-              <div className="overflow-x-auto rounded-xl border border-border-default">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-border-default bg-surface-inset">
-                      <th className="px-3 py-2 font-medium text-ink-muted">Category</th>
-                      <th className="px-3 py-2 font-medium text-ink-muted">Count</th>
-                      <th className="px-3 py-2 font-medium text-ink-muted">Avg Return</th>
-                      <th className="px-3 py-2 font-medium text-ink-muted">Avg Predicted</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {latest.category_performance.map((cp: any) => (
-                      <tr key={cp.category} className="border-b border-border-subtle last:border-0">
-                        <td className="px-3 py-2">
-                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[cp.category as PredictionCategory] || ''}`}>
-                            {CATEGORY_LABELS[cp.category as PredictionCategory] || cp.category}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-ink-secondary">{cp.count}</td>
-                        <td className={`px-3 py-2 font-mono ${cp.avgReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {(cp.avgReturn * 100).toFixed(1)}%
-                        </td>
-                        <td className="px-3 py-2 font-mono text-ink-muted">
-                          {(cp.avgPredictedReturn * 100).toFixed(1)}%
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <h3 className="mb-2 text-sm font-medium text-ink-secondary">
+                Previous Backtest Runs
+              </h3>
+              <div className="space-y-2">
+                {results.slice(1, 6).map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface-inset px-3 py-2 text-xs"
+                  >
+                    <span className="text-ink-muted">{r.backtest_date}</span>
+                    <span className="text-ink-secondary">{r.cards_tested} cards</span>
+                    <span
+                      className={
+                        r.directional_accuracy != null && r.directional_accuracy >= 0.5
+                          ? 'text-emerald-400'
+                          : 'text-red-400'
+                      }
+                    >
+                      Acc:{' '}
+                      {r.directional_accuracy != null
+                        ? `${(r.directional_accuracy * 100).toFixed(1)}%`
+                        : 'N/A'}
+                    </span>
+                    <span className="text-ink-muted">
+                      MAPE: {r.mape != null ? `${(r.mape * 100).toFixed(1)}%` : 'N/A'}
+                    </span>
+                    <span
+                      className={
+                        r.market_avg_return != null && r.market_avg_return >= 0
+                          ? 'text-emerald-400'
+                          : 'text-red-400'
+                      }
+                    >
+                      Avg:{' '}
+                      {r.market_avg_return != null
+                        ? `${(r.market_avg_return * 100).toFixed(1)}%`
+                        : 'N/A'}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {results.length > 1 && (
-        <div>
-          <h3 className="mb-2 text-sm font-medium text-ink-secondary">Previous Backtest Runs</h3>
-          <div className="space-y-2">
-            {results.slice(1, 6).map(r => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg border border-border-subtle bg-surface-inset px-3 py-2 text-xs">
-                <span className="text-ink-muted">{r.backtest_date}</span>
-                <span className="text-ink-secondary">{r.cards_tested} cards</span>
-                <span className={r.directional_accuracy != null && r.directional_accuracy >= 0.5 ? 'text-emerald-400' : 'text-red-400'}>
-                  Acc: {r.directional_accuracy != null ? `${(r.directional_accuracy * 100).toFixed(1)}%` : 'N/A'}
-                </span>
-                <span className="text-ink-muted">MAPE: {r.mape != null ? `${(r.mape * 100).toFixed(1)}%` : 'N/A'}</span>
-                <span className={r.market_avg_return != null && r.market_avg_return >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                  Avg: {r.market_avg_return != null ? `${(r.market_avg_return * 100).toFixed(1)}%` : 'N/A'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
         </>
       )}
     </div>
   );
 }
 
-function MetricCard({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+function MetricCard({
+  label,
+  value,
+  positive,
+}: {
+  label: string;
+  value: string;
+  positive?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-border-default bg-surface-raised p-3">
       <div className="text-[10px] font-medium uppercase tracking-wider text-ink-muted">{label}</div>
-      <div className={`mt-1 font-mono text-sm font-semibold ${positive === true ? 'text-emerald-400' : positive === false ? 'text-red-400' : 'text-white'}`}>
+      <div
+        className={`mt-1 font-mono text-sm font-semibold ${positive === true ? 'text-emerald-400' : positive === false ? 'text-red-400' : 'text-ink-primary'}`}
+      >
         {value}
       </div>
     </div>
@@ -773,7 +943,7 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
       <div>
         <div className="mb-4 flex items-center gap-2">
           <Clock className="h-5 w-5 text-amber-400" />
-          <h2 className="text-lg font-semibold text-white">Forward Testing Tracker</h2>
+          <h2 className="text-lg font-semibold text-ink-primary">Forward Testing Tracker</h2>
         </div>
         <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border-default">
           <p className="text-sm text-ink-muted">No forward test data available yet.</p>
@@ -783,13 +953,15 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
   }
 
   const totalResolved = status.hit + status.missed + status.partiallyCorrect;
-  const accuracy = status.overallAccuracy ?? (totalResolved > 0 ? (status.hit + status.partiallyCorrect * 0.5) / totalResolved : 0);
+  const accuracy =
+    status.overallAccuracy ??
+    (totalResolved > 0 ? (status.hit + status.partiallyCorrect * 0.5) / totalResolved : 0);
 
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
         <Clock className="h-5 w-5 text-amber-400" />
-        <h2 className="text-lg font-semibold text-white">Forward Testing Tracker</h2>
+        <h2 className="text-lg font-semibold text-ink-primary">Forward Testing Tracker</h2>
         <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-ink-muted">
           {status.totalPredictions} predictions
         </span>
@@ -801,7 +973,9 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
             <Clock className="h-4 w-4 text-amber-400" />
             <span className="text-xs text-ink-muted">Pending</span>
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-amber-400">{status.pending}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-amber-400">
+            {status.pending}
+          </div>
         </div>
         <div className="rounded-xl border border-border-default bg-surface-raised p-3">
           <div className="flex items-center gap-2">
@@ -815,7 +989,9 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
             <HelpCircle className="h-4 w-4 text-ink-muted" />
             <span className="text-xs text-ink-muted">Partial</span>
           </div>
-          <div className="mt-1 font-mono text-lg font-semibold text-ink-secondary">{status.partiallyCorrect}</div>
+          <div className="mt-1 font-mono text-lg font-semibold text-ink-secondary">
+            {status.partiallyCorrect}
+          </div>
         </div>
         <div className="rounded-xl border border-border-default bg-surface-raised p-3">
           <div className="flex items-center gap-2">
@@ -858,7 +1034,9 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
                 <td className="px-3 py-2 text-ink-muted">{data.pending}</td>
                 <td className="px-3 py-2 text-emerald-400">{data.hit}</td>
                 <td className="px-3 py-2 text-red-400">{data.missed}</td>
-                <td className={`px-3 py-2 font-mono ${data.accuracy != null && data.accuracy > 0.5 ? 'text-emerald-400' : 'text-ink-muted'}`}>
+                <td
+                  className={`px-3 py-2 font-mono ${data.accuracy != null && data.accuracy > 0.5 ? 'text-emerald-400' : 'text-ink-muted'}`}
+                >
                   {data.accuracy != null ? `${(data.accuracy * 100).toFixed(1)}%` : 'N/A'}
                 </td>
               </tr>
@@ -886,14 +1064,18 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
                 {status.byCategory.map((cat) => (
                   <tr key={cat.category} className="border-b border-border-subtle last:border-0">
                     <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[cat.category as PredictionCategory] || ''}`}>
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[cat.category as PredictionCategory] || ''}`}
+                      >
                         {CATEGORY_LABELS[cat.category as PredictionCategory] || cat.category}
                       </span>
                     </td>
                     <td className="px-3 py-2 text-ink-secondary">{cat.total}</td>
                     <td className="px-3 py-2 text-emerald-400">{cat.hit}</td>
                     <td className="px-3 py-2 text-red-400">{cat.missed}</td>
-                    <td className={`px-3 py-2 font-mono ${cat.accuracy != null && cat.accuracy > 0.5 ? 'text-emerald-400' : 'text-ink-muted'}`}>
+                    <td
+                      className={`px-3 py-2 font-mono ${cat.accuracy != null && cat.accuracy > 0.5 ? 'text-emerald-400' : 'text-ink-muted'}`}
+                    >
                       {cat.accuracy != null ? `${(cat.accuracy * 100).toFixed(1)}%` : 'N/A'}
                     </td>
                     <td className="px-3 py-2 font-mono text-ink-muted">
@@ -913,24 +1095,34 @@ function ForwardSection({ status }: { status: ForwardTestStatus | null }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-xl border border-border-default bg-surface-raised p-3">
               <div className="text-xs text-ink-muted">Under $5</div>
-              <div className="mt-1 font-mono text-lg font-semibold text-white">
-                {status.byPriceRange.under5.accuracy != null ? `${(status.byPriceRange.under5.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              <div className="mt-1 font-mono text-lg font-semibold text-ink-primary">
+                {status.byPriceRange.under5.accuracy != null
+                  ? `${(status.byPriceRange.under5.accuracy * 100).toFixed(1)}%`
+                  : 'N/A'}
               </div>
               <div className="text-xs text-ink-muted">{status.byPriceRange.under5.total} cards</div>
             </div>
             <div className="rounded-xl border border-border-default bg-surface-raised p-3">
               <div className="text-xs text-ink-muted">$5 - $50</div>
-              <div className="mt-1 font-mono text-lg font-semibold text-white">
-                {status.byPriceRange.fiveToFifty.accuracy != null ? `${(status.byPriceRange.fiveToFifty.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              <div className="mt-1 font-mono text-lg font-semibold text-ink-primary">
+                {status.byPriceRange.fiveToFifty.accuracy != null
+                  ? `${(status.byPriceRange.fiveToFifty.accuracy * 100).toFixed(1)}%`
+                  : 'N/A'}
               </div>
-              <div className="text-xs text-ink-muted">{status.byPriceRange.fiveToFifty.total} cards</div>
+              <div className="text-xs text-ink-muted">
+                {status.byPriceRange.fiveToFifty.total} cards
+              </div>
             </div>
             <div className="rounded-xl border border-border-default bg-surface-raised p-3">
               <div className="text-xs text-ink-muted">Over $50</div>
-              <div className="mt-1 font-mono text-lg font-semibold text-white">
-                {status.byPriceRange.overFifty.accuracy != null ? `${(status.byPriceRange.overFifty.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              <div className="mt-1 font-mono text-lg font-semibold text-ink-primary">
+                {status.byPriceRange.overFifty.accuracy != null
+                  ? `${(status.byPriceRange.overFifty.accuracy * 100).toFixed(1)}%`
+                  : 'N/A'}
               </div>
-              <div className="text-xs text-ink-muted">{status.byPriceRange.overFifty.total} cards</div>
+              <div className="text-xs text-ink-muted">
+                {status.byPriceRange.overFifty.total} cards
+              </div>
             </div>
           </div>
         </div>

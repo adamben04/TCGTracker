@@ -46,21 +46,27 @@ export interface PriceChanges {
 
 export function getLatestPrice(points: PricePoint[]): number | null {
   if (points.length === 0) return null;
-  const sorted = [...points].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const sorted = [...points].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
   return sorted[0].marketPrice ?? sorted[0].price;
 }
 
 export function getPriceAtDate(points: PricePoint[], targetDate: Date): number | null {
   const target = formatDate(targetDate);
-  const sorted = [...points].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const match = sorted.find(p => p.date <= target);
+  const sorted = [...points].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+  const match = sorted.find((p) => p.date <= target);
   if (match) return match.marketPrice ?? match.price;
   return null;
 }
 
 export function computeMovingAverages(points: PricePoint[]): MovingAverages {
-  const sorted = [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  const sorted = [...points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const prices = sorted.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
   if (prices.length === 0) return { ma7: null, ma30: null, ma90: null };
 
   const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
@@ -73,7 +79,9 @@ export function computeMovingAverages(points: PricePoint[]): MovingAverages {
 }
 
 export function computePriceChanges(points: PricePoint[]): PriceChanges {
-  const sorted = [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sorted = [...points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
 
   const getChange = (days: number): number | null => {
     const now = sorted[sorted.length - 1];
@@ -97,9 +105,11 @@ export function computePriceChanges(points: PricePoint[]): PriceChanges {
 }
 
 export function computeVolatility(points: PricePoint[], days: number = 30): VolatilityMetrics {
-  const sorted = [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sorted = [...points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
   const recent = sorted.slice(-Math.max(days, 30));
-  const prices = recent.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  const prices = recent.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
   if (prices.length < 7) {
     // Return elevated uncertainty values instead of arbitrary defaults
     // This naturally penalizes sparse-data cards through risk scoring
@@ -126,8 +136,10 @@ export function computeVolatility(points: PricePoint[], days: number = 30): Vola
 }
 
 export function findSupportResistance(points: PricePoint[]): SupportResistance {
-  const sorted = [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  const sorted = [...points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const prices = sorted.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
   if (prices.length < 20) return { support: null, resistance: null };
 
   const sortedPrices = [...prices].sort((a, b) => a - b);
@@ -141,10 +153,17 @@ export function findSupportResistance(points: PricePoint[]): SupportResistance {
 }
 
 export function computeRecoveryMetrics(points: PricePoint[]): RecoveryMetrics {
-  const sorted = [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  const sorted = [...points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const prices = sorted.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
   if (prices.length < 14) {
-    return { recentDrop: null, hasStabilized: false, daysSinceBottom: null, priorRecoveryPattern: false };
+    return {
+      recentDrop: null,
+      hasStabilized: false,
+      daysSinceBottom: null,
+      priorRecoveryPattern: false,
+    };
   }
 
   const currentPrice = prices[prices.length - 1];
@@ -155,10 +174,7 @@ export function computeRecoveryMetrics(points: PricePoint[]): RecoveryMetrics {
   }
   const recentDrop = peak90 > 0 ? ((currentPrice - peak90) / peak90) * 100 : null;
 
-  const recent30 = prices.slice(-30);
   const recent10 = prices.slice(-10);
-  const avg10 = recent10.reduce((a, b) => a + b, 0) / recent10.length;
-  const avg30 = recent30.reduce((a, b) => a + b, 0) / recent30.length;
   const hasStabilized = Math.abs(recent10[recent10.length - 1] - recent10[0]) / recent10[0] < 0.05;
 
   let minIdx = 0;
@@ -191,7 +207,7 @@ export function computeRecoveryMetrics(points: PricePoint[]): RecoveryMetrics {
     }
   }
 
-  const priorRecoveryPattern = priorDrops.length > 0 && priorDrops.some(r => r > 10);
+  const priorRecoveryPattern = priorDrops.length > 0 && priorDrops.some((r) => r > 10);
 
   return { recentDrop, hasStabilized, daysSinceBottom, priorRecoveryPattern };
 }
@@ -205,15 +221,15 @@ export function analyzeSimilarCards(
     'Rare Secret': ['Rare Secret', ' Rare Secret'],
     'Rare Ultra': ['Rare Ultra', ' Rare Ultra'],
     'Rare Holo': ['Rare Holo', ' Rare Holo', 'Rare Holo V', 'Rare Holo VMAX', 'Rare Holo VSTAR'],
-    'Rare': ['Rare'],
-    'Uncommon': ['Uncommon'],
-    'Common': ['Common'],
-    'Promo': ['Promo'],
+    Rare: ['Rare'],
+    Uncommon: ['Uncommon'],
+    Common: ['Common'],
+    Promo: ['Promo'],
   };
 
   const matchingRarities = rarityMap[rarity] || [rarity];
   const similar = allCards.filter(
-    c => matchingRarities.includes(c.rarity) && c.avgReturn90d !== null
+    (c) => matchingRarities.includes(c.rarity) && c.avgReturn90d !== null
   );
 
   if (similar.length === 0) return { similarAvgReturn: null, sampleSize: 0 };
@@ -233,8 +249,10 @@ export function computeMarketBenchmark(
   const returns: number[] = [];
 
   for (const history of allPriceHistories) {
-    const sorted = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+    const sorted = [...history].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const prices = sorted.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
 
     if (prices.length < days + 1) continue;
 
@@ -263,9 +281,6 @@ export function computeMarketBenchmark(
  * Computes excess return: how much a card's predicted return exceeds
  * the market benchmark. Positive = outperforming, negative = underperforming.
  */
-export function computeExcessReturn(
-  predictedReturn: number,
-  marketAvgReturn: number
-): number {
+export function computeExcessReturn(predictedReturn: number, marketAvgReturn: number): number {
   return predictedReturn - marketAvgReturn;
 }

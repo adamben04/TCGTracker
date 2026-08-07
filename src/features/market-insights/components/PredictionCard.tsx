@@ -72,8 +72,8 @@ export function PredictionCard({ prediction, card, window: predictionWindow = '9
     try {
       const result = await marketInsightsApi.getAiExplanation(prediction.cardId);
       setExplanationText(result.explanation);
-    } catch (err: any) {
-      const msg = err?.message || 'AI analysis unavailable';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'AI analysis unavailable';
       setExplanationText(`Error: ${msg}`);
     } finally {
       setLoadingExplanation(false);
@@ -82,11 +82,7 @@ export function PredictionCard({ prediction, card, window: predictionWindow = '9
 
   return (
     <div className="relative">
-      <PokemonCardTile
-        card={displayCard}
-        onClick={handleOpen}
-        onViewPriceHistory={handleOpen}
-      />
+      <PokemonCardTile card={displayCard} onClick={handleOpen} onViewPriceHistory={handleOpen} />
 
       <div className="pointer-events-none absolute left-2 right-2 top-2 z-30 flex flex-wrap items-start justify-between gap-1.5">
         <span
@@ -183,13 +179,9 @@ export function PredictionCard({ prediction, card, window: predictionWindow = '9
                 <span className="ml-2 text-xs text-ink-muted">Generating analysis...</span>
               </div>
             ) : explanationText?.startsWith('Error:') ? (
-              <p className="text-xs leading-relaxed text-red-400">
-                {explanationText}
-              </p>
+              <p className="text-xs leading-relaxed text-red-400">{explanationText}</p>
             ) : (
-              <p className="text-xs leading-relaxed text-ink-secondary">
-                {explanationText}
-              </p>
+              <p className="text-xs leading-relaxed text-ink-secondary">{explanationText}</p>
             )}
           </div>
         </div>

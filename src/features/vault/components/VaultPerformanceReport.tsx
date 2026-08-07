@@ -71,12 +71,14 @@ function buildValueSeries(
 
   const points: { date: string; price: number }[] = [];
   const end = new Date();
-  const begin = start ?? (() => {
-    const dates = vaultCards
-      .map((c) => new Date(c.purchaseDate).getTime())
-      .filter((t) => !Number.isNaN(t));
-    return new Date(dates.length ? Math.min(...dates) : end.getTime() - 90 * 86400000);
-  })();
+  const begin =
+    start ??
+    (() => {
+      const dates = vaultCards
+        .map((c) => new Date(c.purchaseDate).getTime())
+        .filter((t) => !Number.isNaN(t));
+      return new Date(dates.length ? Math.min(...dates) : end.getTime() - 90 * 86400000);
+    })();
 
   const days = Math.max(1, Math.ceil((end.getTime() - begin.getTime()) / 86400000));
   const steps = Math.min(days, period === '7d' ? 7 : period === '30d' ? 30 : 60);
@@ -166,12 +168,14 @@ export const VaultPerformanceReport: React.FC<VaultPerformanceReportProps> = ({ 
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-lg border border-border-subtle p-0.5">
-            {([
-              ['7d', '7D'],
-              ['30d', '30D'],
-              ['ytd', 'YTD'],
-              ['all', 'All'],
-            ] as [PerformancePeriod, string][]).map(([key, label]) => (
+            {(
+              [
+                ['7d', '7D'],
+                ['30d', '30D'],
+                ['ytd', 'YTD'],
+                ['all', 'All'],
+              ] as [PerformancePeriod, string][]
+            ).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -229,7 +233,13 @@ export const VaultPerformanceReport: React.FC<VaultPerformanceReportProps> = ({ 
       </div>
 
       {series.length > 1 && (
-        <PriceChart priceHistory={series} title="Estimated portfolio value" variant="dark" height={220} compact />
+        <PriceChart
+          priceHistory={series}
+          title="Estimated portfolio value"
+          variant="dark"
+          height={220}
+          compact
+        />
       )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">

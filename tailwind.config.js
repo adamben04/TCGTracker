@@ -71,7 +71,7 @@ export default {
       fontFamily: {
         sans: ['"Poppins"', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        display: ['"Righteous"', '"Poppins"', 'system-ui', 'sans-serif'],
+        display: ['"Poppins"', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         display: [

@@ -107,45 +107,45 @@ export const syncCatalogData = async (
   const result = await withDbJobLock(
     'catalog_sync',
     async () => {
-    const sets = await provider.getSets(250);
-    let setsProcessed = 0;
-    let cardsUpserted = 0;
+      const sets = await provider.getSets(250);
+      let setsProcessed = 0;
+      let cardsUpserted = 0;
 
-    for (const set of sets) {
-      // Yield to event loop periodically to avoid blocking API requests
-      if (setsProcessed > 0 && setsProcessed % YIELD_EVERY_N_SETS === 0) {
-        await yieldToEventLoop();
-      }
+      for (const set of sets) {
+        // Yield to event loop periodically to avoid blocking API requests
+        if (setsProcessed > 0 && setsProcessed % YIELD_EVERY_N_SETS === 0) {
+          await yieldToEventLoop();
+        }
 
-      try {
-        const setCards = await provider.getCardsForSet(set.id);
+        try {
+          const setCards = await provider.getCardsForSet(set.id);
 
-        if (!setCards.length) {
-          logger.debug(`Skipping empty set: ${set.name}`);
+          if (!setCards.length) {
+            logger.debug(`Skipping empty set: ${set.name}`);
+            setsProcessed += 1;
+            continue;
+          }
+
+          // Yield again before heavy DB work
+          await yieldToEventLoop();
+
+          const inserted = await upsertCards(setCards, set);
+          cardsUpserted += inserted;
           setsProcessed += 1;
-          continue;
+
+          if (setsProcessed % 25 === 0) {
+            logger.info(`Catalog sync progress: ${setsProcessed}/${sets.length} sets processed`);
+          }
+        } catch (error) {
+          logger.warn(`Failed to sync set ${set.name || set.id}`, {
+            error: (error as Error).message,
+          });
         }
 
-        // Yield again before heavy DB work
-        await yieldToEventLoop();
-
-        const inserted = await upsertCards(setCards, set);
-        cardsUpserted += inserted;
-        setsProcessed += 1;
-
-        if (setsProcessed % 25 === 0) {
-          logger.info(`Catalog sync progress: ${setsProcessed}/${sets.length} sets processed`);
-        }
-      } catch (error) {
-        logger.warn(`Failed to sync set ${set.name || set.id}`, {
-          error: (error as Error).message,
-        });
+        await delay(SET_DELAY_MS);
       }
 
-      await delay(SET_DELAY_MS);
-    }
-
-    return { setsProcessed, cardsUpserted };
+      return { setsProcessed, cardsUpserted };
     },
     { skipIfBusy: true }
   );

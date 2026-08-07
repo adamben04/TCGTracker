@@ -20,6 +20,8 @@ export const getDatabasePath = () => DB_SOURCE;
 let db: sqlite3.Database;
 let dbInitPromise: Promise<void> | null = null;
 
+export const isDatabaseOpen = () => Boolean(db);
+
 const runDb = (database: sqlite3.Database, sql: string, params: unknown[] = []): Promise<void> =>
   new Promise((resolve, reject) => {
     database.run(sql, params, (err) => {
@@ -374,13 +376,16 @@ export const initializeDatabase = (): Promise<void> => {
       });
     }, 10000);
 
-    setInterval(() => {
-      database.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
-        if (err) {
-          logger.warn('WAL checkpoint failed', { error: err.message });
-        }
-      });
-    }, 30 * 60 * 1000);
+    setInterval(
+      () => {
+        database.run('PRAGMA wal_checkpoint(TRUNCATE)', (err) => {
+          if (err) {
+            logger.warn('WAL checkpoint failed', { error: err.message });
+          }
+        });
+      },
+      30 * 60 * 1000
+    );
   })();
 
   return dbInitPromise;

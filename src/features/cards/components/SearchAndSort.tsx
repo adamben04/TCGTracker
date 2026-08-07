@@ -103,6 +103,7 @@ export const SearchFilters: React.FC<SearchAndSortProps> = ({
             )}
           </button>
           <select
+            aria-label="Sort cards"
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value as SortOption | OnePieceSortOption)}
             disabled={isLoading}
@@ -122,6 +123,7 @@ export const SearchFilters: React.FC<SearchAndSortProps> = ({
           </select>
           {!isOnePiece && (
             <select
+              aria-label="Filter cards by market signal"
               value={filterBy}
               onChange={(e) => onFilterChange(e.target.value as FilterOption)}
               disabled={isLoading}
@@ -146,7 +148,7 @@ export const SearchFilters: React.FC<SearchAndSortProps> = ({
               disabled={isLoading}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 filterBy === chip.value
-                  ? 'bg-emerald-500/20 text-emerald-300'
+                  ? 'bg-gain-muted text-gain'
                   : 'bg-surface-hover text-ink-secondary hover:bg-surface-hover'
               } disabled:cursor-not-allowed disabled:opacity-60`}
             >

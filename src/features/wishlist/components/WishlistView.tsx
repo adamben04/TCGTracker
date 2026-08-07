@@ -34,13 +34,15 @@ export const WishlistView: React.FC = () => {
 
   const atTargetIds = useMemo(
     () => new Set(cardWishlistService.getAtTarget(game).map((i) => i.id)),
-    [items, game]
+    [game]
   );
 
   const visible = useMemo(() => {
     const list = filter === 'at-target' ? items.filter((i) => atTargetIds.has(i.id)) : items;
     return [...list].sort(
-      (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.card.name.localeCompare(b.card.name)
+      (a, b) =>
+        PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+        a.card.name.localeCompare(b.card.name)
     );
   }, [items, filter, atTargetIds]);
 
@@ -66,7 +68,8 @@ export const WishlistView: React.FC = () => {
             {gameLabel} Wishlist
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Track cards you want with optional buy targets. At-target badges appear when market ≤ target.
+            Track cards you want with optional buy targets. At-target badges appear when market ≤
+            target.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -83,12 +86,10 @@ export const WishlistView: React.FC = () => {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {(
-          [
-            { key: 'all' as const, label: `All (${items.length})` },
-            { key: 'at-target' as const, label: `At target (${atTargetIds.size})` },
-          ]
-        ).map(({ key, label }) => (
+        {[
+          { key: 'all' as const, label: `All (${items.length})` },
+          { key: 'at-target' as const, label: `At target (${atTargetIds.size})` },
+        ].map(({ key, label }) => (
           <button
             key={key}
             type="button"

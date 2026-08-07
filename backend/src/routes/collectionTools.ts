@@ -66,14 +66,19 @@ export const createCollectionToolsRouter = (
     }
   });
 
-  router.post('/sealed', authenticate, validate(sealedSchema), async (req: AuthRequest, res: Response) => {
-    try {
-      const item = await sealedService.add(req.user!.id, req.body);
-      ok(res, { item }, 201);
-    } catch (error: any) {
-      fail(res, error.message);
+  router.post(
+    '/sealed',
+    authenticate,
+    validate(sealedSchema),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const item = await sealedService.add(req.user!.id, req.body);
+        ok(res, { item }, 201);
+      } catch (error: any) {
+        fail(res, error.message);
+      }
     }
-  });
+  );
 
   router.put(
     '/sealed/:id',
@@ -92,14 +97,19 @@ export const createCollectionToolsRouter = (
     }
   );
 
-  router.delete('/sealed/:id', authenticate, validate(validateId), async (req: AuthRequest, res: Response) => {
-    try {
-      await sealedService.remove(Number(req.params.id), req.user!.id);
-      ok(res, { removed: true });
-    } catch (error: any) {
-      fail(res, error.message);
+  router.delete(
+    '/sealed/:id',
+    authenticate,
+    validate(validateId),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await sealedService.remove(Number(req.params.id), req.user!.id);
+        ok(res, { removed: true });
+      } catch (error: any) {
+        fail(res, error.message);
+      }
     }
-  });
+  );
 
   // --- Transactions ledger ---
   router.get('/transactions', authenticate, async (req: AuthRequest, res: Response) => {
@@ -126,25 +136,35 @@ export const createCollectionToolsRouter = (
     }
   });
 
-  router.post('/transactions', authenticate, validate(transactionSchema), async (req: AuthRequest, res: Response) => {
-    try {
-      const item = await transactionService.add(req.user!.id, req.body);
-      const summary = await transactionService.summary(req.user!.id);
-      ok(res, { item, summary }, 201);
-    } catch (error: any) {
-      fail(res, error.message);
+  router.post(
+    '/transactions',
+    authenticate,
+    validate(transactionSchema),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const item = await transactionService.add(req.user!.id, req.body);
+        const summary = await transactionService.summary(req.user!.id);
+        ok(res, { item, summary }, 201);
+      } catch (error: any) {
+        fail(res, error.message);
+      }
     }
-  });
+  );
 
-  router.delete('/transactions/:id', authenticate, validate(validateId), async (req: AuthRequest, res: Response) => {
-    try {
-      await transactionService.remove(Number(req.params.id), req.user!.id);
-      const summary = await transactionService.summary(req.user!.id);
-      ok(res, { removed: true, summary });
-    } catch (error: any) {
-      fail(res, error.message);
+  router.delete(
+    '/transactions/:id',
+    authenticate,
+    validate(validateId),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        await transactionService.remove(Number(req.params.id), req.user!.id);
+        const summary = await transactionService.summary(req.user!.id);
+        ok(res, { removed: true, summary });
+      } catch (error: any) {
+        fail(res, error.message);
+      }
     }
-  });
+  );
 
   return router;
 };

@@ -3,7 +3,7 @@
  */
 
 // Debounce function for search and input handlers
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: never[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -23,7 +23,7 @@ export function debounce<T extends (...args: any[]) => any>(
 }
 
 // Throttle function for scroll and resize handlers
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: never[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -55,7 +55,7 @@ export function lazyLoadImage(img: HTMLImageElement, src: string): void {
 }
 
 // Memoize expensive calculations
-export function memoize<T extends (...args: any[]) => any>(fn: T): T {
+export function memoize<T extends (...args: never[]) => unknown>(fn: T): T {
   const cache = new Map<string, ReturnType<T>>();
 
   return ((...args: Parameters<T>) => {
@@ -70,10 +70,7 @@ export function memoize<T extends (...args: any[]) => any>(fn: T): T {
 }
 
 // Batch multiple state updates
-export function batchUpdates(
-  updates: Array<() => void>,
-  callback?: () => void
-): void {
+export function batchUpdates(updates: Array<() => void>, callback?: () => void): void {
   updates.forEach((update) => update());
   callback?.();
 }
@@ -124,7 +121,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-export class ResponseCache<T = any> {
+export class ResponseCache<T = unknown> {
   private cache = new Map<string, CacheEntry<T>>();
   private ttl: number;
 
@@ -169,4 +166,3 @@ export class ResponseCache<T = any> {
     return true;
   }
 }
-

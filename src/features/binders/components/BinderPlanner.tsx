@@ -4,9 +4,18 @@ import type { BinderPlan, ConstraintOptions } from '../types';
 import type { PlanRequest } from '../services/binderService';
 
 const THEME_EMOJI: Record<string, string> = {
-  warm: '🔥', sunny: '☀️', icy: '❄️', cool: '💧', earthy: '🌿',
-  colorful: '🌈', dark: '🌑', pastel: '🌸', neon: '💡', nature: '🌲',
-  mystic: '🔮', royal: '👑',
+  warm: '🔥',
+  sunny: '☀️',
+  icy: '❄️',
+  cool: '💧',
+  earthy: '🌿',
+  colorful: '🌈',
+  dark: '🌑',
+  pastel: '🌸',
+  neon: '💡',
+  nature: '🌲',
+  mystic: '🔮',
+  royal: '👑',
 };
 
 interface BinderPlannerProps {
@@ -86,12 +95,16 @@ export const BinderPlanner: React.FC<BinderPlannerProps> = ({
       </div>
 
       <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm font-semibold text-ink-secondary">
+        <label
+          htmlFor="binder-prompt"
+          className="flex items-center gap-2 text-sm font-semibold text-ink-secondary"
+        >
           <Sparkles className="h-4 w-4 text-accent" />
           Prompt
         </label>
         <textarea
           value={prompt}
+          id="binder-prompt"
           onChange={(e) => {
             setPrompt(e.target.value);
             clearError();
@@ -104,14 +117,20 @@ export const BinderPlanner: React.FC<BinderPlannerProps> = ({
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-ink-secondary">
+          <label
+            htmlFor="binder-budget"
+            className="flex items-center gap-2 text-sm font-semibold text-ink-secondary"
+          >
             <DollarSign className="h-4 w-4 text-accent" />
             Budget
           </label>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-muted">
+              $
+            </span>
             <input
               type="number"
+              id="binder-budget"
               value={budget}
               onChange={(e) => setBudget(e.target.value)}
               placeholder="100"

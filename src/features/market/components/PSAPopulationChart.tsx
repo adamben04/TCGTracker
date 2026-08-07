@@ -1,5 +1,16 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import { PSAData } from '../../../types/pokemon';
 
 interface PSAPopulationChartProps {
@@ -16,10 +27,10 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
     { grade: 'PSA 7', population: psaData.population.grade7, price: 0 },
   ];
 
-  const pieData = populationData.map(item => ({
+  const pieData = populationData.map((item) => ({
     name: item.grade,
     value: item.population,
-    percentage: ((item.population / total) * 100).toFixed(1)
+    percentage: ((item.population / total) * 100).toFixed(1),
   }));
 
   const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
@@ -29,7 +40,9 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gain-muted p-4 rounded-lg">
           <p className="text-sm text-gain font-medium">PSA 10 Population</p>
-          <p className="text-2xl font-bold text-ink-primary">{psaData.population.grade10.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-ink-primary">
+            {psaData.population.grade10.toLocaleString()}
+          </p>
           <p className="text-xs text-ink-muted">
             {psaData.popReport.grade10Percentage.toFixed(1)}% of total
           </p>
@@ -55,7 +68,7 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
               <Tooltip
                 formatter={(value: number, name: string) => [
                   name === 'population' ? value.toLocaleString() : `$${value}`,
-                  name === 'population' ? 'Population' : 'Price'
+                  name === 'population' ? 'Population' : 'Price',
                 ]}
               />
               <Bar dataKey="population" fill="#3B82F6" />
@@ -107,15 +120,17 @@ export const PSAPopulationChart: React.FC<PSAPopulationChartProps> = ({ psaData 
       <div>
         <h4 className="text-lg font-semibold text-ink-primary mb-3">Price by Grade</h4>
         <div className="grid grid-cols-2 gap-3">
-          {populationData.filter(item => item.price > 0).map((item) => (
-            <div key={item.grade} className="bg-surface-inset p-3 rounded-lg">
-              <p className="text-sm text-ink-muted">{item.grade}</p>
-              <p className="text-xl font-bold text-ink-primary">${item.price}</p>
-              <p className="text-xs text-ink-muted">
-                {item.population.toLocaleString()} available
-              </p>
-            </div>
-          ))}
+          {populationData
+            .filter((item) => item.price > 0)
+            .map((item) => (
+              <div key={item.grade} className="bg-surface-inset p-3 rounded-lg">
+                <p className="text-sm text-ink-muted">{item.grade}</p>
+                <p className="text-xl font-bold text-ink-primary">${item.price}</p>
+                <p className="text-xs text-ink-muted">
+                  {item.population.toLocaleString()} available
+                </p>
+              </div>
+            ))}
         </div>
       </div>
 

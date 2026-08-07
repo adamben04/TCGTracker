@@ -29,6 +29,7 @@ The server will run on `http://localhost:5001` (override with `PORT`).
 ```
 GET /health
 ```
+Reports fast-matcher readiness and indexed-card count in `fast_matcher`.
 
 ### Scan Card
 ```
@@ -60,8 +61,19 @@ GET /api/available-sets
 
 Returns list of all available Pokemon card sets.
 
+## Security and deployment
+
+- Local development permits cross-origin requests. In production (including
+  Render), set `SCANNER_CORS_ORIGIN` to a comma-separated frontend allowlist;
+  if it is unset, the service sends no CORS headers.
+- Uploads are limited to 20 MB compressed, 12 million decoded pixels, and
+  6000 pixels on either side. This protects the free-tier process from image
+  decompression bombs.
+- Submitted images are processed in memory (with an OCR-only temporary file
+  deleted immediately) and are not included in grading results or retained by
+  the scanner. The unauthenticated Python grading-history endpoint is disabled.
+
 ## Notes
 
 - The backend uses the "master" set by default which includes all Pokemon cards
-- Temporary uploaded images are stored in `temp_uploads/` and cleaned up after processing
-- CORS is enabled for the React frontend
+- OCR fallback uses a temporary image in `temp_uploads/`, which is deleted after processing

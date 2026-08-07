@@ -72,7 +72,7 @@ function OnePieceSetBinderGrid({
             )}
           </div>
           <div className="p-1.5">
-            <p className="truncate text-[11px] font-medium text-white">{card.name}</p>
+            <p className="truncate text-[11px] font-medium text-ink-primary">{card.name}</p>
             <div className="mt-0.5 flex items-center justify-between">
               <span className="text-[10px] text-ink-muted">{card.id}</span>
               {card.marketPrice != null && card.marketPrice > 0 && (
@@ -106,7 +106,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
   );
   const [vaultCard, setVaultCard] = useState<SetTrackerCard | null>(null);
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
-  const [onePieceCards, setOnePieceCards] = useState<OnePieceCard[]>([]);
+  const [, setOnePieceCards] = useState<OnePieceCard[]>([]);
 
   const isOP = isOnePieceSet(setId);
 
@@ -167,7 +167,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [setId, historyRange, isPokemon, isOnePiece]);
+  }, [setId, historyRange, isOnePiece, isOP]);
 
   useEffect(() => {
     reload();
@@ -231,7 +231,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
           All sets
         </button>
 
-        <section className="rounded-xl border border-border-default bg-surface-raised p-4 text-white shadow-sm">
+        <section className="rounded-xl border border-border-default bg-surface-raised p-4 text-ink-primary shadow-sm">
           <div className="flex flex-wrap items-start gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-accent-muted text-accent">
               <Layers className="h-8 w-8" />
@@ -280,7 +280,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
         All sets
       </button>
 
-      <section className="rounded-xl border border-border-default bg-surface-raised p-4 text-white shadow-sm">
+      <section className="rounded-xl border border-border-default bg-surface-raised p-4 text-ink-primary shadow-sm">
         <div className="flex flex-wrap items-start gap-4">
           {setMeta && <SetLogo set={setMeta} size="lg" />}
           <div className="min-w-0 flex-1">
@@ -359,7 +359,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-white">Set value over time</h2>
+            <h2 className="text-sm font-semibold text-ink-primary">Set value over time</h2>
           </div>
           <div className="flex gap-1 rounded-lg border border-border-subtle p-0.5">
             {(['30d', '90d', '1y', 'all'] as ValueHistoryRange[]).map((r) => (
@@ -401,20 +401,21 @@ export const SetDetail: React.FC<SetDetailProps> = ({ setId, onBack }) => {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {!isOP && filterButtons.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
-                filter === key
-                  ? 'border-accent/40 bg-accent-muted text-accent'
-                  : 'border-border-default text-ink-muted hover:text-ink-primary'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          {!isOP &&
+            filterButtons.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  filter === key
+                    ? 'border-accent/40 bg-accent-muted text-accent'
+                    : 'border-border-default text-ink-muted hover:text-ink-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           {!isOP && (
             <select
               value={sortBy}

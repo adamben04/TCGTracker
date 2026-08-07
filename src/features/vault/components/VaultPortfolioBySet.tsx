@@ -5,7 +5,7 @@ import { pokemonApi } from '../../../services/pokemonApi';
 import { formatCurrency, formatPercent } from '../../../utils/cardDisplay';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 
-export interface SetPortfolioRow {
+interface SetPortfolioRow {
   setId: string;
   setName: string;
   cardCount: number;
@@ -15,7 +15,7 @@ export interface SetPortfolioRow {
   profitPct: number;
 }
 
-export function buildSetPortfolioRows(vaultCards: VaultCard[]): SetPortfolioRow[] {
+function buildSetPortfolioRows(vaultCards: VaultCard[]): SetPortfolioRow[] {
   const bySet = new Map<string, SetPortfolioRow>();
 
   for (const entry of vaultCards) {
@@ -38,8 +38,7 @@ export function buildSetPortfolioRows(vaultCards: VaultCard[]): SetPortfolioRow[
     const row = bySet.get(key)!;
     const qty = entry.quantity;
     const purchase = entry.purchasePrice * qty;
-    const market =
-      (entry.card.marketPrice ?? pokemonApi.extractCardPrice(entry.card)) * qty;
+    const market = (entry.card.marketPrice ?? pokemonApi.extractCardPrice(entry.card)) * qty;
 
     row.cardCount += qty;
     row.purchaseValue += purchase;
@@ -48,8 +47,7 @@ export function buildSetPortfolioRows(vaultCards: VaultCard[]): SetPortfolioRow[
 
   for (const row of bySet.values()) {
     row.profit = row.marketValue - row.purchaseValue;
-    row.profitPct =
-      row.purchaseValue > 0 ? (row.profit / row.purchaseValue) * 100 : 0;
+    row.profitPct = row.purchaseValue > 0 ? (row.profit / row.purchaseValue) * 100 : 0;
   }
 
   return [...bySet.values()].sort((a, b) => b.marketValue - a.marketValue);
@@ -90,14 +88,19 @@ export const VaultPortfolioBySet: React.FC<VaultPortfolioBySetProps> = ({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.setId} className="border-b border-border-subtle last:border-0 hover:bg-surface-hover">
+              <tr
+                key={row.setId}
+                className="border-b border-border-subtle last:border-0 hover:bg-surface-hover"
+              >
                 <td className="px-4 py-3 font-medium text-ink-primary">
                   <span className="inline-flex items-center gap-2">
                     <Layers className="h-4 w-4 text-accent" />
                     {row.setName}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">{row.cardCount}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">
+                  {row.cardCount}
+                </td>
                 <td className="px-4 py-3 text-right tabular-nums text-ink-secondary">
                   {formatCurrency(row.purchaseValue)}
                 </td>

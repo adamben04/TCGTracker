@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { logger } from './logger';
 
 type AsyncFn = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 

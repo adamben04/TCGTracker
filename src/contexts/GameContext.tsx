@@ -28,6 +28,7 @@ const GameContext = createContext<GameContextValue>({
   isOnePiece: false,
 });
 
+// eslint-disable-next-line react-refresh/only-export-components -- provider-private context hook
 export const useGame = () => {
   const ctx = useContext(GameContext);
   return ctx;
@@ -55,9 +56,5 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [game, setGame]
   );
 
-  return (
-    <GameContext.Provider value={value}>
-      {children}
-    </GameContext.Provider>
-  );
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }

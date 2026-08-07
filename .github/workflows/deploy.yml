@@ -1,59 +1,55 @@
-name: Deploy to Production
+name: Production deployment checks
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: production
+permissions:
+  contents: read
 
+jobs:
+  verify-production-builds:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
-          cache: 'npm'
+          node-version: 20.x
+          cache: npm
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
+      - name: Verify frontend
+        run: |
+          npm run lint
+          npm run type-check
+          npm run test:run
+          npm run build
         env:
-          NODE_ENV: production
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
+          VITE_CARD_SCANNER_API_URL: ${{ secrets.VITE_CARD_SCANNER_API_URL }}
+          VITE_ENABLE_AUTH: 'true'
 
-      - name: Deploy to Vercel (Frontend)
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          working-directory: ./
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
 
-      # Uncomment and configure for your backend deployment
-      # - name: Deploy backend to Railway
-      #   run: |
-      #     npm install -g railway
-      #     railway up
-      #   env:
-      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      #   working-directory: ./backend
-
-      - name: Notify deployment status
-        if: always() && secrets.SLACK_WEBHOOK != ''
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'Deployment to production completed!'
+      - name: Verify backend
+        working-directory: backend
+        run: |
+          npm run lint
+          npm run test:run
+          npm run build
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+          NODE_ENV: test
+          JWT_SECRET: github-actions-test-secret-at-least-32-characters
 
+      - name: Deployment handoff
+        run: |
+          echo "Cloudflare Pages and both Render services deploy from Git after this push."
+          echo "Production frontend: https://tcgtracker-9oc.pages.dev/"

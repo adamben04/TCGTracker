@@ -130,7 +130,10 @@ const getCachedPopulation = async (cacheKey: string): Promise<PopulationLookupRe
   }
 };
 
-const saveCachedPopulation = async (cacheKey: string, payload: PopulationLookupResult): Promise<void> => {
+const saveCachedPopulation = async (
+  cacheKey: string,
+  payload: PopulationLookupResult
+): Promise<void> => {
   await runQuery(
     `INSERT OR REPLACE INTO population_cache (cacheKey, payload, fetchedAt) VALUES (?, ?, ?)`,
     [cacheKey, JSON.stringify(payload), Date.now()]
@@ -214,7 +217,10 @@ const fetchPriceChartingPopulations = async (
   }
 
   const ranked = rows
-    .map((row) => ({ row, score: scoreCandidate({ title: row.title, setName: row.setName }, input) }))
+    .map((row) => ({
+      row,
+      score: scoreCandidate({ title: row.title, setName: row.setName }, input),
+    }))
     .sort((a, b) => b.score - a.score);
   const best = ranked[0]?.row;
   if (!best) {
@@ -303,7 +309,10 @@ const fetchBeckettPopulation = async (input: PopulationLookupInput): Promise<num
 
 let lastScrapeTime = 0;
 
-const resolveGrader = async (grader: GraderKey, input: PopulationLookupInput): Promise<GraderPopulationResult> => {
+const resolveGrader = async (
+  grader: GraderKey,
+  input: PopulationLookupInput
+): Promise<GraderPopulationResult> => {
   try {
     const now = Date.now();
     const elapsed = now - lastScrapeTime;

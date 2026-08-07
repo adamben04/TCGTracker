@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Pack } from '../../../types/pokemon';
 import { tieredPackService } from '../../../services/tieredPackService';
 import { useGame } from '../../../contexts/GameContext';
 import { PackOpeningModal } from './PackOpeningModal';
 import { Package, Sparkles, History, Zap, ChevronDown } from 'lucide-react';
-import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
 import { LoadingSpinner } from '../../../components/common/LoadingSpinner';
 import { formatCurrency } from '../../../utils/cardDisplay';
+import { DataProvenance } from '../../../components/ui/DataProvenance';
+import { PageHeader } from '../../../components/ui/PageHeader';
+import { SegmentedControl } from '../../../components/ui/SegmentedControl';
 
 export const PackShop: React.FC = () => {
   const { game, setGame, isOnePiece } = useGame();
@@ -17,11 +19,7 @@ export const PackShop: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [boostedPacks, setBoostedPacks] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    loadPacks();
-  }, [game]);
-
-  const loadPacks = async () => {
+  const loadPacks = useCallback(async () => {
     setIsLoading(true);
     try {
       setPacks(tieredPackService.getAvailablePacks(game));
@@ -30,7 +28,11 @@ export const PackShop: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [game]);
+
+  useEffect(() => {
+    void loadPacks();
+  }, [loadPacks]);
 
   const handleOpenPack = (pack: Pack, boosted: boolean) => {
     setSelectedPack(pack);
@@ -97,44 +99,36 @@ export const PackShop: React.FC = () => {
 
   return (
     <div className="section-stack">
-      <div>
-        <SectionLabel className="text-violet-300/90">Simulated rip lab</SectionLabel>
-        <h2 className="mt-2 text-3xl font-bold text-ink-primary">
-          {isOnePiece ? 'One Piece pack shop' : 'Pack shop'}
-        </h2>
-        <p className="mt-2 text-sm text-ink-muted">
-          Open tiered packs with play-money odds — results are simulated, not financial advice.
-          {isOnePiece ? ' Pulls come from One Piece set pools.' : ''}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs text-ink-muted font-medium">TCG:</span>
-        <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
-          <button
-            onClick={() => setGame('pokemon')}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              game === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
-            }`}
-          >
-            Pokemon
-          </button>
-          <button
-            onClick={() => setGame('onepiece')}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-              game === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink-secondary'
-            }`}
-          >
-            One Piece
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Simulator"
+        title={isOnePiece ? 'One Piece pack lab' : 'Pack lab'}
+        description="Explore set pools through a play-money simulator. Pull values and results are illustrative—not purchasing advice."
+        actions={
+          <SegmentedControl
+            label="Trading card game"
+            value={game}
+            options={[
+              { value: 'pokemon', label: 'Pokémon' },
+              { value: 'onepiece', label: 'One Piece' },
+            ]}
+            onChange={setGame}
+          />
+        }
+        meta={
+          <DataProvenance
+            source="Catalog rarity pools"
+            qualifier="Simulated outcomes do not represent official sealed-product odds."
+          />
+        }
+      />
 
       {history.packsOpened > 0 && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <article className="card min-w-0">
             <p className="section-label mb-2">Packs opened</p>
-            <p className="truncate text-3xl font-bold tabular-nums text-ink-primary">{history.packsOpened}</p>
+            <p className="truncate text-3xl font-bold tabular-nums text-ink-primary">
+              {history.packsOpened}
+            </p>
           </article>
           <article className="card min-w-0">
             <p className="section-label mb-2">Total spent</p>
@@ -218,8 +212,12 @@ export const PackShop: React.FC = () => {
                       <p className="font-bold tabular-nums text-ink-primary">{pack.cardsPerPack}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-ink-muted">Avg value</p>
-                      <p className="font-bold tabular-nums text-emerald-300">{formatCurrency(pack.averageValue)}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-ink-muted">
+                        Avg value
+                      </p>
+                      <p className="font-bold tabular-nums text-emerald-300">
+                        {formatCurrency(pack.averageValue)}
+                      </p>
                     </div>
                   </div>
 
@@ -254,13 +252,22 @@ export const PackShop: React.FC = () => {
                       <span>
                         Pull rates (full disclosure)
                         {boostedPacks[pack.id] && (
-                          <span className="ml-1.5 inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">BOOSTED</span>
+                          <span className="ml-1.5 inline-flex items-center rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                            BOOSTED
+                          </span>
                         )}
                       </span>
                       <ChevronDown className="h-3.5 w-3.5 text-ink-muted transition-transform group-open/odds:rotate-180" />
                     </summary>
-                    <div className="mt-3 space-y-2" role="table" aria-label={`${pack.name} pull rates`}>
-                      {(boostedPacks[pack.id] && pack.boostedValueRanges ? pack.boostedValueRanges : pack.valueRanges).map((range, idx) => (
+                    <div
+                      className="mt-3 space-y-2"
+                      role="table"
+                      aria-label={`${pack.name} pull rates`}
+                    >
+                      {(boostedPacks[pack.id] && pack.boostedValueRanges
+                        ? pack.boostedValueRanges
+                        : pack.valueRanges
+                      ).map((range, idx) => (
                         <div key={idx} className="flex items-center gap-2 text-xs" role="row">
                           <span className="w-24 truncate text-ink-muted" title={range.label}>
                             {range.label}
@@ -325,7 +332,9 @@ export const PackShop: React.FC = () => {
                 </div>
                 <div className="shrink-0 text-right text-sm">
                   <p className="tabular-nums text-ink-muted">{formatCurrency(pull.totalValue)}</p>
-                  <p className={`font-medium tabular-nums ${pull.profit >= 0 ? 'text-gain' : 'text-loss'}`}>
+                  <p
+                    className={`font-medium tabular-nums ${pull.profit >= 0 ? 'text-gain' : 'text-loss'}`}
+                  >
                     {pull.profit >= 0 ? '+' : ''}
                     {formatCurrency(pull.profit)}
                   </p>

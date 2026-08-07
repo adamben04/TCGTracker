@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { VaultCard } from '../VaultCard';
+import type { VaultCard as VaultCardType } from '../../../../types/pokemon';
 
 const mockCard = {
   id: 'sv7-1',
@@ -11,7 +12,7 @@ const mockCard = {
   images: { small: 'https://example.com/small.png', large: 'https://example.com/large.png' },
   marketPrice: 50,
   tcgplayer: { prices: { holofoil: { market: 50 } } },
-} as any;
+};
 
 const mockVaultCard = {
   id: 'vault-1',
@@ -21,7 +22,7 @@ const mockVaultCard = {
   purchaseDate: '2025-01-01',
   condition: 'near-mint',
   notes: '',
-} as any;
+} as unknown as VaultCardType;
 
 const mockProps = {
   vaultCard: mockVaultCard,

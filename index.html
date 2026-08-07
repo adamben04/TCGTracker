@@ -17,13 +17,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://tcgtracker.app" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#050508" />
+    <meta name="theme-color" content="#101216" />
+    <meta name="color-scheme" content="dark light" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://api.pokemontcg.io" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Righteous&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap"
       rel="stylesheet"
     />
     <meta
@@ -39,8 +40,8 @@
               ? stored
               : window.matchMedia('(prefers-color-scheme: dark)').matches
                 ? 'dark'
-                : 'dark';
-          document.documentElement.setAttribute('data-theme', 'dark');
+                : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');
         }

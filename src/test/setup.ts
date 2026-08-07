@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom';
-import { expect, afterEach } from 'vitest';
+import { expect, afterEach, afterAll, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { server } from './msw/server';
 
 // Backend modules validate env at import time; ensure tests can load them.
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
@@ -11,6 +12,20 @@ process.env.NODE_ENV ??= 'test';
 
 // Extend Vitest's expect with jest-dom matchers
 expect.extend(matchers);
+
+// MSW request-mocking lifecycle. `onUnhandledRequest: 'error'` surfaces any
+// request a test forgot to mock instead of silently hitting the network.
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' });
+});
+
+afterEach(() => {
+  server.resetHandlers();
+});
+
+afterAll(() => {
+  server.close();
+});
 
 // Cleanup after each test
 afterEach(() => {
@@ -41,5 +56,4 @@ global.IntersectionObserver = class IntersectionObserver {
     return [];
   }
   unobserve() {}
-} as any;
-
+} as unknown as typeof IntersectionObserver;

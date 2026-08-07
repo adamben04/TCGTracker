@@ -10,6 +10,7 @@ import {
 } from '../../../services/collectionToolsApi';
 import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
+import { ConfirmDialog } from '../../../components/common/ConfirmDialog';
 import { formatCurrency } from '../../../utils/cardDisplay';
 
 const PRODUCT_TYPES = [
@@ -64,13 +65,16 @@ export const SealedProductsView: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [pendingDeletion, setPendingDeletion] = useState<number | null>(null);
+  const getErrorMessage = (error: unknown, fallback: string) =>
+    error instanceof Error ? error.message : fallback;
 
   const load = useCallback(async () => {
     try {
       const sealed = await fetchSealedProducts();
       setItems(sealed.filter((s) => s.game === game));
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to load sealed products');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to load sealed products'));
     } finally {
       setLoading(false);
     }
@@ -81,7 +85,10 @@ export const SealedProductsView: React.FC = () => {
   }, [load]);
 
   const totalValue = useMemo(() => {
-    return items.reduce((sum, item) => sum + (item.current_value ?? item.purchase_price) * item.quantity, 0);
+    return items.reduce(
+      (sum, item) => sum + (item.current_value ?? item.purchase_price) * item.quantity,
+      0
+    );
   }, [items]);
 
   const totalInvestment = useMemo(() => {
@@ -113,8 +120,8 @@ export const SealedProductsView: React.FC = () => {
       setEditingId(null);
       setShowForm(false);
       void load();
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save product');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to save product'));
     }
   };
 
@@ -133,13 +140,18 @@ export const SealedProductsView: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm('Remove this sealed product?')) return;
+  const handleDelete = (id: number) => {
+    setPendingDeletion(id);
+  };
+
+  const confirmDelete = async () => {
+    if (pendingDeletion === null) return;
     try {
-      await deleteSealedProduct(id);
+      await deleteSealedProduct(pendingDeletion);
+      setPendingDeletion(null);
       void load();
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to delete product');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to delete product'));
     }
   };
 
@@ -173,14 +185,21 @@ export const SealedProductsView: React.FC = () => {
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="rounded-2xl border border-border-default bg-surface p-5">
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-2xl border border-border-default bg-surface p-5"
+        >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="sm:col-span-2 lg:col-span-1">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-name"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Product name *
               </label>
               <input
                 className={inputClass}
+                id="sealed-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Surging Sparks Booster Box"
@@ -188,11 +207,15 @@ export const SealedProductsView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-type"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Type
               </label>
               <select
                 className={inputClass}
+                id="sealed-type"
                 value={form.productType}
                 onChange={(e) => setForm({ ...form, productType: e.target.value })}
               >
@@ -204,34 +227,48 @@ export const SealedProductsView: React.FC = () => {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-set-name"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Set (optional)
               </label>
               <input
                 className={inputClass}
+                id="sealed-set-name"
                 value={form.setName}
                 onChange={(e) => setForm({ ...form, setName: e.target.value })}
                 placeholder="e.g. Surging Sparks"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-quantity"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Quantity
               </label>
               <input
                 className={inputClass}
+                id="sealed-quantity"
                 type="number"
                 min={1}
                 value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: Math.max(1, Number(e.target.value) || 1) })}
+                onChange={(e) =>
+                  setForm({ ...form, quantity: Math.max(1, Number(e.target.value) || 1) })
+                }
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-purchase-price"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Purchase price (each)
               </label>
               <input
                 className={inputClass}
+                id="sealed-purchase-price"
                 type="number"
                 min={0}
                 step="0.01"
@@ -240,11 +277,15 @@ export const SealedProductsView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-current-value"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Current value (each, optional)
               </label>
               <input
                 className={inputClass}
+                id="sealed-current-value"
                 type="number"
                 min={0}
                 step="0.01"
@@ -254,11 +295,15 @@ export const SealedProductsView: React.FC = () => {
               />
             </div>
             <div className="sm:col-span-2 lg:col-span-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted">
+              <label
+                htmlFor="sealed-notes"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-muted"
+              >
                 Notes
               </label>
               <input
                 className={inputClass}
+                id="sealed-notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 placeholder="Optional notes"
@@ -409,6 +454,15 @@ export const SealedProductsView: React.FC = () => {
           })}
         </div>
       )}
+      <ConfirmDialog
+        isOpen={pendingDeletion !== null}
+        onConfirm={confirmDelete}
+        onCancel={() => setPendingDeletion(null)}
+        title="Remove sealed product?"
+        message="This sealed product will be permanently removed from your collection."
+        confirmLabel="Remove"
+        variant="destructive"
+      />
     </div>
   );
 };

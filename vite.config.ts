@@ -18,10 +18,17 @@ export default defineConfig(({ mode }) => {
     include: ['lucide-react'],
   },
   build: {
+    // The optional, route-lazy 3D pack-opening scene intentionally carries
+    // Three.js. Keep the global warning threshold above that isolated chunk
+    // while the main application remains split below 500 kB.
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          'ui-primitives': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+          monitoring: ['@sentry/react'],
+          http: ['axios'],
           'charts': ['recharts'],
           'motion': ['framer-motion'],
         },
@@ -127,6 +134,7 @@ export default defineConfig(({ mode }) => {
       '**/node_modules/**',
       '**/dist/**',
       '**/cypress/**',
+      'e2e/**',
       '**/.{idea,git,cache,output,temp}/**',
       '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*',
       'backend/**',

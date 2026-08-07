@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useId } from 'react';
 import { Modal } from './Modal';
 
 interface ConfirmDialogProps {
@@ -22,11 +23,24 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'default',
 }: ConfirmDialogProps) {
+  const titleId = useId();
+  const isDestructive = variant === 'destructive';
+
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} size="small">
+    <Modal
+      isOpen={isOpen}
+      onClose={onCancel}
+      size="small"
+      titleId={titleId}
+      role={isDestructive ? 'alertdialog' : 'dialog'}
+    >
       <div className="p-2">
-        <h3 className="text-lg font-semibold text-ink-primary">{title}</h3>
-        <div className="mt-2 text-sm text-ink-secondary">{typeof message === 'string' ? <p>{message}</p> : message}</div>
+        <h3 id={titleId} className="text-lg font-semibold text-ink-primary">
+          {title}
+        </h3>
+        <div className="mt-2 text-sm text-ink-secondary">
+          {typeof message === 'string' ? <p>{message}</p> : message}
+        </div>
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onCancel} className="btn-secondary">
             {cancelLabel}

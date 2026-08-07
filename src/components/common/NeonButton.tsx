@@ -12,6 +12,11 @@ interface NeonButtonProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
+type NeonButtonStyle = React.CSSProperties & {
+  '--hover-bg'?: string;
+  '--hover-shadow'?: string;
+};
+
 const colorMap = {
   cyan: 'var(--neon-cyan)',
   pink: 'var(--neon-pink)',
@@ -47,7 +52,7 @@ export const NeonButton: React.FC<NeonButtonProps> = ({
     ghost: `border-0 text-ink-secondary bg-transparent hover:text-ink-primary hover:bg-surface-hover`,
   };
 
-  const style: React.CSSProperties =
+  const style: NeonButtonStyle | undefined =
     variant === 'primary'
       ? {
           background: accentColor,
@@ -64,11 +69,11 @@ export const NeonButton: React.FC<NeonButtonProps> = ({
 
   const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (variant === 'primary') {
-      e.currentTarget.style.boxShadow = (style as any)?.['--hover-shadow'] || '';
+      e.currentTarget.style.boxShadow = style?.['--hover-shadow'] || '';
       e.currentTarget.style.filter = 'brightness(1.1)';
     } else if (variant === 'secondary') {
-      e.currentTarget.style.background = (style as any)?.['--hover-bg'] || '';
-      e.currentTarget.style.boxShadow = (style as any)?.['--hover-shadow'] || '';
+      e.currentTarget.style.background = style?.['--hover-bg'] || '';
+      e.currentTarget.style.boxShadow = style?.['--hover-shadow'] || '';
     }
   };
 

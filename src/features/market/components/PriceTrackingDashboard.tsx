@@ -26,17 +26,19 @@ import {
 import { pokemonApi } from '../../../services/pokemonApi';
 import { onePieceApi } from '../../../services/onepieceApi';
 import { useGame } from '../../../contexts/GameContext';
-import { SectionLabel } from '../../../components/common/SectionLabel';
 import { PageEmptyState } from '../../../components/common/PageEmptyState';
 import { MiniSparkline } from '../../../components/common/MiniSparkline';
-import { TrackerStatCard, buildSparklinePrices } from './TrackerStatCard';
+import { TrackerStatCard } from './TrackerStatCard';
+import { buildSparklinePrices } from './sparkline';
 import { CardComparePanel } from './CardComparePanel';
 import { formatCurrency, formatPercent } from '../../../utils/cardDisplay';
-import { markOnboardingStep } from '../../../components/common/OnboardingChecklist';
+import { markOnboardingStep } from '../../../components/common/onboarding';
 import { vaultService } from '../../../services/vaultService';
 import { calculateGradedValue } from '../../../services/gradingService';
 import { getCardPrice } from '../../../utils/cardPrice';
 import { authService } from '../../../services/authService';
+import { DataProvenance } from '../../../components/ui/DataProvenance';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 export const PriceTrackingDashboard: React.FC = () => {
   const { game, isOnePiece, isPokemon } = useGame();
@@ -50,7 +52,6 @@ export const PriceTrackingDashboard: React.FC = () => {
   const [selectedCardForAlert, setSelectedCardForAlert] = useState<TrackedCard | null>(null);
   const [alertTarget, setAlertTarget] = useState('');
   const [alertType, setAlertType] = useState<'above' | 'below'>('above');
-  const [tcg, setTcg] = useState<'pokemon' | 'onepiece'>('pokemon');
 
   const loadData = useCallback(async () => {
     setTrackedCards(priceTrackingService.getTrackedCards(game));
@@ -58,16 +59,18 @@ export const PriceTrackingDashboard: React.FC = () => {
       const nextAlerts = await unifiedAlertService.getAlerts();
       setAlerts(nextAlerts);
     } catch {
-      setAlerts(priceTrackingService.getAlerts(game).map((a) => ({
-        id: a.id,
-        cardId: a.cardId,
-        cardName: a.cardName,
-        targetPrice: a.targetPrice,
-        condition: a.alertType,
-        isActive: a.isActive,
-        createdAt: a.createdAt,
-        source: 'local' as const,
-      })));
+      setAlerts(
+        priceTrackingService.getAlerts(game).map((a) => ({
+          id: a.id,
+          cardId: a.cardId,
+          cardName: a.cardName,
+          targetPrice: a.targetPrice,
+          condition: a.alertType,
+          isActive: a.isActive,
+          createdAt: a.createdAt,
+          source: 'local' as const,
+        }))
+      );
     }
     setDigest(unifiedAlertService.getDigest());
   }, [game]);
@@ -174,17 +177,17 @@ export const PriceTrackingDashboard: React.FC = () => {
 
   return (
     <div className="section-stack">
-      <div className="animate-slide-up">
-        <SectionLabel className="text-accent/90">Price tracker</SectionLabel>
-        <h2 className="mt-2 font-display text-3xl font-bold tracking-tight">
-          Watchlist &amp; alerts
-        </h2>
-        <p className="mt-2 text-sm text-ink-muted">
-          Monitor favorites, spot movers, and set price triggers
-          {isOnePiece ? ' for One Piece' : ''}
-          {serverMode ? ' · synced to your account' : ' · stored on this device'}.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Market"
+        title="Watchlist and price alerts"
+        description={`Monitor ${isOnePiece ? 'One Piece' : 'Pokémon'} cards, compare movement, and create target-price alerts.`}
+        meta={
+          <DataProvenance
+            source={serverMode ? 'Account-synced alerts' : 'Watchlist stored on this device'}
+            qualifier="Market prices are estimates and can vary by condition, finish, and liquidity."
+          />
+        }
+      />
 
       {digest.length > 0 && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
@@ -236,7 +239,9 @@ export const PriceTrackingDashboard: React.FC = () => {
           icon={Package}
           label="Tracked cards"
           value={stats.totalTracked}
-          helper={stats.totalTracked === 0 ? 'Search below to add your first card' : 'Cards in watchlist'}
+          helper={
+            stats.totalTracked === 0 ? 'Search below to add your first card' : 'Cards in watchlist'
+          }
         />
         <TrackerStatCard
           icon={TrendingUp}
@@ -316,14 +321,6 @@ export const PriceTrackingDashboard: React.FC = () => {
           Add card to track
         </h3>
 
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs text-ink-muted font-medium">TCG:</span>
-          <div className="flex rounded-lg border border-border-default bg-surface-inset overflow-hidden">
-            <button onClick={() => setTcg('pokemon')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'pokemon' ? 'bg-accent text-white' : 'text-ink-muted'}`}>Pokemon</button>
-            <button onClick={() => setTcg('onepiece')} className={`px-3 py-1.5 text-xs font-medium transition-colors ${tcg === 'onepiece' ? 'bg-accent text-white' : 'text-ink-muted'}`}>One Piece</button>
-          </div>
-        </div>
-
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" />
@@ -333,9 +330,7 @@ export const PriceTrackingDashboard: React.FC = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
               placeholder={
-                isOnePiece
-                  ? 'Search One Piece cards to track…'
-                  : 'Search for a card to track…'
+                isOnePiece ? 'Search One Piece cards to track…' : 'Search for a card to track…'
               }
               className="input pl-10"
             />
@@ -458,9 +453,7 @@ export const PriceTrackingDashboard: React.FC = () => {
                       <p className="text-xs text-ink-muted">{formatCurrency(mover.currentPrice)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-rose-300">
-                        {mover.changePercent.toFixed(1)}%
-                      </p>
+                      <p className="font-bold text-rose-300">{mover.changePercent.toFixed(1)}%</p>
                     </div>
                   </motion.div>
                 ))}
@@ -558,9 +551,7 @@ export const PriceTrackingDashboard: React.FC = () => {
                           onClick={() => {
                             setSelectedCardForAlert(tracked);
                             setAlertType('above');
-                            setAlertTarget(
-                              currentPrice > 0 ? (currentPrice * 1.1).toFixed(2) : ''
-                            );
+                            setAlertTarget(currentPrice > 0 ? (currentPrice * 1.1).toFixed(2) : '');
                             setShowAlertForm(true);
                           }}
                           className="btn-alert"
@@ -646,9 +637,7 @@ export const PriceTrackingDashboard: React.FC = () => {
                       type="button"
                       onClick={() => setAlertType(type)}
                       className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium capitalize ${
-                        alertType === type
-                          ? 'bg-surface-hover text-ink-primary'
-                          : 'text-ink-muted'
+                        alertType === type ? 'bg-surface-hover text-ink-primary' : 'text-ink-muted'
                       }`}
                     >
                       {type === 'above' ? '↑ Above' : '↓ Below'}

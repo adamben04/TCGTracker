@@ -9,7 +9,6 @@ import {
   computeMovingAverages,
   computePriceChanges,
   computeVolatility,
-  findSupportResistance,
   computeRecoveryMetrics,
   getLatestPrice,
 } from './marketAnalyzer';
@@ -39,10 +38,7 @@ function smoothStep(value: number, midpoint: number, steepness: number, maxOutpu
  * Maps a percentage change to a score contribution using linear interpolation
  * between defined breakpoints. E.g., change=-20 → -25, change=0 → 0, change=+20 → +25.
  */
-function linearMap(
-  value: number,
-  breakpoints: Array<{ input: number; output: number }>
-): number {
+function linearMap(value: number, breakpoints: Array<{ input: number; output: number }>): number {
   const sorted = [...breakpoints].sort((a, b) => a.input - b.input);
   if (value <= sorted[0].input) return sorted[0].output;
   if (value >= sorted[sorted.length - 1].input) return sorted[sorted.length - 1].output;
@@ -56,13 +52,7 @@ function linearMap(
 }
 
 export type PredictionCategory =
-  | 'strong_buy'
-  | 'watch_dip'
-  | 'recovery'
-  | 'momentum'
-  | 'stagnant'
-  | 'avoid'
-  | 'downtrend';
+  'strong_buy' | 'watch_dip' | 'recovery' | 'momentum' | 'stagnant' | 'avoid' | 'downtrend';
 
 export interface ScoringScores {
   trendScore: number;
@@ -203,8 +193,10 @@ export function computeSeasonalityAdjustment(cardName?: string, setName?: string
  * historical simulation of price ranges.
  */
 function computeHistoricalReturns(priceHistory: PricePoint[], windowDays: number = 30): number[] {
-  const sorted = [...priceHistory].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const prices = sorted.map(p => p.marketPrice ?? p.price).filter(p => p > 0);
+  const sorted = [...priceHistory].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const prices = sorted.map((p) => p.marketPrice ?? p.price).filter((p) => p > 0);
   if (prices.length < windowDays + 1) return [];
 
   const returns: number[] = [];
@@ -316,18 +308,24 @@ export function isRarityInvestmentWorthy(rarity?: string): boolean {
     'gold rare',
   ];
 
-  if (worthyPatterns.some(p => lower.includes(p))) return true;
+  if (worthyPatterns.some((p) => lower.includes(p))) return true;
 
   if (lower === 'rare') return false;
 
-  return lower.includes('vmax') || lower.includes('vstar') ||
-    (lower.includes('holo') && lower.includes('rare'));
+  return (
+    lower.includes('vmax') ||
+    lower.includes('vstar') ||
+    (lower.includes('holo') && lower.includes('rare'))
+  );
 }
 
-export function hasMeaningfulPriceMovement(priceHistory: PricePoint[], minRangePct: number = 5): boolean {
+export function hasMeaningfulPriceMovement(
+  priceHistory: PricePoint[],
+  minRangePct: number = 5
+): boolean {
   if (priceHistory.length < 2) return false;
 
-  const prices = priceHistory.map(p => p.price ?? p.marketPrice ?? 0).filter(p => p > 0);
+  const prices = priceHistory.map((p) => p.price ?? p.marketPrice ?? 0).filter((p) => p > 0);
   if (prices.length < 2) return false;
 
   const min = Math.min(...prices);
@@ -387,15 +385,12 @@ export function isCardInvestmentWorthy(
 
   if (!isRarityInvestmentWorthy(card.rarity)) return false;
 
-  const minDataPoints = setReleaseDate != null
-    ? getAdaptiveMinDataPoints(setReleaseDate)
-    : filter.minDataPoints;
+  const minDataPoints =
+    setReleaseDate != null ? getAdaptiveMinDataPoints(setReleaseDate) : filter.minDataPoints;
   if (priceHistory.length < minDataPoints) return false;
 
   if (filter.excludeStagnant) {
-    const minPct = setReleaseDate != null
-      ? getAdaptiveMinMovementPct(setReleaseDate)
-      : 5;
+    const minPct = setReleaseDate != null ? getAdaptiveMinMovementPct(setReleaseDate) : 5;
     if (!hasMeaningfulPriceMovement(priceHistory, minPct)) {
       return false;
     }
@@ -413,9 +408,7 @@ export function computeLiquidityScore(
   // Adaptive normalization: newer sets use a shorter window so they aren't penalized
   // for having fewer data points than mature sets.
   const ageDays = setReleaseDate != null ? computeSetAgeDays(setReleaseDate) : -1;
-  const normalizer = ageDays >= 0 && ageDays < 30 ? 14
-    : ageDays >= 0 && ageDays < 90 ? 30
-    : 90;
+  const normalizer = ageDays >= 0 && ageDays < 30 ? 14 : ageDays >= 0 && ageDays < 90 ? 30 : 90;
   const dataPointScore = Math.min(100, (priceHistory.length / normalizer) * 100);
 
   const stabilityScore = Math.max(0, 100 - volatility.monthlyVolatility * 200);
@@ -423,21 +416,27 @@ export function computeLiquidityScore(
   // Volume-based liquidity: average recent volume normalized to 0-100
   const recentVolumes = priceHistory
     .slice(-30)
-    .map(p => p.volume ?? 0)
-    .filter(v => v > 0);
-  const avgVolume = recentVolumes.length > 0
-    ? recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length
-    : 0;
+    .map((p) => p.volume ?? 0)
+    .filter((v) => v > 0);
+  const avgVolume =
+    recentVolumes.length > 0 ? recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length : 0;
   // Scale: 0 volume → 10, 50+ volume → 80, 200+ → 100
   const volumeScore = avgVolume === 0 ? 10 : Math.min(100, 10 + avgVolume * 1.5);
 
   const priceLevelScore =
-    currentPrice >= 100 ? 70 :
-    currentPrice >= 50 ? 60 :
-    currentPrice >= 20 ? 55 :
-    currentPrice >= 10 ? 50 :
-    currentPrice >= 5 ? 45 :
-    currentPrice >= 2 ? 35 : 25;
+    currentPrice >= 100
+      ? 70
+      : currentPrice >= 50
+        ? 60
+        : currentPrice >= 20
+          ? 55
+          : currentPrice >= 10
+            ? 50
+            : currentPrice >= 5
+              ? 45
+              : currentPrice >= 2
+                ? 35
+                : 25;
 
   const lastDate = priceHistory[priceHistory.length - 1]?.date;
   let recencyScore = 50;
@@ -451,9 +450,9 @@ export function computeLiquidityScore(
   }
 
   const score =
-    0.20 * dataPointScore +
-    0.20 * stabilityScore +
-    0.30 * volumeScore +
+    0.2 * dataPointScore +
+    0.2 * stabilityScore +
+    0.3 * volumeScore +
     0.15 * priceLevelScore +
     0.15 * recencyScore;
 
@@ -479,13 +478,13 @@ export function computeDataQualityScore(priceHistory: PricePoint[]): number {
   if (maxGap > 30) score -= 15;
   else if (maxGap > 14) score -= 8;
 
-  const prices = priceHistory.map(p => p.price ?? p.marketPrice ?? 0).filter(p => p > 0);
+  const prices = priceHistory.map((p) => p.price ?? p.marketPrice ?? 0).filter((p) => p > 0);
   if (prices.length >= 3) {
     const mean = prices.reduce((a, b) => a + b, 0) / prices.length;
     const variance = prices.reduce((a, p) => a + (p - mean) ** 2, 0) / prices.length;
     const stdDev = Math.sqrt(variance);
     if (stdDev > 0) {
-      const outlierCount = prices.filter(p => Math.abs(p - mean) > 3 * stdDev).length;
+      const outlierCount = prices.filter((p) => Math.abs(p - mean) > 3 * stdDev).length;
       score -= Math.min(25, outlierCount * 5);
     }
   }
@@ -629,15 +628,16 @@ export function computeRecoveryScore(
   return Math.max(0, Math.min(100, score));
 }
 
-export function computeDemandScore(
-  rarity?: string,
-  cardNumber?: string
-): number {
+export function computeDemandScore(rarity?: string, cardNumber?: string): number {
   let score = 50;
 
   if (rarity) {
     const lowerRarity = rarity.toLowerCase();
-    if (lowerRarity.includes('secret') || lowerRarity.includes('rainbow') || lowerRarity.includes('gold')) {
+    if (
+      lowerRarity.includes('secret') ||
+      lowerRarity.includes('rainbow') ||
+      lowerRarity.includes('gold')
+    ) {
       score += 20;
     } else if (lowerRarity.includes('illustration') || lowerRarity.includes('special')) {
       score += 18;
@@ -675,10 +675,10 @@ export function computeRiskScore(
   score += linearMap(volatility.monthlyVolatility, [
     { input: 0, output: -5 },
     { input: 0.05, output: 0 },
-    { input: 0.10, output: 8 },
-    { input: 0.20, output: 15 },
-    { input: 0.30, output: 25 },
-    { input: 0.40, output: 30 },
+    { input: 0.1, output: 8 },
+    { input: 0.2, output: 15 },
+    { input: 0.3, output: 25 },
+    { input: 0.4, output: 30 },
   ]);
 
   // Smooth 7-day pump risk
@@ -706,7 +706,7 @@ export function computeRiskScore(
     const spread = Math.abs(movingAverages.ma7 - movingAverages.ma30) / movingAverages.ma30;
     score += linearMap(spread, [
       { input: 0, output: 0 },
-      { input: 0.10, output: 5 },
+      { input: 0.1, output: 5 },
       { input: 0.15, output: 10 },
       { input: 0.25, output: 15 },
     ]);
@@ -844,7 +844,7 @@ async function fetchAvgGradingTotal(cardId: string): Promise<number | null> {
 async function fetchPsa10Population(cardId: string): Promise<number | null> {
   const db = getDb();
   try {
-    const row: any = await new Promise((resolve, reject) => {
+    const row: any = await new Promise((resolve) => {
       db.get(
         `SELECT grade10, pop10, psa10, grade_10 FROM population_cache
          WHERE cardId = ? OR card_id = ?
@@ -868,7 +868,8 @@ async function fetchPsa10Population(cardId: string): Promise<number | null> {
       });
       if (alt?.population != null) {
         try {
-          const parsed = typeof alt.population === 'string' ? JSON.parse(alt.population) : alt.population;
+          const parsed =
+            typeof alt.population === 'string' ? JSON.parse(alt.population) : alt.population;
           const n = parsed?.grade10 ?? parsed?.psa10 ?? parsed?.['10'];
           return n != null ? Number(n) : null;
         } catch {
@@ -963,7 +964,7 @@ export function computePriceRanges(
 
   if (historicalReturns && historicalReturns.length >= 10) {
     // Historical simulation: use actual return distribution
-    const scaledReturns = historicalReturns.map(r => r * Math.sqrt(days / 30));
+    const scaledReturns = historicalReturns.map((r) => r * Math.sqrt(days / 30));
     const sorted = [...scaledReturns].sort((a, b) => a - b);
 
     // Use confidence to select percentile range
@@ -988,7 +989,8 @@ export function computePriceRanges(
   // Use t-distribution-inspired scaling (fatter tails than normal)
   const confidenceFactor = (100 - confidence + 50) / 100;
   const tDistFactor = 1.3; // accounts for fat tails in TCG price data
-  const volAdjustment = volatility * Math.sqrt(days / 365) * 1.96 * confidenceFactor * tDistFactor * spreadWiden;
+  const volAdjustment =
+    volatility * Math.sqrt(days / 365) * 1.96 * confidenceFactor * tDistFactor * spreadWiden;
   const low = mid * (1 - volAdjustment);
   const high = mid * (1 + volAdjustment);
 
@@ -1016,18 +1018,34 @@ export function determineCategory(
   }
 
   // Priority 3: Downtrend — sustained decline with no recovery signal
-  if (priceChanges.change90d !== null && priceChanges.change90d <= -15 &&
-      !(recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop <= -15 && recoveryMetrics.hasStabilized)) {
+  if (
+    priceChanges.change90d !== null &&
+    priceChanges.change90d <= -15 &&
+    !(
+      recoveryMetrics.recentDrop !== null &&
+      recoveryMetrics.recentDrop <= -15 &&
+      recoveryMetrics.hasStabilized
+    )
+  ) {
     return 'downtrend';
   }
 
   // Priority 4: Recovery — recent significant drop with stabilization
-  if (recoveryMetrics.recentDrop !== null && recoveryMetrics.recentDrop <= -15 && recoveryMetrics.hasStabilized && scores.liquidityScore >= 30) {
+  if (
+    recoveryMetrics.recentDrop !== null &&
+    recoveryMetrics.recentDrop <= -15 &&
+    recoveryMetrics.hasStabilized &&
+    scores.liquidityScore >= 30
+  ) {
     return 'recovery';
   }
 
   // Priority 5: Momentum — strong recent gains
-  if (priceChanges.change30d !== null && priceChanges.change30d >= 8 && scores.liquidityScore >= 35) {
+  if (
+    priceChanges.change30d !== null &&
+    priceChanges.change30d >= 8 &&
+    scores.liquidityScore >= 35
+  ) {
     return 'momentum';
   }
 
@@ -1100,7 +1118,11 @@ function simpleHash(str: string): number {
   return Math.abs(hash);
 }
 
-export function generateSuggestedAction(category: PredictionCategory, scores: ScoringScores): string {
+export function generateSuggestedAction(
+  category: PredictionCategory,
+  scores: ScoringScores
+): string {
+  void scores;
   switch (category) {
     case 'strong_buy':
       return 'Buy at current levels';
@@ -1125,22 +1147,29 @@ export function generateExplanation(
   category: PredictionCategory,
   scores: ScoringScores,
   priceChanges: { change7d: number | null; change30d: number | null; change90d: number | null },
-  recoveryMetrics: { recentDrop: number | null; hasStabilized: boolean; priorRecoveryPattern: boolean },
+  recoveryMetrics: {
+    recentDrop: number | null;
+    hasStabilized: boolean;
+    priorRecoveryPattern: boolean;
+  },
   movingAverages: { ma7: number | null; ma30: number | null; ma90: number | null },
   currentPrice: number | null,
   externalSignals: string
 ): string {
   const parts: string[] = [];
-  const hasExternal = externalSignals && externalSignals !== '[]' && !externalSignals.includes('unavailable');
+  const hasExternal =
+    externalSignals && externalSignals !== '[]' && !externalSignals.includes('unavailable');
 
   if (scores.trendScore > 60) {
     if (priceChanges.change90d !== null && priceChanges.change90d > 0) {
       parts.push(`Up ${priceChanges.change90d.toFixed(0)}% over 90 days`);
     }
     if (movingAverages.ma7 !== null && movingAverages.ma30 !== null && movingAverages.ma30 > 0) {
-      const maRatio = ((movingAverages.ma7 - movingAverages.ma30) / movingAverages.ma30 * 100);
+      const maRatio = ((movingAverages.ma7 - movingAverages.ma30) / movingAverages.ma30) * 100;
       if (Math.abs(maRatio) > 2) {
-        parts.push(`price is ${maRatio > 0 ? 'above' : 'below'} its 30-day moving average by ${Math.abs(maRatio).toFixed(1)}%`);
+        parts.push(
+          `price is ${maRatio > 0 ? 'above' : 'below'} its 30-day moving average by ${Math.abs(maRatio).toFixed(1)}%`
+        );
       }
     }
   }
@@ -1199,7 +1228,8 @@ export function generateRiskFactors(
     risks.push('recent pump may be unsustainable');
   }
 
-  const hasExternal = externalSignals && externalSignals !== '[]' && !externalSignals.includes('unavailable');
+  const hasExternal =
+    externalSignals && externalSignals !== '[]' && !externalSignals.includes('unavailable');
   if (hasExternal && externalSignals.includes('reprint')) {
     risks.push('possible reprint risk');
   }
@@ -1244,12 +1274,14 @@ function fetchCardPriceHistory(uniqueIdentifier: string): Promise<PricePoint[]> 
       [uniqueIdentifier],
       (err, rows: any[]) => {
         if (err) return reject(err);
-        resolve(rows.map(r => ({
-          date: r.date,
-          price: r.price ?? 0,
-          marketPrice: r.marketPrice ?? r.price,
-          volume: r.volume,
-        })));
+        resolve(
+          rows.map((r) => ({
+            date: r.date,
+            price: r.price ?? 0,
+            marketPrice: r.marketPrice ?? r.price,
+            volume: r.volume,
+          }))
+        );
       }
     );
   });
@@ -1260,7 +1292,10 @@ const RESOLVED_RARITY_EXPR = "COALESCE(NULLIF(TRIM(cm.rarity), ''), cc.rarity)";
 
 function fetchAllCards(filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER): Promise<any[]> {
   const db = getDb();
-  const { clause: rarityClause, params: rarityParams } = buildRarityWhereClause(RESOLVED_RARITY_EXPR, filter.rarities);
+  const { clause: rarityClause, params: rarityParams } = buildRarityWhereClause(
+    RESOLVED_RARITY_EXPR,
+    filter.rarities
+  );
 
   return new Promise((resolve, reject) => {
     db.all(
@@ -1309,7 +1344,16 @@ function fetchAllCards(filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER):
 }
 
 export async function predictSingleCard(
-  card: { cardId: string; cardName: string; setId: string; setName: string; cardNumber?: string; rarity?: string; uniqueIdentifier?: string; setReleaseDate?: string | null },
+  card: {
+    cardId: string;
+    cardName: string;
+    setId: string;
+    setName: string;
+    cardNumber?: string;
+    rarity?: string;
+    uniqueIdentifier?: string;
+    setReleaseDate?: string | null;
+  },
   allCardReturns?: Array<{ name: string; rarity: string; avgReturn90d: number }>,
   filter: CardQualityFilter = DEFAULT_CARD_QUALITY_FILTER
 ): Promise<CardPrediction | null> {
@@ -1323,7 +1367,7 @@ export async function predictSingleCard(
     const currentPrice = getLatestPrice(priceHistory);
     if (!currentPrice || currentPrice <= 0) return null;
 
-    const setReleaseDate = card.setReleaseDate ?? await fetchSetReleaseDate(card.setId);
+    const setReleaseDate = card.setReleaseDate ?? (await fetchSetReleaseDate(card.setId));
 
     if (!isCardInvestmentWorthy(card, priceHistory, currentPrice, filter, setReleaseDate)) {
       return null;
@@ -1332,10 +1376,14 @@ export async function predictSingleCard(
     const movingAverages = computeMovingAverages(priceHistory);
     const priceChanges = computePriceChanges(priceHistory);
     const volatility = computeVolatility(priceHistory);
-    const supportResistance = findSupportResistance(priceHistory);
     const recoveryMetrics = computeRecoveryMetrics(priceHistory);
 
-    const liquidityScore = computeLiquidityScore(priceHistory, currentPrice, volatility, setReleaseDate);
+    const liquidityScore = computeLiquidityScore(
+      priceHistory,
+      currentPrice,
+      volatility,
+      setReleaseDate
+    );
     const dataQualityScore = computeDataQualityScore(priceHistory);
 
     const externalSignals = await searchExternalSignals(card.cardName, card.setName);
@@ -1352,7 +1400,12 @@ export async function predictSingleCard(
     const recoveryScore = computeRecoveryScore(recoveryMetrics, priceChanges);
     const demandScore = computeDemandScore(card.rarity, card.cardNumber);
 
-    const riskScore = computeRiskScore(volatility, priceChanges, movingAverages, externalSignalScore);
+    const riskScore = computeRiskScore(
+      volatility,
+      priceChanges,
+      movingAverages,
+      externalSignalScore
+    );
 
     const scores: ScoringScores = {
       trendScore,
@@ -1376,37 +1429,104 @@ export async function predictSingleCard(
     // Adaptive confidence scoring — use set-age-aware thresholds so newer cards
     // aren't penalized as heavily for having less historical data.
     const adaptiveMinDP = getAdaptiveMinDataPoints(setReleaseDate);
-    const baseConfidence = Math.max(20, Math.min(95,
-      50
-      + (trendScore > 60 ? 10 : trendScore > 40 ? 5 : 0)
-      + (priceHistory.length > 90 ? 15 : priceHistory.length > 30 ? 8 : priceHistory.length > adaptiveMinDP ? 3 : priceHistory.length > 5 ? 1 : 0)
-      + (demandScore > 60 ? 10 : 0)
-      + (liquidityScore > 60 ? 8 : liquidityScore > 40 ? 4 : 0)
-      + (dataQualityScore > 70 ? 5 : dataQualityScore > 50 ? 2 : 0)
-      - (riskScore > 70 ? 10 : riskScore > 50 ? 5 : 0)
-      - (priceHistory.length < adaptiveMinDP ? 20 : priceHistory.length < 14 ? 5 : 0)
-      - (dataQualityScore < 40 ? 10 : dataQualityScore < 60 ? 5 : 0)
-    ));
+    const baseConfidence = Math.max(
+      20,
+      Math.min(
+        95,
+        50 +
+          (trendScore > 60 ? 10 : trendScore > 40 ? 5 : 0) +
+          (priceHistory.length > 90
+            ? 15
+            : priceHistory.length > 30
+              ? 8
+              : priceHistory.length > adaptiveMinDP
+                ? 3
+                : priceHistory.length > 5
+                  ? 1
+                  : 0) +
+          (demandScore > 60 ? 10 : 0) +
+          (liquidityScore > 60 ? 8 : liquidityScore > 40 ? 4 : 0) +
+          (dataQualityScore > 70 ? 5 : dataQualityScore > 50 ? 2 : 0) -
+          (riskScore > 70 ? 10 : riskScore > 50 ? 5 : 0) -
+          (priceHistory.length < adaptiveMinDP ? 20 : priceHistory.length < 14 ? 5 : 0) -
+          (dataQualityScore < 40 ? 10 : dataQualityScore < 60 ? 5 : 0)
+      )
+    );
 
     const volatilityAdjust = volatility.monthlyVolatility;
-    let confidenceScore = Math.max(10, Math.min(95, Math.round(baseConfidence * (1 - volatilityAdjust * 0.5))));
+    const confidenceScore = Math.max(
+      10,
+      Math.min(95, Math.round(baseConfidence * (1 - volatilityAdjust * 0.5)))
+    );
 
     if (confidenceScore < filter.minConfidence) return null;
 
-    const category = priceHistory.length < 7
-      ? categorizeLimitedData(scores, expectedReturns.expected90dReturn, currentPrice, card.cardId)
-      : determineCategory(scores, expectedReturns.expected90dReturn, priceChanges, recoveryMetrics);
+    const category =
+      priceHistory.length < 7
+        ? categorizeLimitedData(
+            scores,
+            expectedReturns.expected90dReturn,
+            currentPrice,
+            card.cardId
+          )
+        : determineCategory(
+            scores,
+            expectedReturns.expected90dReturn,
+            priceChanges,
+            recoveryMetrics
+          );
 
-    const predicted7d = computePriceRanges(currentPrice, expectedReturns.expected7dReturn, volatility.dailyVolatility, 7, confidenceScore, historicalReturns30d);
-    const predicted30d = computePriceRanges(currentPrice, expectedReturns.expected30dReturn, volatility.dailyVolatility, 30, confidenceScore, historicalReturns30d);
-    const predicted90d = computePriceRanges(currentPrice, expectedReturns.expected90dReturn, volatility.dailyVolatility, 90, confidenceScore, historicalReturns90d);
-    const predicted180d = computePriceRanges(currentPrice, expectedReturns.expected180dReturn, volatility.dailyVolatility, 180, confidenceScore, historicalReturns90d);
-    const predicted365d = computePriceRanges(currentPrice, expectedReturns.expected365dReturn, volatility.dailyVolatility, 365, confidenceScore, historicalReturns90d);
+    const predicted7d = computePriceRanges(
+      currentPrice,
+      expectedReturns.expected7dReturn,
+      volatility.dailyVolatility,
+      7,
+      confidenceScore,
+      historicalReturns30d
+    );
+    const predicted30d = computePriceRanges(
+      currentPrice,
+      expectedReturns.expected30dReturn,
+      volatility.dailyVolatility,
+      30,
+      confidenceScore,
+      historicalReturns30d
+    );
+    const predicted90d = computePriceRanges(
+      currentPrice,
+      expectedReturns.expected90dReturn,
+      volatility.dailyVolatility,
+      90,
+      confidenceScore,
+      historicalReturns90d
+    );
+    const predicted180d = computePriceRanges(
+      currentPrice,
+      expectedReturns.expected180dReturn,
+      volatility.dailyVolatility,
+      180,
+      confidenceScore,
+      historicalReturns90d
+    );
+    const predicted365d = computePriceRanges(
+      currentPrice,
+      expectedReturns.expected365dReturn,
+      volatility.dailyVolatility,
+      365,
+      confidenceScore,
+      historicalReturns90d
+    );
 
     const externalSignalsJson = JSON.stringify(externalSignals);
 
     const explanation = generateExplanation(
-      category, scores, priceChanges, recoveryMetrics, movingAverages, currentPrice, externalSignalsJson
+      category,
+      scores,
+      priceChanges,
+      recoveryMetrics,
+      movingAverages,
+      currentPrice,
+      externalSignalsJson
     );
 
     const riskFactors = generateRiskFactors(scores, volatility, priceChanges, externalSignalsJson);
@@ -1448,7 +1568,12 @@ export async function predictSingleCard(
   }
 }
 
-export async function runPredictions(): Promise<{ runId: number; total: number; succeeded: number; failed: number }> {
+export async function runPredictions(): Promise<{
+  runId: number;
+  total: number;
+  succeeded: number;
+  failed: number;
+}> {
   const db = getDb();
   const runId: number = await new Promise((resolve, reject) => {
     db.run(
@@ -1487,21 +1612,46 @@ export async function runPredictions(): Promise<{ runId: number; total: number; 
       }
 
       await new Promise<void>((resolve, reject) => {
-        db.run(insertStmt, [
-          runId, prediction.cardId, prediction.currentPrice,
-          prediction.predicted7d.low, prediction.predicted7d.mid, prediction.predicted7d.high,
-          prediction.predicted30d.low, prediction.predicted30d.mid, prediction.predicted30d.high,
-          prediction.predicted90d.low, prediction.predicted90d.mid, prediction.predicted90d.high,
-          prediction.predicted180d.low, prediction.predicted180d.mid, prediction.predicted180d.high,
-          prediction.predicted365d.low, prediction.predicted365d.mid, prediction.predicted365d.high,
-          prediction.expected7dReturn, prediction.expected30dReturn, prediction.expected90dReturn,
-          prediction.expected180dReturn, prediction.expected365dReturn,
-          prediction.confidenceScore, prediction.riskScore, prediction.category, prediction.suggestedAction,
-          prediction.explanation, prediction.riskFactors, prediction.externalSignals, prediction.modelVersion,
-        ], function (err) {
-          if (err) reject(err);
-          else resolve();
-        });
+        db.run(
+          insertStmt,
+          [
+            runId,
+            prediction.cardId,
+            prediction.currentPrice,
+            prediction.predicted7d.low,
+            prediction.predicted7d.mid,
+            prediction.predicted7d.high,
+            prediction.predicted30d.low,
+            prediction.predicted30d.mid,
+            prediction.predicted30d.high,
+            prediction.predicted90d.low,
+            prediction.predicted90d.mid,
+            prediction.predicted90d.high,
+            prediction.predicted180d.low,
+            prediction.predicted180d.mid,
+            prediction.predicted180d.high,
+            prediction.predicted365d.low,
+            prediction.predicted365d.mid,
+            prediction.predicted365d.high,
+            prediction.expected7dReturn,
+            prediction.expected30dReturn,
+            prediction.expected90dReturn,
+            prediction.expected180dReturn,
+            prediction.expected365dReturn,
+            prediction.confidenceScore,
+            prediction.riskScore,
+            prediction.category,
+            prediction.suggestedAction,
+            prediction.explanation,
+            prediction.riskFactors,
+            prediction.externalSignals,
+            prediction.modelVersion,
+          ],
+          function (err) {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
       });
 
       succeeded++;
@@ -1536,17 +1686,15 @@ export function isPredictionWindow(value: string): value is PredictionWindow {
 async function resolveEraToSetIds(eras: string[]): Promise<string[]> {
   const db = getDb();
   const rows: any[] = await new Promise((resolve, reject) => {
-    db.all(
-      `SELECT DISTINCT setId, setName FROM catalog_cards`,
-      [],
-      (err, r) => err ? reject(err) : resolve(r || [])
+    db.all(`SELECT DISTINCT setId, setName FROM catalog_cards`, [], (err, r) =>
+      err ? reject(err) : resolve(r || [])
     );
   });
   // Import classifySetEra dynamically to avoid circular deps at top-level
   const { classifySetEra } = await import('../utils/setEra');
   return rows
-    .filter(row => eras.includes(classifySetEra({ id: row.setId, name: row.setName })))
-    .map(row => row.setId);
+    .filter((row) => eras.includes(classifySetEra({ id: row.setId, name: row.setName })))
+    .map((row) => row.setId);
 }
 
 export async function getLatestPredictions(
@@ -1567,7 +1715,7 @@ export async function getLatestPredictions(
   // Merge explicit setIds with era-resolved setIds (intersection if both provided)
   let effectiveSetIds = filters?.setIds ?? null;
   if (eraSetIds && effectiveSetIds) {
-    effectiveSetIds = effectiveSetIds.filter(id => eraSetIds!.includes(id));
+    effectiveSetIds = effectiveSetIds.filter((id) => eraSetIds!.includes(id));
     if (effectiveSetIds.length === 0) return [];
   } else if (eraSetIds) {
     effectiveSetIds = eraSetIds;

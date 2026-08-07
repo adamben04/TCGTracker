@@ -21,7 +21,18 @@ import {
 import { matchesInvestmentFilter } from '../utils/browseInvestmentFilters';
 
 export type { AnyCard };
-export { isPokemonCard, isOnePieceCard, getCardPrice, getCardName, getCardImage, getCardSet, getCardRarity, getCardId, getCardReactKey, dedupeCards };
+export {
+  isPokemonCard,
+  isOnePieceCard,
+  getCardPrice,
+  getCardName,
+  getCardImage,
+  getCardSet,
+  getCardRarity,
+  getCardId,
+  getCardReactKey,
+  dedupeCards,
+};
 
 interface UseCardsReturn {
   cards: AnyCard[];
