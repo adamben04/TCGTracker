@@ -18,11 +18,10 @@ ENV VITE_CARD_SCANNER_API_URL=$VITE_CARD_SCANNER_API_URL
 ENV VITE_ENABLE_AUTH=$VITE_ENABLE_AUTH
 ENV VITE_ENABLE_ANALYTICS=$VITE_ENABLE_ANALYTICS
 ENV VITE_GA_TRACKING_ID=$VITE_GA_TRACKING_ID
-ENV NODE_ENV=production
 
 # Copy package files
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --include=dev --ignore-scripts
 
 # Copy source code
 COPY . .
